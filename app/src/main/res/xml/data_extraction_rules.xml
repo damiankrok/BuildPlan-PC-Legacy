@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- No app data exists yet. Revisit when persistence is introduced. -->
+    </cloud-backup>
+</data-extraction-rules>

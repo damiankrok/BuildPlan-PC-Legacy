@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Platform theme only sets the pre-Compose window background so the app
+         does not flash a light surface while starting. All real styling lives
+         in the Compose theme. -->
+    <style name="Theme.BuildPlan" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/canvas</item>
+    </style>
+</resources>
