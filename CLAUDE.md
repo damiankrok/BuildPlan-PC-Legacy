@@ -70,6 +70,24 @@ Domena mieszka w `app/src/main/java/com/buildplan/app/domain/`.
 - Nie dodawaj zależności bez realnej potrzeby.
 - Etykiety w UI po polsku, w `strings.xml`. Nazwy w kodzie i trasy po angielsku.
 
+## Dane referencyjne (debug)
+
+`app/src/debug/java/com/buildplan/app/reference/` zawiera referencyjny projekt
+odwzorowujący publiczną strukturę gotowego projektu domu. To rusztowanie
+deweloperskie, nie produkt.
+
+- **Nie traktuj go jak produkcyjnej prawdy ani danych użytkownika.** Nie kopiuj
+  go do `src/main`, nie pokazuj w UI i nie buduj na nim funkcji produktowych.
+- **Nie pobieraj i nie commituj obrazów, rzutów ani rysunków osób trzecich.**
+  Dozwolone są wyłącznie publiczne fakty tekstowe potrzebne do modelu:
+  tytuł, adres URL, nazwy pomieszczeń i podane powierzchnie.
+- **Proweniencja mieszka poza domeną.** Adresu źródła ani faktów o źródle nie
+  dodawaj do encji domenowych.
+- **Nie dopisuj tam geometrii.** Współrzędne ścian, obrysy pomieszczeń, otwory
+  i rzędne kondygnacji należą do STAGE-011, nie do zbioru referencyjnego.
+- Testy tego zbioru żyją w `src/testDebug/`, żeby wariant release nie zależał
+  od treści osób trzecich.
+
 ## Przed zakończeniem zadania
 
 Uruchom i doprowadź do zieleni:

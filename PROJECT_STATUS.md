@@ -9,6 +9,11 @@
   (BUILDING/FLOOR) i relację 0..N do pomieszczeń; ściana dzielona to jeden
   element; czyste zapytania ukrywania kondygnacji/dachu i izolacji pomieszczenia;
   semantyka `Cost.amount` (brutto/zapłacone) i `Cost.stageId` (klasyfikacja)
+- STAGE-010A reference structured building — jeden deterministyczny projekt
+  referencyjny (dwie kondygnacje, 18 pomieszczeń, podane powierzchnie)
+  w źródłach `debug`, wraz z proweniencją trzymaną poza domeną. Nie jest to
+  prawda produktu ani dane użytkownika; release go nie kompiluje. Nadal nie ma
+  parsera, geometrii ani renderera — kontrakt geometrii należy do STAGE-011.
 
 ## OPEN
 

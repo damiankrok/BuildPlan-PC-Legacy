@@ -70,6 +70,10 @@ app/src/main/java/com/buildplan/app/
     screens/         ekrany modułów (obecnie placeholdery)
     components/      komponenty współdzielone
     theme/           kolory, typografia, kształty
+
+app/src/debug/java/com/buildplan/app/
+  reference/         referencyjny projekt domu do prac deweloperskich
+                     (tylko debug, nie trafia do release)
 ```
 
 ## Dokumentacja

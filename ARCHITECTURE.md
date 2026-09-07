@@ -6,8 +6,9 @@ docelowej architektury.
 ## Stan na dziś
 
 Jedna natywna aplikacja Android: powłoka UI (STAGE-001) oraz kanoniczna warstwa
-domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A). Brak
-backendu, persystencji, autoryzacji, parsera i renderera 3D.
+domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A). Do tego
+jeden referencyjny zbiór danych w źródłach `debug` (STAGE-010A). Brak backendu,
+persystencji, autoryzacji, parsera i renderera 3D.
 
 ## Decyzje
 
@@ -225,6 +226,42 @@ ją na podstawie zaakceptowanego modelu.
 Roboczo `com.buildplan.app`. **To decyzja robocza** i wymaga potwierdzenia
 przez OWNER-a przed publikacją w Google Play. Migracji nazwy pakietu nie wolno
 wykonywać samodzielnie.
+
+## Referencyjny zbiór danych (STAGE-010A)
+
+`app/src/debug/java/com/buildplan/app/reference/` zawiera jeden deterministyczny
+projekt referencyjny odwzorowujący publiczną strukturę pomieszczeń gotowego
+projektu domu (ARCHON+ „Dom w marcówkach (GE)”): dwie kondygnacje, osiemnaście
+pomieszczeń, podane powierzchnie.
+
+- **To nie są dane użytkownika ani prawda produktu.** Zbiór żyje wyłącznie
+  w źródłach `debug`, więc kompilacja release ani go nie kompiluje, ani nie
+  wysyła. Jego testy leżą w `src/testDebug/`, dzięki czemu wariant release nie
+  zależy od treści osób trzecich. Sprawdzone: `compileReleaseKotlin`
+  i `testReleaseUnitTest` przechodzą, a w wyjściu release nie ma klas pakietu
+  `reference`.
+- **Proweniencja mieszka poza domeną.** Tytuł, adres URL i publiczne fakty
+  skalarne (powierzchnia domu, dach, wysokość) trzyma `ReferenceProjectSource`
+  w pakiecie `reference`. Domeny nie rozszerzono, żeby je pomieścić — `Project`
+  nie dostał pola na adres strony.
+- **Renderer będzie czytał kanoniczny `Building`, nie HTML ani rysunki źródła.**
+  W repozytorium nie ma obrazów, rzutów ani opisów marketingowych pobranych ze
+  strony projektu. Nie ma też parsera ani kodu sieciowego — zbiór jest literałem
+  w Kotlinie.
+- **Geometria pozostaje nierozstrzygnięta i należy do STAGE-011.** Źródło podaje
+  nazwy i powierzchnie pomieszczeń; nie podaje współrzędnych ścian, obrysów
+  pomieszczeń, sąsiedztwa, otworów, geometrii schodów ani rzędnych kondygnacji.
+  Dlatego `Building.elements` referencyjnego budynku jest **puste**, a jego
+  `Floor` nie ma `elevation` ani `height`. Zmyślony rzut wyglądający na
+  autorytatywny byłby gorszy niż brak rzutu.
+- **Jedna powierzchnia na pomieszczenie.** Źródło pokazuje przy części
+  pomieszczeń i sum wartość alternatywną w nawiasie. Zakodowano wyłącznie
+  wartość podstawową: drugie pojęcie powierzchni nie jest częścią przyjętego
+  kontraktu domeny.
+
+Mała syntetyczna atrapa `ReferenceBuilding` w `src/test/` zostaje bez zmian. Ma
+inny cel — testuje kontrakt własności elementów — i celowo nie zależy od faktów
+osób trzecich.
 
 ## Czego jeszcze nie ustalono
 
