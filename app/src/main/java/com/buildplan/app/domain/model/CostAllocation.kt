@@ -47,6 +47,11 @@ enum class CostAllocationKind {
 /**
  * A charge of one cost against one target.
  *
+ * Provisional. How a cost is genuinely split is DEC-COST-ALLOCATION-001, open
+ * until STAGE-015; the shape below is kept as first modelled and is not
+ * extended here. An allocation carries a share, never a Money amount of its
+ * own, so no allocation can turn one 1000 PLN cost into 2000 PLN of total.
+ *
  * Shares are expressed in basis points — 10 000 bp is 100% — so the split is
  * exact integer arithmetic. A Double share would make 1/3 unrepresentable and
  * leave rounding dust that never adds back up to the invoice.

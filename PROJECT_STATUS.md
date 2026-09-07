@@ -5,6 +5,10 @@
 - STAGE-001 shell — powłoka aplikacji Android (App Shell, nawigacja, ekrany
   placeholderowe)
 - STAGE-002 domain model — kanoniczny model domenowy MVP
+- STAGE-002A 3D domain alignment — `BuildingElement` ma jeden logiczny zakres
+  (BUILDING/FLOOR) i relację 0..N do pomieszczeń; ściana dzielona to jeden
+  element; czyste zapytania ukrywania kondygnacji/dachu i izolacji pomieszczenia;
+  semantyka `Cost.amount` (brutto/zapłacone) i `Cost.stageId` (klasyfikacja)
 
 ## OPEN
 
@@ -49,3 +53,7 @@ technicznego PASS.
   potwierdzenia przed publikacją w Google Play.
 - Czy koszt może mieć kwotę ujemną (korekta / faktura korygująca). Model na
   razie tego nie ogranicza.
+- Tryb firmowy: rozbicie kwoty na netto/VAT. W pierwszym MVP `Cost.amount` to
+  kwota brutto, faktycznie zapłacona, i nie ma pól podatkowych.
+- DEC-COST-ALLOCATION-001 (zasady podziału kosztów) pozostaje otwarta do
+  STAGE-015. Obecny kształt `CostAllocation` jest prowizoryczny.

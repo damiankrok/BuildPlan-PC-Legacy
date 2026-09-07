@@ -4,7 +4,12 @@ import com.buildplan.app.domain.units.MeasurementDimension
 import com.buildplan.app.domain.units.Quantity
 
 /**
- * One storey of a [Building], owning its rooms and building elements.
+ * One storey of a [Building], owning its rooms.
+ *
+ * Building elements are not held here. They live on [Building] and name their
+ * storey through [BuildingElementScope.OnFloor], so that the roof and the
+ * foundation — which belong to no storey — need no fake floor to sit on, and so
+ * that a floor list and an element's own scope can never disagree.
  *
  * @property order explicit position within the building, counted from the
  *   lowest storey. Ordering is stored, never inferred from list position, so it
@@ -20,7 +25,6 @@ data class Floor(
     val elevation: Quantity? = null,
     val height: Quantity? = null,
     val rooms: List<Room> = emptyList(),
-    val elements: List<BuildingElement> = emptyList(),
 ) {
     init {
         requireDomainName(name, "Floor name")
@@ -32,17 +36,5 @@ data class Floor(
             ?.requirePositive("Floor height")
 
         requireUniqueIds(rooms.map { it.id }, "Room")
-        requireUniqueIds(elements.map { it.id }, "BuildingElement")
-
-        // An element may point at a room, but only at one on this same floor —
-        // otherwise the floor would own an element that belongs elsewhere.
-        val roomIds = rooms.mapTo(mutableSetOf()) { it.id }
-        elements.forEach { element ->
-            val roomId = element.roomId
-            require(roomId == null || roomId in roomIds) {
-                "BuildingElement ${element.id.value} points at room ${roomId?.value} " +
-                    "which is not on floor ${id.value}"
-            }
-        }
     }
 }

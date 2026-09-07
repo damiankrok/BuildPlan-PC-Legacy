@@ -27,12 +27,27 @@ Domena mieszka w `app/src/main/java/com/buildplan/app/domain/`.
 - **Nie wprowadzaj adnotacji persystencji do domeny.** Żadnego `@Entity`,
   `@PrimaryKey`, `@ColumnInfo`, `@Serializable`, DAO, DTO ani typów Room,
   Retrofit czy Ktor. Persystencja ma mapować na domenę, nie odwrotnie.
-- **Żadnego stanu renderera w domenie.** Bez geometrii, transformacji, siatek
-  i materiałów w encjach budynku.
+- **Żadnego stanu renderera w domenie.** Bez geometrii, transformacji, siatek,
+  materiałów i flag widoczności w encjach budynku. Ukrywanie i izolacja to
+  czyste zapytania (`BuildingElementSelection.kt`) przyjmujące
+  `BuildingVisibility` jako argument — nigdy pole encji.
+- **Jeden logiczny właściciel elementu.** `BuildingElement` żyje na
+  `Building.elements` i deklaruje `BuildingElementScope`: `WholeBuilding`
+  (dach, fundament) albo `OnFloor(floorId)`. Nie twórz fikcyjnych kondygnacji
+  ani pomieszczeń, żeby coś „miało gdzie mieszkać”.
+- **Pomieszczenia to relacja 0..N** (`roomIds`), nie własność. Ściana dzielona
+  jest jednym elementem połączonym z dwoma pokojami — nie duplikuj elementu,
+  żeby pojawił się w obu. Element `OnFloor` może wskazywać tylko pomieszczenia
+  z tej samej kondygnacji.
 - Domena nie zależy od Compose ani Android Context. Pilnuje tego
   `DomainPurityTest` — jeżeli zacznie failować, napraw przyczynę, nie test.
 - Jednostki to `UnitOfMeasure`, nie stringi. Cele kosztów to `CostTarget`,
   nie luźne id.
+- **`Cost.amount` to kwota brutto, faktycznie zapłacona** (pierwszy MVP). Nie
+  dodawaj pól netto/VAT. `Cost.stageId` jest klasyfikacją: etykieta nigdy nie
+  tworzy drugiej kwoty. Zasady podziału kosztów (DEC-COST-ALLOCATION-001) są
+  otwarte do STAGE-015 — `CostAllocation` jest prowizoryczne i nie rozbudowuj
+  go wcześniej.
 
 ## Jak pracować
 

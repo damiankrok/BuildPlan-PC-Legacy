@@ -4,6 +4,7 @@ import com.buildplan.app.domain.model.Building
 import com.buildplan.app.domain.model.BuildingElement
 import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingElementKind
+import com.buildplan.app.domain.model.BuildingElementScope
 import com.buildplan.app.domain.model.BuildingId
 import com.buildplan.app.domain.model.BudgetId
 import com.buildplan.app.domain.model.CostId
@@ -53,7 +54,12 @@ class IdentityAndNamingTest {
             Room(RoomId("r-1"), "")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            BuildingElement(BuildingElementId("e-1"), BuildingElementKind.WALL, "  ")
+            BuildingElement(
+                BuildingElementId("e-1"),
+                BuildingElementKind.WALL,
+                "  ",
+                BuildingElementScope.WholeBuilding,
+            )
         }
         assertThrows(IllegalArgumentException::class.java) {
             Stage(StageId("s-1"), ProjectId("p-1"), "\n", order = 0)

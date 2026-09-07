@@ -12,6 +12,10 @@ package com.buildplan.app.domain.model
  * belongs to the stage that builds the stage-planning feature, not to the
  * canonical model.
  *
+ * A stage classifies costs; it holds no amount of its own. What a stage "costs"
+ * is the sum of the costs classified into it, each counted once, so attaching a
+ * stage to a cost never creates money.
+ *
  * @property order explicit position in the construction sequence.
  */
 data class Stage(

@@ -4,6 +4,7 @@ import com.buildplan.app.domain.model.Building
 import com.buildplan.app.domain.model.BuildingElement
 import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingElementKind
+import com.buildplan.app.domain.model.BuildingElementScope
 import com.buildplan.app.domain.model.BuildingId
 import com.buildplan.app.domain.model.Floor
 import com.buildplan.app.domain.model.FloorId
@@ -15,9 +16,15 @@ import com.buildplan.app.domain.model.Stage
 import com.buildplan.app.domain.model.StageId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** DOM002-08..09 - ordering and ownership inside the building structure. */
+/**
+ * DOM002-08..09 - ordering and ownership inside the building structure.
+ *
+ * Which element belongs to which floor or room is a contract of its own and is
+ * tested in [BuildingElementOwnershipTest].
+ */
 class BuildingStructureTest {
 
     @Test
@@ -55,14 +62,34 @@ class BuildingStructureTest {
             )
         }
 
+        // Rooms are unique across the whole building, not merely within a floor:
+        // elements reach rooms by id, and a repeated id would make that ambiguous.
         assertThrows(IllegalArgumentException::class.java) {
-            Floor(
-                id = FloorId("f-1"),
-                name = "Parter",
-                order = 0,
+            Building(
+                id = BuildingId("b-1"),
+                floors = listOf(
+                    Floor(FloorId("f-1"), "Parter", 0, rooms = listOf(Room(RoomId("r-1"), "Salon"))),
+                    Floor(FloorId("f-2"), "Pietro", 1, rooms = listOf(Room(RoomId("r-1"), "Sypialnia"))),
+                ),
+            )
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            Building(
+                id = BuildingId("b-1"),
                 elements = listOf(
-                    BuildingElement(BuildingElementId("e-1"), BuildingElementKind.WALL, "Sciana"),
-                    BuildingElement(BuildingElementId("e-1"), BuildingElementKind.WINDOW, "Okno"),
+                    BuildingElement(
+                        BuildingElementId("e-1"),
+                        BuildingElementKind.WALL,
+                        "Sciana",
+                        BuildingElementScope.WholeBuilding,
+                    ),
+                    BuildingElement(
+                        BuildingElementId("e-1"),
+                        BuildingElementKind.ROOF,
+                        "Dach",
+                        BuildingElementScope.WholeBuilding,
+                    ),
                 ),
             )
         }
@@ -94,23 +121,16 @@ class BuildingStructureTest {
     }
 
     @Test
-    fun `an element cannot point at a room on another floor`() {
-        assertThrows(IllegalArgumentException::class.java) {
-            Floor(
-                id = FloorId("f-1"),
-                name = "Parter",
-                order = 0,
-                rooms = listOf(Room(RoomId("r-1"), "Salon")),
-                elements = listOf(
-                    BuildingElement(
-                        id = BuildingElementId("e-1"),
-                        kind = BuildingElementKind.WINDOW,
-                        name = "Okno",
-                        roomId = RoomId("r-999"),
-                    ),
-                ),
-            )
-        }
+    fun `the building owns its elements and the floors own their rooms`() {
+        // Ownership is stated once. A floor has no element list that could
+        // disagree with an element's own scope.
+        assertTrue(
+            Floor::class.java.declaredFields.none { it.name == "elements" },
+        )
+
+        val building = ReferenceBuilding.build()
+        assertEquals(7, building.elements.size)
+        assertEquals(3, building.floors.sumOf { it.rooms.size })
     }
 
     @Test

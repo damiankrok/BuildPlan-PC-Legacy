@@ -61,7 +61,7 @@ Na Windows użyj `gradlew.bat`.
 app/src/main/java/com/buildplan/app/
   MainActivity.kt
   domain/            kanoniczny model domenowy (bez zależności od Androida)
-    model/           encje, identyfikatory, kontrakt kosztów
+    model/           encje, identyfikatory, kontrakt kosztów, zapytania o budynek
     money/           Money i waluty
     units/           jednostki miar
   ui/

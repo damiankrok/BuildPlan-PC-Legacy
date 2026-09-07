@@ -6,7 +6,8 @@ docelowej architektury.
 ## Stan na dziś
 
 Jedna natywna aplikacja Android: powłoka UI (STAGE-001) oraz kanoniczna warstwa
-domenowa (STAGE-002). Brak backendu, persystencji, autoryzacji i renderera 3D.
+domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A). Brak
+backendu, persystencji, autoryzacji, parsera i renderera 3D.
 
 ## Decyzje
 
@@ -42,14 +43,15 @@ więc jej nie podejmowano.
 Poza powyższymi nie dodano nic: brak Room, Retrofit, Ktor, Hilt, Koin, Firebase,
 bibliotek wykresów, silnika 3D i bibliotek płatności.
 
-## Warstwa domenowa (STAGE-002)
+## Warstwa domenowa (STAGE-002, STAGE-002A)
 
 Kanoniczna warstwa domenowa **istnieje** i mieszka w
 `app/src/main/java/com/buildplan/app/domain/`:
 
 - `domain/money/` — `CurrencyCode`, `Money`;
 - `domain/units/` — `MeasurementDimension`, `UnitOfMeasure`, `Quantity`;
-- `domain/model/` — identyfikatory, encje i kontrakt kosztów.
+- `domain/model/` — identyfikatory, encje, kontrakt kosztów oraz czyste
+  zapytania wybierające elementy budynku (`BuildingElementSelection.kt`).
 
 Celowo **nie** utworzono warstw `data/`, `repository/` ani `usecase/`. Nie
 istnieje jeszcze logika, która by ich wymagała.
@@ -94,21 +96,74 @@ jednostek.
 
 ### Hierarchia budynku
 
-`Project → Building → Floor → Room` oraz `BuildingElement` należący do
-kondygnacji. Projekt ma dokładnie jeden budynek (MVP). Własność jest wyrażona
-jeden raz — przez zagnieżdżenie — więc `Room` nie nosi `floorId`, który mógłby
-zaprzeczyć strukturze. Kondygnacje są trzymane w jednym kanonicznym porządku
-(ściśle rosnące `order`), co odrzuca zarówno duplikaty pozycji, jak i listę
-sprzeczną z zapisaną kolejnością.
+`Project → Building → Floor → Room`. Projekt ma dokładnie jeden budynek (MVP).
+Własność jest wyrażona jeden raz — przez zagnieżdżenie — więc `Room` nie nosi
+`floorId`, który mógłby zaprzeczyć strukturze. Kondygnacje są trzymane w jednym
+kanonicznym porządku (ściśle rosnące `order`), co odrzuca zarówno duplikaty
+pozycji, jak i listę sprzeczną z zapisaną kolejnością.
+
+### Własność elementów budynku (STAGE-002A)
+
+`BuildingElement` **nie należy do kondygnacji przez zagnieżdżenie**. Wszystkie
+elementy mieszkają na `Building.elements`, a każdy z nich deklaruje dokładnie
+jeden logiczny zakres:
+
+- `BuildingElementScope.WholeBuilding` — dach, fundament, komin przechodzący
+  przez kondygnacje;
+- `BuildingElementScope.OnFloor(floorId)` — ściany, stropy i otwory jednej
+  kondygnacji.
+
+Powód: trzymanie elementów w `Floor` nie ma miejsca na dach i fundament — nie
+należą do żadnej kondygnacji — i wymuszałoby **fikcyjną kondygnację**, którą
+trzeba by potem ukrywać w każdej liście, każdym ukryciu i każdej sumie. Fikcyjne
+kondygnacje i pokoje nie istnieją.
+
+Przynależność do pomieszczeń jest **osobną relacją 0..N**: `roomIds: Set<RoomId>`.
+Ściana dzieląca dwa pokoje jest **jednym** elementem połączonym z dwoma
+pokojami, a nie dwiema kopiami — dzięki temu zachowuje jedną tożsamość, jeden
+koszt i jedną powierzchnię. Element o zakresie `OnFloor` może wskazywać wyłącznie
+pomieszczenia z tej samej kondygnacji; egzekwuje to konstruktor `Building`.
+Identyfikatory pomieszczeń są unikalne w obrębie całego budynku, bo elementy
+sięgają do nich po ID.
+
+### Czyste zapytania: ukrywanie i izolacja
+
+`BuildingElementSelection.kt` odpowiada na pytania, których będzie potrzebował
+przyszły model 3D: elementy kondygnacji, elementy całego budynku, elementy dachu,
+elementy pomieszczenia, zbiór widoczny po ukryciu dachu i wybranych kondygnacji
+(`BuildingVisibility`) oraz kontekst wyizolowanego pomieszczenia
+(`isolateRoom`). Wszystko to jest czystym Kotlinem, deterministycznym
+(zachowuje kolejność `Building.elements`) i testowalnym na JVM.
+
+`BuildingVisibility` jest **argumentem zapytania, nigdy polem encji**. Domena nie
+przechowuje stanu widoczności: encja pamiętająca, co jest teraz ukryte, trzymałaby
+stan renderera, a dwa widoki tego samego budynku nie mogłyby się różnić. Praca
+kamery należy do renderera — domena dostarcza wyłącznie wynik selekcji.
 
 ### Brak stanu renderera w domenie
 
 `BuildingElement` ma jawny `BuildingElementKind` (wall, slab, roof, door,
 window, stairs, foundation, facade, other) i **nie zawiera geometrii,
-transformacji, siatek, materiałów ani żadnego stanu renderera**. Przyszły model
-3D będzie czytał te dane i trzymał własną reprezentację. Wpuszczenie stanu
-renderera do domeny uczyniłoby ją bezużyteczną bez renderera i niemożliwą do
-testowania na JVM.
+transformacji, siatek, materiałów, flagi widoczności ani żadnego innego stanu
+renderera**. Przyszły model 3D będzie czytał te dane i trzymał własną
+reprezentację. Wpuszczenie stanu renderera do domeny uczyniłoby ją bezużyteczną
+bez renderera i niemożliwą do testowania na JVM.
+
+### Kwota kosztu i etap (STAGE-002A)
+
+`Cost.amount` to **kwota brutto, faktycznie zapłacona** — jedyna kanoniczna
+liczba, z której będą budowane sumy w pierwszym MVP. Pól netto/VAT celowo nie
+ma: produkt nie ma jeszcze trybu firmowego, a rozbicie kwoty przed pojawieniem
+się funkcji, która go wymaga, zostawiłoby trzy pola mogące się rozjechać.
+
+`Cost.stageId` jest **klasyfikacją**, a nie drugą kwotą. Faktura na 1000 PLN
+opisana etapem „Dach” wnosi do projektu dokładnie 1000 PLN, niezależnie od tego,
+ile etykiet nosi. Dlatego ani `Stage`, ani `CostAllocation`, ani żaden
+`CostTarget` nie trzyma własnego `Money` — relacja nie może stać się drugą
+kwotą.
+
+Sumowania i UI kosztów jeszcze nie ma; powyższe jest kontraktem semantycznym
+zapisanym w modelu i sprawdzanym testem (`CostSemanticsTest`).
 
 ### Typowany cel kosztu
 
@@ -126,6 +181,10 @@ resztki zaokrągleń.
 `DISTRIBUTED` mieści się w 1..10 000 bp, a suma udziałów nie przekracza 100%.
 **Co pozostaje do STAGE-015:** wymóg sumowania się do dokładnie 100%, algorytm
 automatycznego rozdzielania i sposób rozdysponowania reszty z zaokrągleń.
+
+Cały ten kształt jest **prowizoryczny**. Decyzja o podziale kosztów
+(DEC-COST-ALLOCATION-001) pozostaje otwarta do STAGE-015 — alokacji nie
+rozbudowujemy wcześniej.
 
 ### Budżet bez zduplikowanej prawdy
 
