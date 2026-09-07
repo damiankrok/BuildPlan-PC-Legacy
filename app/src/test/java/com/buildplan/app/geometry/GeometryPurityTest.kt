@@ -101,6 +101,7 @@ class GeometryPurityTest {
             WallGeometry::class.java,
             SlabGeometry::class.java,
             RoofFacetGeometry::class.java,
+            GablePanelGeometry::class.java,
             BuildingGeometry::class.java,
             LocalBounds::class.java,
             PlanPoint::class.java,

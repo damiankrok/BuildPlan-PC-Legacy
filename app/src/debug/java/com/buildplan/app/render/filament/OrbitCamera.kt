@@ -90,10 +90,22 @@ internal class OrbitCameraState(
 
     /** Puts the camera back where [frame] first placed it. */
     fun reset() {
-        val initial = frame(bounds)
-        yaw = initial.yaw
-        pitch = initial.pitch
-        distance = initial.distance
+        apply(frame(bounds))
+    }
+
+    /**
+     * Moves the camera to a named framing, dropping any pan the user had
+     * applied.
+     *
+     * This is what makes a debug view preset reproducible: the framing is a pure
+     * function of the model bounds, so the same preset on the same model puts
+     * the camera in the same place on every run and every device, whatever the
+     * user had dragged it to first.
+     */
+    fun apply(framing: Framing) {
+        yaw = framing.yaw
+        pitch = framing.pitch
+        distance = framing.distance.coerceIn(minDistance, maxDistance)
         panRight = 0f
         panUp = 0f
     }
@@ -154,6 +166,8 @@ internal class OrbitCameraState(
         private const val MIN_DISTANCE_FACTOR = 0.55
         private const val MAX_DISTANCE_FACTOR = 10.0
         private const val FRAMING_MARGIN = 1.15
+        private const val DEFAULT_YAW_DEGREES = 35.0
+        private const val DEFAULT_PITCH_DEGREES = 22.0
         private const val NEAR_PLANE_FACTOR = 0.01
         private const val MIN_NEAR_PLANE = 0.05
         private const val FAR_PLANE_MARGIN = 12.0
@@ -163,7 +177,28 @@ internal class OrbitCameraState(
          * enough out that the whole box fits the vertical field of view with a
          * margin, which puts the camera outside the building rather than in it.
          */
-        fun frame(bounds: LocalBounds): Framing {
+        fun frame(bounds: LocalBounds): Framing =
+            framing(bounds, DEFAULT_YAW_DEGREES, DEFAULT_PITCH_DEGREES, FRAMING_MARGIN)
+
+        /**
+         * An arbitrary view of [bounds], as two angles and how much room to
+         * leave around the model.
+         *
+         * A pure function of its arguments and nothing else — no screen size, no
+         * device, no previous camera. That is what a reproducible debug view
+         * preset needs, and what lets one be asserted on a plain JVM.
+         *
+         * [margin] multiplies the distance at which the model box exactly fills
+         * the vertical field of view, so 1.0 is a tight fit and anything below
+         * it deliberately crops the box - which a near top-down plan view wants,
+         * because the height of the building is not what is being looked at.
+         */
+        fun framing(
+            bounds: LocalBounds,
+            yawDegrees: Double,
+            pitchDegrees: Double,
+            margin: Double,
+        ): Framing {
             val radius = 0.5 * sqrt(
                 bounds.sizeX * bounds.sizeX +
                     bounds.sizeY * bounds.sizeY +
@@ -171,9 +206,9 @@ internal class OrbitCameraState(
             )
             val halfFov = Math.toRadians(FIELD_OF_VIEW_DEGREES / 2.0)
             return Framing(
-                yaw = (35.0 * PI / 180.0).toFloat(),
-                pitch = (22.0 * PI / 180.0).toFloat(),
-                distance = (radius / tan(halfFov) * FRAMING_MARGIN).toFloat(),
+                yaw = (yawDegrees * PI / 180.0).toFloat(),
+                pitch = (pitchDegrees * PI / 180.0).toFloat(),
+                distance = (radius / tan(halfFov) * margin).toFloat(),
             )
         }
     }

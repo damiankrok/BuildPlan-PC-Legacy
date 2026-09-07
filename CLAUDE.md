@@ -103,6 +103,39 @@ kompilować, nie linkować i nie pakować.
   APK, nie na dokumentacji: inwentarz `.so`, wyrównanie każdego segmentu `LOAD`
   do co najmniej 2^14, `zipalign -c -P 16 -v 4`, obecność `GNU_RELRO`.
 
+## Model odrysowany ze źródła (debug)
+
+`app/src/debug/java/com/buildplan/app/reference/visual/` zawiera
+`MarcowkiVisualModelV1` — geometrię odrysowaną z aktualnych rzutów i przekroju
+projektu ARCHON. To jedyne miejsce w repozytorium, gdzie kształt pochodzi
+z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indziej.
+
+- **Nie podstawiaj syntetycznego domu pod referencję OWNER-a.** Kiedy zadanie
+  mówi „Marcówki", chodzi o dokładnie tę stronę i te rzuty.
+  `SyntheticDemoHouse` jest fiksturą regresyjną renderera i niczym więcej — jego
+  wymiary są wymyślone. Podmiana jednego na drugie zamienia weryfikację
+  w wrażenie.
+- **Nie mieszaj nieaktualnych wartości źródłowych.** Jeżeli stary PDF, wynik
+  wyszukiwania albo cache mówią co innego niż aktualna strona — wygrywa
+  aktualna strona. Wartość z dwóch różnych wydań źródła w jednym modelu to model
+  domu, który nie istnieje.
+- **Każde założenie wizualne ma jawną klasyfikację.** Nowa liczba w modelu
+  dostaje `SOURCE_EXACT`, `SOURCE_TRACED` albo `DISPLAY_ASSUMPTION`
+  w `MarcowkiSourceEvidence`, wraz z uzasadnieniem. Odmierzona pozycja ścianki
+  i podany kąt dachu wyglądają identycznie, gdy oba są już `Double` — etykieta
+  jest jedyną rzeczą, która je rozróżnia. Czego nie da się odrysować, oznacz
+  `TRACE_UNCERTAIN`; niepewność ma być widoczna, nie ukryta.
+- **Nie commituj cudzych rysunków.** Rzuty, przekroje i HTML pobieraj do
+  katalogu poza worktree, odmierz i zostaw tam. W repozytorium wolno trzymać
+  wyłącznie fakty tekstowe: adresy, moment odczytu i liczby. Pilnuje tego test
+  `M013-13` — nie obchodź go.
+- **Jedna prawda odrysu.** Wszystkie współrzędne mieszkają w `MarcowkiPlanGrid`;
+  ściany i strefy pomieszczeń są z niej generowane. Nie dopisuj drugiego,
+  ręcznie utrzymywanego zestawu współrzędnych obok.
+- **`MarcowkiReferenceProject` zostaje bez geometrii.** Model wizualny dekoruje
+  go po identyfikatorach, ale kanoniczny zbiór nadal opisuje tylko to, co źródło
+  podaje słowami: nazwy i powierzchnie.
+
 ## Urządzenia i emulatory
 
 - Projekt używa **wyłącznie serialu `emulator-5570`**. Każde polecenie do
@@ -147,10 +180,12 @@ deweloperskie, nie produkt.
   tytuł, adres URL, nazwy pomieszczeń i podane powierzchnie.
 - **Proweniencja mieszka poza domeną.** Adresu źródła ani faktów o źródle nie
   dodawaj do encji domenowych.
-- **Nie dopisuj tam geometrii.** Współrzędne ścian, obrysy pomieszczeń, otwory
-  i rzędne kondygnacji nie należą do zbioru referencyjnego — jego źródło ich nie
-  podaje. Kształt do prac nad rendererem daje jawnie syntetyczny
-  `geometry/demo/SyntheticDemoHouse`.
+- **Nie dopisuj geometrii do `MarcowkiReferenceProject`.** Współrzędne ścian,
+  obrysy pomieszczeń, otwory i rzędne kondygnacji nie należą do kanonicznego
+  zbioru referencyjnego — jego źródło podaje tylko nazwy i powierzchnie.
+  Geometria odrysowana z rzutów mieszka obok, w `reference/visual/`, i podlega
+  regułom z sekcji „Model odrysowany ze źródła" wyżej. Kształt do prac nad samym
+  rendererem daje jawnie syntetyczny `geometry/demo/SyntheticDemoHouse`.
 - Testy tego zbioru żyją w `src/testDebug/`, żeby wariant release nie zależał
   od treści osób trzecich.
 

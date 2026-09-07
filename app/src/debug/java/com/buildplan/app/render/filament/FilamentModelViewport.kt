@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,9 +42,13 @@ import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.buildplan.app.R
 import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingVisibility
+import com.buildplan.app.domain.model.FloorId
 import com.buildplan.app.domain.model.visibleElements
-import com.buildplan.app.geometry.demo.SyntheticDemoHouse
 import com.buildplan.app.geometry.primitivesOf
+import com.buildplan.app.reference.visual.MarcowkiRoomTrace
+import com.buildplan.app.reference.visual.MarcowkiSourceEvidence
+import com.buildplan.app.reference.visual.SourceFidelity
+import com.buildplan.app.reference.visual.TraceCertainty
 
 private const val TAG = "FilamentSpike"
 
@@ -54,6 +60,9 @@ private const val TAG = "FilamentSpike"
  * "hide the roof" logic here would be the second answer to a question the domain
  * already answers, and the one the user saw would be whichever the renderer
  * happened to consult.
+ *
+ * It is told which storey counts as the upper one rather than knowing, so that
+ * the same four views mean the same thing on whichever model is loaded.
  */
 internal enum class SpikeVisibility(val labelRes: Int) {
     EVERYTHING(R.string.model_spike_visibility_all),
@@ -62,58 +71,81 @@ internal enum class SpikeVisibility(val labelRes: Int) {
     ROOF_AND_UPPER_FLOOR_HIDDEN(R.string.model_spike_visibility_no_roof_no_upper_floor),
     ;
 
-    fun toBuildingVisibility(): BuildingVisibility = when (this) {
+    fun toBuildingVisibility(atticId: FloorId): BuildingVisibility = when (this) {
         EVERYTHING -> BuildingVisibility.EVERYTHING
         ROOF_HIDDEN -> BuildingVisibility(roofHidden = true)
-        UPPER_FLOOR_HIDDEN -> BuildingVisibility(hiddenFloorIds = setOf(SyntheticDemoHouse.atticId))
+        UPPER_FLOOR_HIDDEN -> BuildingVisibility(hiddenFloorIds = setOf(atticId))
         ROOF_AND_UPPER_FLOOR_HIDDEN -> BuildingVisibility(
-            hiddenFloorIds = setOf(SyntheticDemoHouse.atticId),
+            hiddenFloorIds = setOf(atticId),
             roofHidden = true,
         )
     }
 }
 
 /**
- * The STAGE-012 renderer spike: the synthetic demo house drawn by Filament,
- * with just enough controls around it to prove the things the spike exists to
- * prove.
+ * The debug model viewport: a traced or synthetic building drawn by Filament,
+ * with just enough controls around it to answer the questions this stage exists
+ * to answer.
  *
  * Debug-only, deliberately. It is reachable from the Model 3D screen in a debug
- * build and absent from release, because this is a renderer *selection* exercise
- * and the production renderer host is STAGE-013's to design.
+ * build and absent from release: a model traced off a third party's product
+ * drawings is a development aid for one owner review, not product content.
  *
- * Nothing here is persisted. Visibility and selection start over on every
- * recreation; only the camera is remembered, and only because the user aimed it.
+ * Nothing here is persisted. The model, the view and the selection start over on
+ * every recreation; only the camera is remembered, and only because the user
+ * aimed it by hand.
  */
 @Composable
 fun FilamentModelViewport(modifier: Modifier = Modifier) {
-    val bounds = remember { SyntheticDemoHouse.geometry.bounds }
+    var model by remember { mutableStateOf(DebugModel.MARCOWKI) }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ChipRow {
+            DebugModel.entries.forEach { option ->
+                FilterChip(
+                    selected = option == model,
+                    onClick = { model = option },
+                    label = { Text(stringResource(option.labelRes)) },
+                )
+            }
+        }
+
+        // Keyed on the model: switching it replaces every mesh, so the renderer
+        // and its engine are torn down and rebuilt rather than being asked to
+        // swap their buffers underneath themselves.
+        key(model) {
+            ModelStage(model)
+        }
+    }
+}
+
+@Composable
+private fun ModelStage(model: DebugModel) {
+    val bounds = remember(model) { model.geometry.bounds }
     if (bounds == null) {
         Text(
             text = stringResource(R.string.model_spike_unavailable),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = modifier,
         )
         return
     }
 
-    val meshes = remember { SyntheticDemoHouse.geometry.primitives.toRenderMeshes() }
-    val elementNames = remember {
-        SyntheticDemoHouse.building.elements.associate { it.id to it.name }
-    }
+    val meshes = remember(model) { model.geometry.primitives.toRenderMeshes() }
+    val elementNames = remember(model) { model.building.elements.associate { it.id to it.name } }
     val cameraState = rememberOrbitCameraState(bounds)
 
-    var visibility by remember { mutableStateOf(SpikeVisibility.EVERYTHING) }
+    var preset by remember { mutableStateOf(ModelViewPreset.FULL_AXON) }
+    var visibility by remember { mutableStateOf(ModelViewPreset.FULL_AXON.visibility) }
     var selected by remember { mutableStateOf<BuildingElementId?>(null) }
     var renderer by remember { mutableStateOf<FilamentModelRenderer?>(null) }
 
     // The single decision path: the domain says which elements survive, the
     // geometry layer's one bridge says which shapes draw them, and their element
     // ids are what the renderer shows.
-    val visibleElementIds = remember(visibility) {
-        SyntheticDemoHouse.geometry
-            .primitivesOf(SyntheticDemoHouse.building.visibleElements(visibility.toBuildingVisibility()))
+    val visibleElementIds = remember(model, visibility) {
+        model.geometry
+            .primitivesOf(model.building.visibleElements(visibility.toBuildingVisibility(model.atticId)))
             .mapTo(LinkedHashSet()) { it.elementId }
     }
 
@@ -149,7 +181,7 @@ fun FilamentModelViewport(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -222,14 +254,42 @@ fun FilamentModelViewport(modifier: Modifier = Modifier) {
             }
         }
 
-        VisibilityControls(
-            selected = visibility,
-            onSelect = { visibility = it },
-            onResetCamera = {
+        // A preset moves the camera as well as the visibility, which is what
+        // makes the owner evidence reproducible.
+        ChipRow {
+            ModelViewPreset.entries.forEach { option ->
+                FilterChip(
+                    selected = option == preset,
+                    onClick = {
+                        preset = option
+                        visibility = option.visibility
+                        cameraState.apply(option.framing(bounds))
+                        currentRenderer?.pose = cameraState.pose()
+                    },
+                    label = { Text(stringResource(option.labelRes)) },
+                )
+            }
+        }
+
+        // The visibility chips stay, because hiding something without moving the
+        // camera is exactly what you want when checking one wall.
+        ChipRow {
+            SpikeVisibility.entries.forEach { option ->
+                FilterChip(
+                    selected = option == visibility,
+                    onClick = { visibility = option },
+                    label = { Text(stringResource(option.labelRes)) },
+                )
+            }
+        }
+        TextButton(
+            onClick = {
                 cameraState.reset()
                 currentRenderer?.pose = cameraState.pose()
             },
-        )
+        ) {
+            Text(stringResource(R.string.model_spike_reset_camera))
+        }
 
         val selectedId = selected
         Text(
@@ -250,33 +310,110 @@ fun FilamentModelViewport(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        if (model == DebugModel.MARCOWKI) {
+            SourceFidelityPanel(selectedElementId = selected)
+        }
     }
 }
 
+/**
+ * What the traced model claims, and how strongly.
+ *
+ * Developer-facing and text-only. It deliberately shows no drawing: the plans
+ * behind these numbers are ARCHON's, and putting one in the app would ship
+ * somebody else's copyrighted work in an APK. A URL and a count of how many
+ * numbers were measured rather than published says the same thing about
+ * trustworthiness, and is ours to ship.
+ */
 @Composable
-private fun VisibilityControls(
-    selected: SpikeVisibility,
-    onSelect: (SpikeVisibility) -> Unit,
-    onResetCamera: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun SourceFidelityPanel(selectedElementId: BuildingElementId?) {
+    val uncertain = remember {
+        MarcowkiRoomTrace.all.filter { it.certainty == TraceCertainty.TRACE_UNCERTAIN }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            SpikeVisibility.entries.forEach { option ->
-                FilterChip(
-                    selected = option == selected,
-                    onClick = { onSelect(option) },
-                    label = { Text(stringResource(option.labelRes)) },
+            PanelLine(stringResource(R.string.model_fidelity_title), emphasised = true)
+            PanelLine(MarcowkiSourceEvidence.PAGE_URL)
+            PanelLine(
+                stringResource(
+                    R.string.model_fidelity_retrieved,
+                    MarcowkiSourceEvidence.RETRIEVED_AT,
+                ),
+            )
+            PanelLine(
+                stringResource(
+                    R.string.model_fidelity_counts,
+                    MarcowkiSourceEvidence.countOf(SourceFidelity.SOURCE_EXACT),
+                    MarcowkiSourceEvidence.countOf(SourceFidelity.SOURCE_TRACED),
+                    MarcowkiSourceEvidence.countOf(SourceFidelity.DISPLAY_ASSUMPTION),
+                ),
+            )
+            PanelLine(
+                stringResource(
+                    R.string.model_fidelity_rooms,
+                    MarcowkiRoomTrace.all.size,
+                    uncertain.size,
+                ),
+            )
+            if (selectedElementId != null) {
+                val rooms = remember(selectedElementId) { roomsOf(selectedElementId) }
+                PanelLine(
+                    stringResource(
+                        R.string.model_fidelity_selected_rooms,
+                        if (rooms.isEmpty()) "—" else rooms,
+                    ),
                 )
             }
+            PanelLine(MarcowkiSourceEvidence.DISCLAIMER)
         }
-        TextButton(onClick = onResetCamera) {
-            Text(stringResource(R.string.model_spike_reset_camera))
-        }
+    }
+}
+
+/**
+ * The rooms the picked element links, as their canonical ids.
+ *
+ * Read off the element rather than off the geometry: the shapes carry only an
+ * element id, and looking a room up through them would be the renderer forming
+ * its own opinion about who a wall belongs to.
+ */
+private fun roomsOf(elementId: BuildingElementId): String =
+    DebugModel.MARCOWKI.building.elements
+        .firstOrNull { it.id == elementId }
+        ?.roomIds
+        .orEmpty()
+        .joinToString { it.value }
+
+@Composable
+private fun PanelLine(text: String, emphasised: Boolean = false) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (emphasised) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
+}
+
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
     }
 }
 

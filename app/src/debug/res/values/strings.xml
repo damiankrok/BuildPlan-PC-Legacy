@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Debug-only labels for the STAGE-012 Filament renderer spike. They live in the
-  debug source set because the spike does, and neither reaches a release build.
+  Debug-only labels for the Filament renderer viewport and the traced Marcówki
+  reference model. They live in the debug source set because both do, and
+  neither reaches a release build.
 -->
 <resources>
-    <string name="model_spike_title">Podgląd 3D — spike renderera (debug)</string>
-    <string name="model_spike_description">Syntetyczny dom demonstracyjny renderowany silnikiem Filament. To rusztowanie deweloperskie do wyboru renderera, a nie docelowy widok modelu.</string>
+    <string name="model_spike_title">Podgląd 3D — model referencyjny (debug)</string>
+    <string name="model_spike_description">Model „Dom w marcówkach (GE)" odrysowany z aktualnych rzutów ARCHON i renderowany silnikiem Filament. Rusztowanie deweloperskie do weryfikacji bryły i układu ścian, a nie dokumentacja budowlana.</string>
+
+    <string name="model_debug_source_marcowki">Marcówki</string>
+    <string name="model_debug_source_synthetic">Syntetyczny</string>
+
+    <string name="model_view_full_axon">Widok ogólny</string>
+    <string name="model_view_roof_off_axon">Bez dachu — aksonometria</string>
+    <string name="model_view_ground_cutaway">Przekrój parteru</string>
+    <string name="model_view_ground_top">Parter z góry</string>
+    <string name="model_view_upper_top">Poddasze z góry</string>
 
     <string name="model_spike_visibility_all">Wszystko</string>
     <string name="model_spike_visibility_no_roof">Bez dachu</string>
@@ -16,5 +26,11 @@
     <string name="model_spike_gesture_hint">Jeden palec — obrót. Dwa palce — przesuwanie i skala. Dotknięcie — wybór elementu.</string>
     <string name="model_spike_selection_none">Nie wybrano elementu. Dotknij bryły, aby sprawdzić jej identyfikator.</string>
     <string name="model_spike_selection">Wybrano: %1$s (%2$s)</string>
-    <string name="model_spike_unavailable">Syntetyczny dom demonstracyjny nie ma geometrii do wyświetlenia.</string>
+    <string name="model_spike_unavailable">Wybrany model nie ma geometrii do wyświetlenia.</string>
+
+    <string name="model_fidelity_title">Źródło i wiarygodność danych</string>
+    <string name="model_fidelity_retrieved">Odczytano: %1$s</string>
+    <string name="model_fidelity_counts">Wartości podane w źródle: %1$d · odrysowane: %2$d · założenia wizualizacyjne: %3$d</string>
+    <string name="model_fidelity_rooms">Odrysowane pomieszczenia: %1$d, w tym niepewnych: %2$d</string>
+    <string name="model_fidelity_selected_rooms">Pomieszczenia wybranego elementu: %1$s</string>
 </resources>

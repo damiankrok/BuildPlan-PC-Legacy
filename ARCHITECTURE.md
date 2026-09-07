@@ -11,8 +11,12 @@ kontrakt geometrii budynku (STAGE-011). Do tego dwa zbiory danych w źródłach
 `debug`: referencyjny projekt bez geometrii (STAGE-010A) i syntetyczny dom
 demonstracyjny z geometrią (STAGE-011). Do tego **spike renderera na Google
 Filament** (STAGE-012) — wyłącznie w źródłach `debug`, jako dowód wykonalności
-i podstawa wyboru technologii, nie jako docelowy renderer produkcyjny. Brak
-backendu, persystencji, autoryzacji i parsera rzutów.
+i podstawa wyboru technologii, nie jako docelowy renderer produkcyjny. Na tym
+rendererze stoi **model wizualny „Dom w marcówkach (GE)" V1** (STAGE-013):
+pierwsza geometria odrysowana z aktualnych rzutów ARCHON, z jawną klasyfikacją
+wiarygodności każdej liczby, również w źródłach `debug` i przeznaczona do
+wizualnej weryfikacji przez OWNER-a. Brak backendu, persystencji, autoryzacji
+i parsera rzutów.
 
 ## Decyzje
 
@@ -287,6 +291,9 @@ zależy od renderera, którego nie ma.
   niejednoznaczne dokładnie o grubość stropu.
 - `RoofFacetGeometry` — jedna płaska połać dachu jako uporządkowane wierzchołki
   3D. Pole liczone metodą Newella, czyli na płaszczyźnie połaci, a nie w rzucie.
+- `GablePanelGeometry` (STAGE-013) — pionowy wielokąt płaski zamykający lukę
+  między ścianą a połacią: szczyt, albo skośne zakończenie ścianki poddasza.
+  Walidowany na pionowość. Należy do tej samej ściany co jej `WallGeometry`.
 
 Pełnego solvera samoprzecięć **celowo nie ma**: obrys typu „muszka” to realny
 błąd, ale nic w produkcie nie generuje jeszcze obrysów.
@@ -519,10 +526,104 @@ skali i przesuwania, ukrywania dachu i kondygnacji, pickingu i stabilności cykl
 produkcyjnego, izolacji pomieszczenia w UI, systemu materiałów, cieni, poziomów
 szczegółowości ani wydajności na realnym sprzęcie. To zakres STAGE-013.
 
+## Model wizualny „Dom w marcówkach (GE)" V1 (STAGE-013)
+
+Pierwszy model, którego kształt pochodzi ze **źródła**, a nie z wyobraźni:
+`reference/visual/MarcowkiVisualModelV1` w źródłach `debug`. Powstał po to, żeby
+OWNER mógł postawić render obok strony produktowej ARCHON i powiedzieć, czy to
+ten sam dom. Odpowiada na pytanie o bryłę, kierunek dachu i układ ścian
+działowych — i na tym się kończy. **Nie jest dokumentacją budowlaną**, nie ma
+otworów i nic w nim nie nadaje się do wymiarowania.
+
+### Klasyfikacja wiarygodności — obowiązkowa
+
+Każda nietrywialna liczba w modelu ma jedną z trzech etykiet (`SourceFidelity`),
+a ledger wszystkich z nich to `MarcowkiSourceEvidence`:
+
+- **`SOURCE_EXACT`** — wydrukowana w aktualnym źródle: parametr ze strony albo
+  zwymiarowana wartość na rzucie lub przekroju. Np. 40°, 1,30 m ścianki
+  kolankowej, kotwy 1205 / 1260 / 790 / 510, poziomy ±0,00, +3,06, +7,95, −0,32.
+- **`SOURCE_TRACED`** — odmierzona z aktualnego obrazu źródłowego po kalibracji
+  do kotew `SOURCE_EXACT`. Np. położenie ścianki działowej, granica strefy
+  pomieszczenia, grubość ściany.
+- **`DISPLAY_ASSUMPTION`** — źródło jej nie podaje wcale; istnieje tylko po to,
+  żeby dało się narysować powierzchnię. Jest ich cztery i każda jest wyliczona
+  z uzasadnieniem.
+
+Rozróżnienie nie jest kosmetyczne. Odmierzona pozycja ścianki i podany kąt dachu
+wyglądają identycznie, gdy oba są już `Double` w tym samym pliku — a wtedy model
+zaczyna przedstawiać pomiar z rastra 853 px jako deklarację projektanta. To
+właśnie ta etykieta pilnuje, żeby model walidacyjny nie stał się fałszywą
+dokumentacją.
+
+Strefy pomieszczeń, których źródło **nie rysuje** (kuchnia i hol są jedną
+przestrzenią otwartą), są oznaczone `TRACE_UNCERTAIN`. Niepewność ma być
+widoczna, a nie ukryta w wiarygodnie wyglądającej liczbie.
+
+### Jedna prawda: siatka odrysu
+
+`MarcowkiPlanGrid` trzyma wszystkie odmierzone współrzędne w jednym miejscu.
+Z niej — i wyłącznie z niej — powstają zarówno elementy ścian
+(`MarcowkiVisualModelV1`), jak i strefy pomieszczeń (`MarcowkiRoomTrace`). Dwa
+ręcznie utrzymywane opisy tego samego rzutu rozjeżdżają się przy pierwszej
+korekcie; tutaj ścianka przesuwa się raz, a pomieszczenia po obu jej stronach
+przesuwają się razem z nią.
+
+Kalibracja: oba rastry rzutów mają 853 × 853 i wychodzą na 37,77 px/m — 455 px
+na wydrukowanej kotwie 1205 i 476 px na kotwie 1260. Rzut piętra wychodzi na tę
+samą skalę, więc obie kondygnacje są odrysowane w jednym układzie i ich ściany
+pokrywają się z konstrukcji, a nie z dopasowania.
+
+### Kierunek kalenicy ustalony rachunkiem, nie renderem marketingowym
+
+Kalenica biegnie z północy na południe, nad środkiem szerokości 7,89 m. Nie
+odczytano tego z wizualizacji: tylko takie ułożenie odtwarza podaną powierzchnię
+dachu 150,57 m² (40°, odrysowany wysięg szczytowy 1,00 m, okap bez wysięgu →
+150,4 m²), a przekrój — którego szerokość skaluje się do 7,89 m względem jego
+własnych wymiarów pionowych, a nie do 12,60 m głębokości — tnie w poprzek
+szczytu. Podana wysokość 8,27 m zgadza się niezależnie: +7,95 kalenicy nad −0,32
+terenu.
+
+### Materiał źródłowy jest przejściowy
+
+Rzuty i przekrój ARCHON są pobierane do katalogu **poza worktree**, odmierzane
+i tam zostawiane. W repozytorium wolno trzymać wyłącznie fakty tekstowe: adres
+strony, adresy rastrów, moment odczytu i liczby. Żadnego obrazu, żadnego HTML,
+żadnego skopiowanego tekstu marketingowego, nic z tego w APK. Pilnuje tego test
+`M013-13`.
+
+### `GablePanelGeometry` — nowy prymityw
+
+Ściana szczytowa to pionowy wielokąt płaski, którego górna krawędź biegnie po
+połaci, a nie po poziomie. `WallGeometry` jest wyciągnięciem między dwoma
+**stałymi** poziomami, a `RoofFacetGeometry` to powierzchnia oglądana z góry —
+żaden z nich nie utrzymuje tego kształtu uczciwie. Panel należy do tej samej
+ściany co jej `WallGeometry` (jeden element, wiele prymitywów) i jest walidowany
+na pionowość: składowa Y normalnej musi być zerowa.
+
+Tego samego prymitywu używają ścianki działowe poddasza. Poddasze jest wnętrzem
+dachu, a nie pomieszczeniem pod nim: przy okapie spód połaci jest 1,76 m nad
+podłogą, więc ścianka o pełnej wysokości 2,66 m wychodziłaby przez dach. Ścianka
+jest więc budowana do niższej z tych wartości, a lukę nad nią zamyka panel
+biegnący po połaci. Testy pilnują, że **żaden** wierzchołek poddasza nie
+przebija spodu dachu.
+
+### Renderer bez zmian
+
+Nadal bezpośredni Filament 1.75.1, nadal `debugImplementation`, nadal materiał
+kompilowany na urządzeniu. Wymieniona została **treść** hosta debugowego, nie
+jego architektura: doszedł przełącznik modelu `Marcówki / Syntetyczny`
+(Marcówki domyślnie) oraz pięć deterministycznych presetów widoku
+(`ModelViewPreset`), z których każdy jest czystą funkcją `LocalBounds` — bo
+zrzut ekranu jest dowodem tylko wtedy, gdy da się go powtórzyć. Syntetyczny dom
+zostaje jako fikstura regresyjna renderera: jego liczby są wymyślone, więc nie
+zmieniają się przy korekcie odrysu.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
-renderera 3D (kandydat wybrany w STAGE-012, produkcjonizacja w STAGE-013),
-izolacja pomieszczenia w UI, parser rzutów, geometria otworów i schodów, docelowy
+renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
+odrysowany, nie produkcjonizację hosta), izolacja pomieszczenia w UI, parser
+rzutów, geometria otworów i schodów, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
 kosztów.

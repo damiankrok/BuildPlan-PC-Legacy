@@ -189,6 +189,67 @@ data class RoofFacetGeometry(
 }
 
 /**
+ * One vertical planar panel closing the space between the top of a storey's
+ * walls and the roof above them — the triangle at a gable end, or the pentagon
+ * a gable becomes once a knee wall raises its base.
+ *
+ * Neither of the existing planar shapes can hold it honestly. [WallGeometry] is
+ * a centreline extruded between two *constant* levels, and a gable's top edge
+ * follows the roof rather than a level. [RoofFacetGeometry] is a surface seen
+ * and shaded from above, which a vertical panel never is. Forcing the shape into
+ * either type would put it in a type whose invariants it does not satisfy, and
+ * the renderer would light it as the wrong kind of surface.
+ *
+ * It is not a semantic element of its own. A gable belongs to the wall it closes
+ * — the same [elementId] as that wall's [WallGeometry] — which is the same
+ * one-element-many-primitives relation a gable roof already has.
+ *
+ * The polygon must be **vertical**: its plane contains the Y axis. A panel that
+ * had drifted off vertical would be a sloped surface pretending to be a wall.
+ */
+data class GablePanelGeometry(
+    override val elementId: BuildingElementId,
+    val vertices: List<ModelPoint>,
+) : BuildingGeometryPrimitive {
+
+    init {
+        val usable = vertices.withoutRepeatedModelVertices()
+        require(usable.size >= 3) {
+            "GablePanelGeometry ${elementId.value} needs at least 3 distinct vertices, " +
+                "got ${usable.size} usable of ${vertices.size}"
+        }
+        require(area > GeometryTolerance.AREA_SQUARE_METERS) {
+            "GablePanelGeometry ${elementId.value} has a degenerate panel: area $area m2"
+        }
+
+        // A vertical plane has a horizontal normal, so the normal's Y component
+        // is zero. Compared against the normal's own magnitude rather than an
+        // absolute epsilon, so the check means the same for a 1 m2 panel and a
+        // 100 m2 one.
+        val (nx, ny, nz) = usable.newellNormal()
+        val magnitude = sqrt(nx * nx + ny * ny + nz * nz)
+        require(abs(ny) <= magnitude * VERTICALITY_TOLERANCE) {
+            "GablePanelGeometry ${elementId.value} is not vertical: its plane tilts by " +
+                "${abs(ny) / magnitude} of a right angle"
+        }
+    }
+
+    /** Panel area in square metres, measured on its own vertical plane. */
+    val area: Double
+        get() {
+            val (nx, ny, nz) = vertices.newellNormal()
+            return sqrt(nx * nx + ny * ny + nz * nz) / 2.0
+        }
+
+    override val bounds: LocalBounds get() = LocalBounds.around(vertices)
+
+    private companion object {
+        /** How far off vertical a panel may be and still count as one. */
+        const val VERTICALITY_TOLERANCE = 1e-6
+    }
+}
+
+/**
  * Drops vertices that repeat the position of the one before them, and the last
  * one when it closes back onto the first. An outline may legitimately be written
  * closed or open; neither spelling should change how many corners it has.

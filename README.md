@@ -77,9 +77,18 @@ app/src/main/java/com/buildplan/app/
 app/src/debug/java/com/buildplan/app/
   reference/         referencyjny projekt domu do prac deweloperskich,
                      bez geometrii (tylko debug, nie trafia do release)
+    visual/          model wizualny Marcówek V1: geometria odrysowana
+                     z aktualnych rzutów ARCHON, z klasyfikacją wiarygodności
+                     każdej liczby; do wizualnej weryfikacji, nie do wymiarowania
   geometry/demo/     syntetyczny dom demonstracyjny z geometrią; wymyślone
                      wymiary, nie jest rekonstrukcją realnego projektu
+  render/filament/   debugowy renderer i host podglądu 3D
 ```
+
+Ekran **Model 3D** w wariancie debug otwiera się na modelu Marcówek. Przełącznik
+u góry pozwala wrócić do syntetycznego domu (fikstura regresyjna renderera),
+a pięć presetów widoku ustawia powtarzalnie kamerę i widoczność — od widoku
+ogólnego po rzut poddasza z góry. Wariant release nadal pokazuje placeholder.
 
 ## Dokumentacja
 

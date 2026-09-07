@@ -41,16 +41,45 @@
   na lokalnym obrazie API 36 o stronie 16 KB — bez zastrzeżeń. Kontrole natywne
   trzeba powtarzać po każdej zmianie wersji renderera.
 
+- STAGE-013 marcowki 3d reference model — **PASS techniczny, brama wizualna
+  OWNER-a otwarta.** Pierwszy model o kształcie pochodzącym ze źródła:
+  `reference/visual/MarcowkiVisualModelV1` w źródłach `debug`, odrysowany
+  z aktualnej strony ARCHON „Dom w marcówkach (GE)" i jej aktualnych rzutów oraz
+  przekroju. 32 elementy budynku i 42 prymitywy (28 ścian, 4 płyty, 2 połacie
+  dachu, 8 paneli szczytowych i skosów) na kanonicznych identyfikatorach
+  `MarcowkiReferenceProject` (kanoniczny zbiór **nie został zmieniony** — nadal
+  nie ma geometrii), plus strefy rzutu dla wszystkich 18 pomieszczeń.
+  Każda nietrywialna liczba ma etykietę `SOURCE_EXACT` (19) / `SOURCE_TRACED`
+  (26) / `DISPLAY_ASSUMPTION` (4); dwie strefy otwartej kuchni i holu są
+  oznaczone `TRACE_UNCERTAIN`, bo źródło nie rysuje między nimi granicy.
+  Zgodności niezależne: 8,27 m wysokości = +7,95 kalenicy nad −0,32 terenu;
+  150,57 m² dachu odtworzone przy 40° i odrysowanym wysięgu szczytowym 1,00 m
+  (co ustaliło kierunek kalenicy); 131,16 m² zabudowy wobec 130,6 m² z dwóch
+  odrysowanych prostokątów.
+  Renderer bez zmian — bezpośredni Filament 1.75.1, `debugImplementation`,
+  wariant release nadal pokazuje placeholder. Host debugowy dostał przełącznik
+  `Marcówki / Syntetyczny` (Marcówki domyślnie), pięć deterministycznych
+  presetów widoku i deweloperski panel wiarygodności. Syntetyczny dom zostaje
+  jako fikstura regresyjna renderera.
+  **Czego to nie jest:** dokumentacji budowlanej ani modelu technicznego. Otworów
+  (drzwi, okna) nie ma — to jawny dług wierności. Strefy pomieszczeń poddasza są
+  systematycznie 20–25 % większe od podanych, bo źródło podaje powierzchnię
+  użytkową po odjęciu skosów; to różnica dachu, a nie błąd odrysu.
+  W repozytorium nie ma żadnego obrazu ani HTML-a ARCHON — materiał źródłowy był
+  przejściowy, poza worktree.
+
 ## Następny krok
 
-STAGE-013 — produkcjonizacja renderera: docelowy host, skompilowany `.filamat`
-zamiast kompilacji materiału na urządzeniu, izolacja pomieszczenia w UI
-i strojenie gestów.
+GATE-3D-SHAPE-01 — OWNER porównuje model z rzutami ARCHON i decyduje, czy odrys
+jest wystarczająco wierny. Dopiero po tej ocenie STAGE-014 (izolacja
+pomieszczenia). PASS techniczny STAGE-013 **nie jest** akceptacją wizualną.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, parsera rzutów,
-geometrii drzwi/okien/schodów, persystencji i danych rzeczywistych.
+geometrii drzwi/okien/schodów, persystencji i danych rzeczywistych. Model
+Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: nie ma otworów,
+schodów, kominów ani rzędnych konstrukcyjnych.
 
 ## OPEN
 

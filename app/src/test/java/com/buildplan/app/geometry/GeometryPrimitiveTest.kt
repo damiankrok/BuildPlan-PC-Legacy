@@ -216,6 +216,56 @@ class GeometryPrimitiveTest {
         assertEquals(50.0, facet.area, tolerance)
     }
 
+    // --- GEO013-01: a vertical gable panel ---
+
+    @Test
+    fun `GEO013-01 a gable panel accepts a vertical polygon and measures its own plane`() {
+        // The gable of a 8 m wide house rising 3 m from its eaves to its ridge.
+        val panel = GablePanelGeometry(
+            elementId = elementId,
+            vertices = listOf(
+                ModelPoint(0.0, 4.0, 2.0),
+                ModelPoint(8.0, 4.0, 2.0),
+                ModelPoint(4.0, 7.0, 2.0),
+            ),
+        )
+
+        assertEquals(12.0, panel.area, tolerance)
+        assertEquals(4.0, panel.bounds.min.y, tolerance)
+        assertEquals(7.0, panel.bounds.max.y, tolerance)
+        // A panel has no thickness, so its box is flat on the axis it faces.
+        assertEquals(0.0, panel.bounds.sizeZ, tolerance)
+    }
+
+    @Test
+    fun `GEO013-01 a gable panel rejects a polygon that is not vertical`() {
+        // The apex pushed 3 m out of the wall plane: a sloping surface, which
+        // is a roof facet's job and not a wall's. Note that moving a vertex is
+        // not enough on its own — three points whose plan positions stay in a
+        // line still describe a vertical plane, however their heights differ.
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            GablePanelGeometry(
+                elementId = elementId,
+                vertices = listOf(
+                    ModelPoint(0.0, 4.0, 2.0),
+                    ModelPoint(8.0, 4.0, 2.0),
+                    ModelPoint(4.0, 7.0, 5.0),
+                ),
+            )
+        }
+        assertTrue(error.message.orEmpty().contains("not vertical"))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            GablePanelGeometry(
+                elementId = elementId,
+                vertices = listOf(
+                    ModelPoint(0.0, 4.0, 2.0),
+                    ModelPoint(8.0, 4.0, 2.0),
+                ),
+            )
+        }
+    }
+
     // --- GEO011-05: one element, many primitives ---
 
     @Test

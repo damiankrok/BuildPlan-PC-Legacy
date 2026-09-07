@@ -2,6 +2,7 @@ package com.buildplan.app.render.filament
 
 import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.geometry.BuildingGeometryPrimitive
+import com.buildplan.app.geometry.GablePanelGeometry
 import com.buildplan.app.geometry.GeometryTolerance
 import com.buildplan.app.geometry.LocalBounds
 import com.buildplan.app.geometry.ModelPoint
@@ -65,8 +66,8 @@ fun List<BuildingGeometryPrimitive>.toRenderMeshes(): List<BuildingRenderMesh> =
  * Bakes one primitive.
  *
  * Walls and slabs are prisms: a plan outline extruded between two levels and
- * closed with a cap at each end. A roof facet is already planar, so it is
- * triangulated where it is.
+ * closed with a cap at each end. A roof facet and a gable panel are already
+ * planar, so each is triangulated where it is.
  *
  * Caps are fan-triangulated from the first vertex, which is correct for a convex
  * outline and wrong for a concave one. Every outline the model can currently
@@ -80,6 +81,7 @@ fun BuildingGeometryPrimitive.toRenderMesh(): BuildingRenderMesh {
         is WallGeometry -> mesh.addPrism(footprint(), baseElevation, topElevation)
         is SlabGeometry -> mesh.addPrism(outline, elevation, topElevation)
         is RoofFacetGeometry -> mesh.addPlanarFacet(vertices)
+        is GablePanelGeometry -> mesh.addVerticalPanel(vertices)
     }
     return mesh.build(elementId, bounds)
 }
@@ -134,6 +136,22 @@ private class MeshAccumulator {
             normal
         }
         addPolygon(usable, upwards)
+    }
+
+    /**
+     * A single vertical planar panel, shaded by its own normal exactly as
+     * written.
+     *
+     * No flip, unlike [addPlanarFacet]: "outwards" has no meaning for a lone
+     * vertical polygon — a gable is seen from one side or the other depending
+     * on where the camera is — so the normal is left alone and the spike's
+     * double-sided material resolves the facing per fragment.
+     */
+    fun addVerticalPanel(vertices: List<ModelPoint>) {
+        val usable = vertices.withoutRepeatedVertices()
+        if (usable.size < 3) return
+        val normal = usable.newellUnitNormal() ?: return
+        addPolygon(usable, normal)
     }
 
     private fun addPolygon(points: List<ModelPoint>, normal: FloatArray) {
