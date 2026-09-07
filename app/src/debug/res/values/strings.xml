@@ -17,6 +17,9 @@
     <string name="model_view_ground_top">Parter z góry</string>
     <string name="model_view_upper_top">Poddasze z góry</string>
     <string name="model_view_facade_openings">Elewacje — otwory</string>
+    <string name="model_view_signature_facade">Rama i opaska</string>
+    <string name="model_view_garage_relation">Dom i garaż</string>
+    <string name="model_view_site_context">Model w siatce</string>
     <string name="model_view_stairs">Schody</string>
 
     <string name="model_spike_visibility_all">Wszystko</string>

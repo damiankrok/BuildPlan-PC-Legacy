@@ -44,6 +44,36 @@ object MarcowkiSourceEvidence {
         "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
             "projekt-dom-w-marcowkach-ge-9d1547b712997f93462fc19e9eefb963__11817.gif"
 
+    /**
+     * The four elevations, and when they were measured for the facade bands.
+     *
+     * A second reading rather than a correction to [RETRIEVED_AT]: the plans and
+     * the section still say what they said, and moving that timestamp would
+     * claim the whole trace had been redone. What was read this time is the
+     * banding, which only the elevations show.
+     */
+    const val ELEVATIONS_RETRIEVED_AT: String = "2026-09-08T00:13+02:00"
+
+    const val FRONT_ELEVATION_URL: String =
+        "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
+            "elewacja-frontowa-projekt-dom-w-marcowkach-ge-" +
+            "b165fc1dadc0b7ef46c3d1d74725aea3__264.jpg"
+
+    const val GARDEN_ELEVATION_URL: String =
+        "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
+            "elewacja-ogrodowa-projekt-dom-w-marcowkach-ge-" +
+            "9b95a143134b5e1afdf79034a2391bd8__267.jpg"
+
+    const val SIDE_ELEVATION_WEST_URL: String =
+        "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
+            "elewacja-boczna-projekt-dom-w-marcowkach-ge-" +
+            "b72318402d5f7c263303f0bf13597c8b__265.jpg"
+
+    const val SIDE_ELEVATION_EAST_URL: String =
+        "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
+            "elewacja-boczna-projekt-dom-w-marcowkach-ge-" +
+            "24130d2bfa16ddf40cd1a16f8e154ce2__266.jpg"
+
     const val CROSS_SECTION_URL: String =
         "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
             "przekroj-budynku-projekt-dom-w-marcowkach-ge-" +
@@ -69,6 +99,21 @@ object MarcowkiSourceEvidence {
         "Both ARCHON plan rasters are 853x853 and calibrate to 37.77 px/m: 455 px " +
             "across the printed 1205 anchor, 476 px across the printed 1260 anchor. " +
             "Origin: the north-west outer wall corner of the main house."
+
+    /**
+     * How the elevations were turned into metres, for the facade bands.
+     *
+     * The elevations are a fifth the resolution of the plans, so they are used
+     * for *what is there and at what level*, and levels are then read off the
+     * section rather than off the raster. Both bands in the model take their top
+     * from a stated level for exactly that reason.
+     */
+    const val ELEVATION_CALIBRATION: String =
+        "The four ARCHON elevations are 550x256 and calibrate to 25.38 px/m: the " +
+            "whole building's 12.05 m spans 305.8 px on the front elevation, which " +
+            "puts the main house's east face within 0.6 px of its traced 7.89 m. At " +
+            "that scale one pixel is 4 cm, so the elevations are read for what exists " +
+            "and at which stated level, never for a dimension of their own."
 
     /**
      * Every number the source states outright and this model uses.
@@ -278,6 +323,41 @@ object MarcowkiSourceEvidence {
                 "top flight into the attic corridor.",
         ),
         FidelityRecord(
+            name = "Rama podcienia szczytowego",
+            value = "0.44 m (elewacje mierzą 0.66 m)",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "The front and garden elevations frame each gable with one band of " +
+                "constant width: up both cheeks and along both slopes, with the facade a " +
+                "metre behind it. Measured at 16.9 px on the front elevation, which " +
+                "calibrates at 25.38 px/m against the printed 1205 across the whole " +
+                "building — 0.66 m, the wall with its render and insulation. The model " +
+                "carries the 0.44 m the plan hatch gives, because the frame is the cheek " +
+                "carried up over the roof and a frame drawn wider than the cheek it " +
+                "continues would put a step in a line the source draws straight.",
+        ),
+        FidelityRecord(
+            name = "Opaska międzykondygnacyjna",
+            value = "+3.06 m, 0.54 m wysokości",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "One unbroken horizontal line across all four elevations: the front " +
+                "edge of the balcony in each gable portal and the top of the garage, at " +
+                "one level. Its top traces 3.06 to 3.08 m above the drawn ground line, " +
+                "which is the attic floor the section levels. Its depth traces 0.47 m on " +
+                "the garden elevation and 0.71 m on the front one; the model uses the " +
+                "0.54 m between the garage's dimensioned 252 and that +3.06, so both ends " +
+                "of the band are stated levels rather than pixels.",
+        ),
+        FidelityRecord(
+            name = "Wysokość garażu w bryle",
+            value = "góra na +3.06 m",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "On the front elevation the band over the garage and the band over the " +
+                "house entrance are the same run of pixels — rows 169 to 186 at both " +
+                "x = 300 and x = 430 — so the garage top and the house balcony are one " +
+                "level. The first model stopped the garage at the ground-floor ceiling, " +
+                "0.34 m lower, which broke the only line tying the two masses together.",
+        ),
+        FidelityRecord(
             name = "Drzwi z garażu do kotłowni",
             value = "0.90 m szerokości",
             fidelity = SourceFidelity.SOURCE_TRACED,
@@ -305,14 +385,6 @@ object MarcowkiSourceEvidence {
                 "terrain level of the section and its 0.00, so the building stands on " +
                 "something instead of floating; the thickness is therefore the gap " +
                 "between two source levels, not a structural depth.",
-        ),
-        FidelityRecord(
-            name = "Grubość stropodachu garażu",
-            value = "0.20 m",
-            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
-            note = "The source dimensions the clear height of the garage but not its roof " +
-                "build-up. 0.20 m is chosen only so the garage roof reaches the top of " +
-                "the ground-floor walls and closes the volume without a parapet.",
         ),
         FidelityRecord(
             name = "Ściana okapowa poddasza rysowana do połaci",
@@ -382,9 +454,11 @@ object MarcowkiSourceEvidence {
             value = "7.89 m zamiast 3.81 m",
             fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
             note = "The upper plan stipples the south portal floor only east of x = 3.39, " +
-                "leaving the western half open to the entrance below. The model floors the " +
-                "whole width, because the alternative leaves a 0.34 m slot in the portal " +
-                "cheeks where the storey slab would have closed them.",
+                "and the front elevation agrees within 0.11 m: its band starts at " +
+                "x = 3.28 and the entrance beside it is open two storeys. The model " +
+                "floors the whole width anyway, because the alternative leaves a 0.34 m " +
+                "slot in the portal cheeks where the storey slab would have closed them, " +
+                "and closing that slot needs a piece the source does not draw either.",
         ),
         FidelityRecord(
             name = "Liczba stopni",
@@ -425,6 +499,14 @@ object MarcowkiSourceEvidence {
         "Drzwi wewnętrzne poza jednymi. The plans schedule no internal doors, and " +
             "only the garage-to-boiler-room opening is drawn clearly enough in the " +
             "wall hatch to trace.",
+        "Okapowy pas podrynnowy. Both side elevations show a 0.24 m dark band " +
+            "between the tiles and the render along the whole length of each long " +
+            "facade — the roof's own edge, seen end-on, on a roof the page calls " +
+            "eaveless. The model's roof facets have no thickness, so there is no " +
+            "edge for that band to be. Giving the roof a thickness is a change to " +
+            "the roof itself rather than a band laid beside it, and it would move " +
+            "the 150.4 m2 the facets currently reconcile with the published " +
+            "150.57 m2 — so it is left out rather than approximated.",
     )
 
     /**

@@ -161,6 +161,62 @@ internal enum class ModelViewPreset(
     ),
 
     /**
+     * The north gable, close in and nearly level: the frame, the band and the
+     * balcony in one frame.
+     *
+     * The view the owner's "is this my house" question is actually asked from.
+     * The north gable is where the two signature bands meet — the portal frame
+     * runs round the opening, the storey band crosses it at the balcony, and the
+     * recessed glazing sits behind both — and none of that can be judged from
+     * above, because from above a band 0.54 m deep on a vertical face is a line.
+     *
+     * Yawed off the axis rather than square to it, so the west facade comes with
+     * it: a frame photographed straight on is a drawing, and what is being
+     * checked is that the frame stands proud of what is behind it.
+     */
+    SIGNATURE_FACADE(
+        labelRes = R.string.model_view_signature_facade,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 214.0,
+        pitchDegrees = 8.0,
+        distanceMargin = 1.30,
+    ),
+
+    /**
+     * The south-east corner, where the house meets the garage.
+     *
+     * The one view that answers whether the two masses are one composition. The
+     * storey band runs unbroken from the balcony over the entrance, across the
+     * cheek, and round the whole garage at the same level; from this corner that
+     * line is continuous across the screen, and from anywhere else it is two
+     * lines that happen to agree.
+     */
+    GARAGE_RELATION(
+        labelRes = R.string.model_view_garage_relation,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 48.0,
+        pitchDegrees = 16.0,
+        distanceMargin = 1.45,
+    ),
+
+    /**
+     * The whole model on its reference plane, from far enough out to see it
+     * standing on something.
+     *
+     * The grid is what this view is of. Every other preset frames the building
+     * tightly, which is right for judging it and wrong for judging its size: a
+     * house cropped to its own outline has no scale, and the metre grid only
+     * says anything once several metres of it are on screen beside the building.
+     */
+    SITE_CONTEXT(
+        labelRes = R.string.model_view_site_context,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 35.0,
+        pitchDegrees = 26.0,
+        distanceMargin = 2.10,
+    ),
+
+    /**
      * The stair, close in, with the roof and the attic taken off.
      *
      * The only preset that frames something other than the whole building, and

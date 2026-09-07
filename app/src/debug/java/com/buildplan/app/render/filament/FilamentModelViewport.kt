@@ -105,7 +105,7 @@ fun FilamentModelViewport(modifier: Modifier = Modifier) {
                 FilterChip(
                     selected = option == model,
                     onClick = { model = option },
-                    label = { Text(stringResource(option.labelRes)) },
+                    label = { ChipLabel(stringResource(option.labelRes)) },
                 )
             }
         }
@@ -132,6 +132,11 @@ private fun ModelStage(model: DebugModel) {
     }
 
     val meshes = remember(model) { model.geometry.primitives.toRenderMeshes() }
+
+    // Built from the model's extent and handed to the renderer, so the ruled
+    // plane is a fact about how big this model is rather than a constant that
+    // would be the wrong size for the other one.
+    val grid = remember(bounds) { PresentationGrid.under(bounds) }
     val elementNames = remember(model) { model.building.elements.associate { it.id to it.name } }
     val cameraState = rememberOrbitCameraState(bounds)
 
@@ -249,7 +254,7 @@ private fun ModelStage(model: DebugModel) {
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
                         SurfaceView(context).also { surfaceView ->
-                            val created = FilamentModelRenderer(surfaceView, meshes)
+                            val created = FilamentModelRenderer(surfaceView, meshes, grid)
                             created.setVisibleElements(visibleElementIds, removedElementIds)
                             created.resume()
                             renderer = created
@@ -275,7 +280,7 @@ private fun ModelStage(model: DebugModel) {
                         cameraState.apply(option.framing(bounds, model.focusBounds(option.focus, bounds)))
                         currentRenderer?.pose = cameraState.pose()
                     },
-                    label = { Text(stringResource(option.labelRes)) },
+                    label = { ChipLabel(stringResource(option.labelRes)) },
                 )
             }
         }
@@ -287,7 +292,7 @@ private fun ModelStage(model: DebugModel) {
                 FilterChip(
                     selected = option == visibility,
                     onClick = { visibility = option },
-                    label = { Text(stringResource(option.labelRes)) },
+                    label = { ChipLabel(stringResource(option.labelRes)) },
                 )
             }
         }
@@ -414,16 +419,41 @@ private fun PanelLine(text: String, emphasised: Boolean = false) {
     )
 }
 
+/**
+ * A horizontally scrollable row of chips.
+ *
+ * The padding is not decoration. Chips are laid out against the row's own edge,
+ * and a chip that starts exactly at it has its label's first glyph on the
+ * clipping boundary — which is what the owner's screenshots showed as truncated
+ * labels. A little room at each end also leaves the half-chip that says the row
+ * scrolls actually visible.
+ */
 @Composable
 private fun ChipRow(content: @Composable () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = CHIP_ROW_EDGE_DP.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         content()
     }
 }
+
+/**
+ * A chip label that is always one line.
+ *
+ * Compose would otherwise wrap a long label onto a second line and let the chip
+ * clip it to its own height, which reads as a label with its descenders cut off
+ * rather than as a label that is too long.
+ */
+@Composable
+private fun ChipLabel(text: String) {
+    Text(text = text, maxLines = 1, softWrap = false)
+}
+
+/** How much room a chip row leaves at each end. */
+private const val CHIP_ROW_EDGE_DP = 4
 
 private const val VIEWPORT_HEIGHT_DP = 420

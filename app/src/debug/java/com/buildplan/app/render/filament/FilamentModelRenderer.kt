@@ -57,6 +57,15 @@ import kotlin.math.sqrt
 internal class FilamentModelRenderer(
     private val surfaceView: SurfaceView,
     meshes: List<BuildingRenderMesh>,
+    /**
+     * The reference plane drawn under the model, or null to draw none.
+     *
+     * Handed in rather than derived here, because it is a fact about the model's
+     * extent and this class is not allowed to have an opinion about the model.
+     * It is deliberately kept out of every id map: it belongs to no element, so
+     * it never hides, never tints and never answers a pick.
+     */
+    grid: PresentationGrid? = null,
 ) : Choreographer.FrameCallback {
 
     init {
@@ -115,6 +124,9 @@ internal class FilamentModelRenderer(
 
     /** Every mesh's outline, by the element it belongs to. */
     private val outlinesByElementId = LinkedHashMap<BuildingElementId, MutableList<Outline>>()
+
+    /** The reference plane's entities, if one was built. Never in any id map. */
+    private val gridEntities = ArrayList<Int>()
 
     /** One mesh's edges, and the two ways they can be drawn. */
     private class Outline(
@@ -180,6 +192,7 @@ internal class FilamentModelRenderer(
         scene.addEntity(sunEntity)
 
         meshes.forEach(::uploadMesh)
+        grid?.let(::uploadGrid)
 
         camera.setExposure(APERTURE, SHUTTER_SPEED, SENSITIVITY)
 
@@ -330,6 +343,74 @@ internal class FilamentModelRenderer(
         outlinesByElementId.getOrPut(mesh.elementId) { ArrayList() } += outline
     }
 
+    /**
+     * Uploads the reference plane as two line lists sharing one vertex buffer.
+     *
+     * Added to the scene here rather than in [setVisibleElements], and never
+     * removed from it: it is not part of the model, so no visibility state has
+     * anything to say about it. Depth-tested, so the building stands on it
+     * instead of being drawn through by it, and unlit, so it stays the faint
+     * grey it was given wherever the sun happens to be.
+     */
+    private fun uploadGrid(grid: PresentationGrid) {
+        if (grid.lineCount == 0) return
+
+        val vertexBuffer = VertexBuffer.Builder()
+            .bufferCount(1)
+            .vertexCount(grid.positions.size / 3)
+            .attribute(
+                VertexBuffer.VertexAttribute.POSITION,
+                0,
+                VertexBuffer.AttributeType.FLOAT3,
+                0,
+                POSITION_STRIDE_BYTES,
+            )
+            .build(engine)
+        vertexBuffer.setBufferAt(engine, 0, grid.positions.toDirectBuffer())
+        vertexBuffers += vertexBuffer
+
+        listOf(
+            grid.minorIndices to GRID_MINOR,
+            grid.majorIndices to GRID_MAJOR,
+        ).forEach { (lineIndices, color) ->
+            if (lineIndices.isEmpty()) return@forEach
+
+            val indexBuffer = IndexBuffer.Builder()
+                .indexCount(lineIndices.size)
+                .bufferType(IndexBuffer.Builder.IndexType.UINT)
+                .build(engine)
+            indexBuffer.setBuffer(engine, lineIndices.toDirectBuffer())
+            indexBuffers += indexBuffer
+
+            val instance = lineMaterial.createInstance()
+            instance.setParameter(
+                TechnicalMaterial.BASE_COLOR_PARAMETER,
+                color[0], color[1], color[2], color[3],
+            )
+            materialInstances += instance
+
+            val entity = entityManager.create()
+            RenderableManager.Builder(1)
+                .boundingBox(Box(grid.boundsCenter, grid.boundsHalfExtent))
+                .geometry(
+                    0,
+                    RenderableManager.PrimitiveType.LINES,
+                    vertexBuffer,
+                    indexBuffer,
+                    0,
+                    lineIndices.size,
+                )
+                .material(0, instance)
+                .castShadows(false)
+                .receiveShadows(false)
+                .culling(true)
+                .build(engine, entity)
+
+            gridEntities += entity
+            scene.addEntity(entity)
+        }
+    }
+
     // --- Visibility ----------------------------------------------------------
 
     /**
@@ -462,13 +543,14 @@ internal class FilamentModelRenderer(
 
         uiHelper.detach()
 
-        (renderableEntities + outlines.map { it.entity }).forEach { entity ->
+        (renderableEntities + outlines.map { it.entity } + gridEntities).forEach { entity ->
             scene.removeEntity(entity)
             engine.destroyEntity(entity)
             entityManager.destroy(entity)
         }
         renderableEntities.clear()
         outlines.clear()
+        gridEntities.clear()
         outlinesByElementId.clear()
         elementIdByEntity.clear()
         entitiesByElementId.clear()
@@ -598,6 +680,17 @@ internal class FilamentModelRenderer(
          */
         val EDGE = floatArrayOf(0.86f, 0.90f, 0.96f, 0.90f)
         val GHOST_EDGE = floatArrayOf(0.34f, 0.39f, 0.48f, 0.55f)
+
+        /**
+         * The reference plane, well below every line the model draws.
+         *
+         * Quieter than the faintest removed-layer line on purpose: the grid has
+         * to be readable as a ruled plane and must never be mistaken for part of
+         * the building. The emphasised lines are roughly twice the fine ones,
+         * which is enough to count by and not enough to notice on its own.
+         */
+        val GRID_MINOR = floatArrayOf(0.10f, 0.12f, 0.15f, 0.42f)
+        val GRID_MAJOR = floatArrayOf(0.19f, 0.22f, 0.28f, 0.60f)
 
         /**
          * How far behind itself a lit surface is pushed so its own outline wins

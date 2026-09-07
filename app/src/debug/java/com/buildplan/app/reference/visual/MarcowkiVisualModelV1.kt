@@ -79,6 +79,15 @@ object MarcowkiVisualModelV1 {
     /** The stair, so a view can be framed on it without searching by name. */
     val stairId: BuildingElementId = elementId("parter-schody")
 
+    /** The horizontal band at +3.06 that ties the house to the garage. */
+    val storeyBandId: BuildingElementId = elementId("opaska-miedzykondygnacyjna")
+
+    /** The frame around each gable portal, north first. */
+    val gableFrameIds: List<BuildingElementId> = listOf(
+        elementId("rama-podcienia-polnocnego"),
+        elementId("rama-podcienia-poludniowego"),
+    )
+
     private val assembly: Assembly = assemble()
 
     /**
@@ -109,6 +118,7 @@ object MarcowkiVisualModelV1 {
         assembly.addGroundFloor()
         assembly.addStair()
         assembly.addAtticFloor()
+        assembly.addFacadeBands()
         assembly.addRoof()
         return assembly
     }
@@ -465,6 +475,14 @@ object MarcowkiVisualModelV1 {
             // draws the garage's east wall that far south and a wall with
             // nothing over it is a free-standing fin rather than the sheltered
             // entrance the drawing describes.
+            //
+            // It is as deep as the storey band on the house, and reaches the
+            // same +3.06, because all four elevations draw one unbroken line
+            // across both masses at that level. Stopping the garage at the
+            // ground-floor ceiling — as the first model did — put the two tops
+            // 0.34 m apart, and a garage whose roof misses the house's balcony
+            // by a third of a metre reads as a block parked beside the house
+            // rather than as part of its composition.
             primitives += SlabGeometry(
                 elementId = garageRoof,
                 outline = Grid.rectangle(
@@ -473,8 +491,8 @@ object MarcowkiVisualModelV1 {
                     maxX = Grid.BUILDING_WIDTH,
                     maxZ = Grid.Z_PORTAL_SOUTH_FACE,
                 ),
-                elevation = Grid.GARAGE_CLEAR_HEIGHT,
-                thickness = Grid.GROUND_CEILING_Y - Grid.GARAGE_CLEAR_HEIGHT,
+                elevation = Grid.STOREY_BAND_BASE_Y,
+                thickness = Grid.STOREY_BAND_DEPTH,
             )
         }
 
@@ -582,12 +600,20 @@ object MarcowkiVisualModelV1 {
                     Grid.HOUSE_WIDTH,
                     Grid.STAIR_SOUTH_Z,
                 ),
-                Grid.rectangle(0.0, Grid.Z_PORTAL_NORTH_FACE, Grid.HOUSE_WIDTH, 0.0),
+                // Both balcony pieces stop one band thickness short of the
+                // portal face: the storey band takes over from there, so the
+                // slab's front face and the band's are never the same plane.
+                Grid.rectangle(
+                    0.0,
+                    Grid.Z_PORTAL_NORTH_FACE + Grid.STOREY_BAND_THICKNESS,
+                    Grid.HOUSE_WIDTH,
+                    0.0,
+                ),
                 Grid.rectangle(
                     0.0,
                     Grid.BUILDING_DEPTH,
                     Grid.HOUSE_WIDTH,
-                    Grid.Z_PORTAL_SOUTH_FACE,
+                    Grid.Z_PORTAL_SOUTH_FACE - Grid.STOREY_BAND_THICKNESS,
                 ),
             ).forEach { outline ->
                 primitives += SlabGeometry(
@@ -787,6 +813,123 @@ object MarcowkiVisualModelV1 {
                 from = PlanPoint(Grid.X_UF_WARDROBE_EAST, Grid.Z_UF_CORRIDOR_SOUTH),
                 to = PlanPoint(Grid.X_UF_WARDROBE_EAST, Grid.Z_SOUTH_WALL),
             )
+        }
+
+        /**
+         * The two bands the owner recognises this house by.
+         *
+         * ## Why they are elements and not decoration
+         *
+         * Both are drawn on all four current elevations, and between them they
+         * are what makes the massing this house rather than a modern house. The
+         * first model had neither, and the reviewer's verdict — "still not
+         * recognisably my house" — was about exactly this: the portal was a hole
+         * with no frame around its top, and the garage was a block that ended
+         * a third of a metre below the balcony beside it.
+         *
+         * ## The gable frame
+         *
+         * Each portal is framed by one continuous band in one plane: the two
+         * cheek end faces, which the walls already give, and the two raking
+         * pieces closing the triangle above them, which nothing gave. It is the
+         * same 0.44 m the cheeks are thick, so the frame is the cheek carried up
+         * and over rather than a trim laid on it — see
+         * [MarcowkiPlanGrid.GABLE_FRAME_WIDTH] for why the elevation's wider
+         * reading is not the number used.
+         *
+         * The frame is scoped to the whole building, not to a storey. It spans
+         * both of them, and keeping it in every visibility state is what lets an
+         * owner take the roof off and still be looking at the same house.
+         *
+         * ## The storey band
+         *
+         * One level, +3.06, running along the front of both balconies and around
+         * the whole garage. That single line is the composition: it is what ties
+         * the tall gabled mass to the flat garage instead of leaving them as two
+         * buildings that happen to touch. On the house it belongs to the storey
+         * whose floor edge it is; on the garage it is the roof's own fascia and
+         * needs no element of its own.
+         */
+        fun addFacadeBands() {
+            val bandId = element(
+                slug = "opaska-miedzykondygnacyjna",
+                kind = BuildingElementKind.OTHER,
+                name = "Opaska międzykondygnacyjna",
+                scope = BuildingElementScope.OnFloor(atticId),
+            )
+            // Between the cheeks rather than across them: the elevations stop
+            // the band at the frame on both sides, and running it through would
+            // put two faces in the plane the frame already occupies.
+            val westInnerFace = Grid.exteriorFace(Grid.X_WEST_WALL, towardsPositive = true)
+            val houseEastInnerFace =
+                Grid.exteriorFace(Grid.X_HOUSE_EAST_WALL, towardsPositive = false)
+            listOf(
+                Grid.Z_PORTAL_NORTH_FACE + Grid.STOREY_BAND_THICKNESS / 2.0,
+                Grid.Z_PORTAL_SOUTH_FACE - Grid.STOREY_BAND_THICKNESS / 2.0,
+            ).forEach { centreZ ->
+                primitives += WallGeometry(
+                    elementId = bandId,
+                    start = PlanPoint(westInnerFace, centreZ),
+                    end = PlanPoint(houseEastInnerFace, centreZ),
+                    baseElevation = Grid.STOREY_BAND_BASE_Y,
+                    height = Grid.STOREY_BAND_DEPTH,
+                    thickness = Grid.STOREY_BAND_THICKNESS,
+                )
+            }
+
+            gableFrame(
+                slug = "rama-podcienia-polnocnego",
+                name = "Rama podcienia szczytowego — północ",
+                faceZ = Grid.Z_PORTAL_NORTH_FACE,
+            )
+            gableFrame(
+                slug = "rama-podcienia-poludniowego",
+                name = "Rama podcienia szczytowego — południe",
+                faceZ = Grid.Z_PORTAL_SOUTH_FACE,
+            )
+        }
+
+        /**
+         * The two raking pieces of one gable frame, in the portal's own face
+         * plane.
+         *
+         * One quadrilateral per slope rather than one chevron across both. A
+         * chevron is not convex, and the renderer fan-triangulates a panel from
+         * its first vertex: the fan across the notch would fill the opening the
+         * frame exists to surround. Split at the ridge, both halves are convex
+         * and they share the short edge the ridge cuts, so the frame closes
+         * exactly.
+         *
+         * The pieces stop at [MarcowkiPlanGrid.EAVES_Y] rather than following
+         * their own inner edge below it: below the eaves the frame is the cheek
+         * wall's end face, and carrying the panel down there would lay a second
+         * surface in the same plane.
+         */
+        private fun gableFrame(slug: String, name: String, faceZ: Double) {
+            val id = element(
+                slug = slug,
+                kind = BuildingElementKind.OTHER,
+                name = name,
+                scope = BuildingElementScope.WholeBuilding,
+            )
+            val innerRidgeY = Grid.RIDGE_Y - Grid.GABLE_FRAME_VERTICAL_DROP
+            val run = Grid.GABLE_FRAME_EAVES_RUN
+            listOf(
+                listOf(
+                    ModelPoint(0.0, Grid.EAVES_Y, faceZ),
+                    ModelPoint(Grid.RIDGE_X, Grid.RIDGE_Y, faceZ),
+                    ModelPoint(Grid.RIDGE_X, innerRidgeY, faceZ),
+                    ModelPoint(run, Grid.EAVES_Y, faceZ),
+                ),
+                listOf(
+                    ModelPoint(Grid.HOUSE_WIDTH, Grid.EAVES_Y, faceZ),
+                    ModelPoint(Grid.HOUSE_WIDTH - run, Grid.EAVES_Y, faceZ),
+                    ModelPoint(Grid.RIDGE_X, innerRidgeY, faceZ),
+                    ModelPoint(Grid.RIDGE_X, Grid.RIDGE_Y, faceZ),
+                ),
+            ).forEach { vertices ->
+                primitives += GablePanelGeometry(elementId = id, vertices = vertices)
+            }
         }
 
         /**

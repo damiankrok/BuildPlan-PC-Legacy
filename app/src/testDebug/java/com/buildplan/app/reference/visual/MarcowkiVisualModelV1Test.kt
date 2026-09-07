@@ -401,11 +401,12 @@ class MarcowkiVisualModelV1Test {
         // Pinned so that a trace correction that quietly drops a wall, or adds a
         // second shape for one, shows up as a failure rather than as a model the
         // owner has to re-review from scratch.
-        assertEquals("Element count", 47, building.elements.size)
-        assertEquals("Primitive count", 89, geometry.primitives.size)
+        assertEquals("Element count", 50, building.elements.size)
+        assertEquals("Primitive count", 95, geometry.primitives.size)
         assertEquals(
-            "The 28 walls, plus the two balustrades across the portals",
-            30,
+            "The 28 walls, the two balustrades across the portals, and the two runs " +
+                "of storey band along their fronts",
+            32,
             geometry.primitives.count { it is WallGeometry },
         )
         assertEquals(
@@ -416,10 +417,10 @@ class MarcowkiVisualModelV1Test {
         )
         assertEquals("A gable roof is two facets", 2, geometry.primitives.count { it is RoofFacetGeometry })
         assertEquals(
-            "Six attic partitions across the slope, plus the five bands the north " +
-                "gable is cut into by its two glazings and the three the south gable " +
-                "is cut into by its one",
-            14,
+            "Six attic partitions across the slope, the five bands the north gable " +
+                "is cut into by its two glazings and the three the south gable is cut " +
+                "into by its one, and the two raking pieces of each portal frame",
+            18,
             geometry.primitives.count { it is GablePanelGeometry },
         )
         assertEquals(
@@ -471,7 +472,10 @@ class MarcowkiVisualModelV1Test {
             Grid.PARTITION_THICKNESS,
             Grid.BALUSTRADE_THICKNESS,
         )
-        val allowedBases = setOf(Grid.GROUND_FLOOR_Y, Grid.UPPER_FLOOR_Y)
+        // The storey band starts at neither storey level: it hangs off the
+        // balcony edge from the garage's dimensioned ceiling up to the attic
+        // floor, and both of those are levels the section states.
+        val allowedBases = setOf(Grid.GROUND_FLOOR_Y, Grid.UPPER_FLOOR_Y, Grid.STOREY_BAND_BASE_Y)
         // An attic wall may also stop early where the roof comes down to meet
         // it, which is a height the grid computes rather than one it lists.
         val allowedHeights = setOf(
@@ -479,6 +483,7 @@ class MarcowkiVisualModelV1Test {
             Grid.ATTIC_CLEAR_HEIGHT,
             Grid.ATTIC_PERIMETER_WALL_HEIGHT,
             Grid.BALUSTRADE_HEIGHT,
+            Grid.STOREY_BAND_DEPTH,
         )
 
         geometry.primitives.filterIsInstance<WallGeometry>().forEach { wall ->
@@ -505,7 +510,6 @@ class MarcowkiVisualModelV1Test {
         assertEquals(
             setOf(
                 "Grubość płyty fundamentowej",
-                "Grubość stropodachu garażu",
                 "Ściana okapowa poddasza rysowana do połaci",
                 "Granica kuchni i holu",
                 "Parapet okna kuchni",

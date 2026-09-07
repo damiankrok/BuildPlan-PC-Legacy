@@ -120,20 +120,68 @@
   współrzędną. Materiałów elewacji nie ma. Drzwi wewnętrznych poza jednymi nie
   ma. Wszystko trzy zapisane w `MarcowkiSourceEvidence.notModelled`.
 
+- STAGE-013C marcowki signature features — **korekta zakończona, brama wizualna
+  OWNER-a otwarta ponownie.** Odpowiedź na drugi przegląd: model był poprawny
+  wymiarowo i nadal nie był *tym* domem.
+
+  **Cechy rozpoznawcze.** Dwie, obie odrysowane z czterech aktualnych elewacji
+  (skalibrowanych na 25,38 px/m i zapisanych jako `ELEVATION_CALIBRATION`).
+  *Rama podcienia szczytowego* — policzki plus dwa pasy biegnące po połaci,
+  wszystko w płaszczyźnie czoła podcienia; wcześniej trójkąt nad podcieniem był
+  otwarty i portal czytał się jak dziura. *Opaska międzykondygnacyjna* — jedna
+  pozioma linia na +3,06 przez czoła obu balkonów i cały garaż. Obie mają własne
+  identyfikatory i własne nazwy; rama ma zasięg `WholeBuilding` i zostaje
+  w każdym stanie widoczności.
+
+  **Garaż w kompozycji.** Stropodach garażu sięga teraz +3,06 zamiast 2,72, więc
+  góra garażu i opaska domu są jedną linią — na elewacji frontowej to ten sam
+  pas pikseli nad garażem i nad wejściem. Wysokość 0,54 m nie jest już
+  założeniem wizualizacyjnym: to różnica między zwymiarowanymi 252 w garażu
+  a podanym poziomem +3,06, więc oba końce pasa są poziomami ze źródła.
+
+  **Siatka odniesienia.** `PresentationGrid` rysuje płaszczyznę rastrową pod
+  modelem — metr i co piąta linia mocniejsza. Wyłącznie prezentacja: bez
+  `BuildingElementId`, niewybieralna, nieukrywalna, nieznana w `geometry/`
+  i `domain/`. To nie jest teren ani działka.
+
+  **Kamera i sterowanie.** Presetów dziesięć (doszły `SIGNATURE_FACADE`,
+  `GARAGE_RELATION`, `SITE_CONTEXT`). Dolny limit pochylenia podniesiony z −70°
+  do −12°, bo pod modelem kamera gubiła orientację. Etykiety chipów
+  jednowierszowe, rzędy z marginesem na końcach.
+
+  50 elementów i 95 prymitywów (32 ściany, 28 płyt, 2 połacie, 18 paneli
+  szczytowych, 15 szyb). Wiarygodność: `SOURCE_EXACT` 22, `SOURCE_TRACED`
+  7 nazwanych cech + 73 linie siatki, `DISPLAY_ASSUMPTION` 11 — o jedno mniej,
+  bo grubość stropodachu garażu przestała być zgadywana. Renderer bez zmian
+  wersji: Filament 1.75.1, `debugImplementation`, release nadal bez `.so`
+  Filamenta. W repozytorium nadal żadnego obrazu ARCHON — cztery elewacje
+  odmierzone poza worktree i tam zostawione.
+
+  **Czego to nadal nie jest:** dokumentacji budowlanej. Nie ma komina, materiałów
+  elewacji, drzwi wewnętrznych poza jednymi ani grubości połaci — a więc i pasa
+  podrynnowego, który obie elewacje boczne pokazują na 0,24 m wzdłuż obu
+  długich fasad. Wszystko zapisane w `MarcowkiSourceEvidence.notModelled`.
+  Analizatora nie ma: STAGE-013C spisał tylko jego kontrakt wejść i wyzwalaczy
+  pytań w `ARCHITECTURE.md`.
+
 ## Następny krok
 
-GATE-3D-SHAPE-01 **ponownie** — OWNER porównuje poprawiony model z rzutami
-i wizualizacjami ARCHON i decyduje, czy wierność jest wystarczająca. Dopiero po
-tej ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013B
-**nie jest** akceptacją wizualną.
+GATE-3D-SHAPE-01 **po raz trzeci** — OWNER porównuje model z rzutami,
+elewacjami i wizualizacjami ARCHON i decyduje, czy rozpoznaje swój dom. Pytanie
+jest teraz węższe niż poprzednio: czy rama podcienia i opaska na +3,06 czytają
+się jako te cechy, po których ten dom się rozpoznaje. Dopiero po tej ocenie
+STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013C **nie jest**
+akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
+w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
 
 ## Czego nadal NIE ma
 
-Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, parsera rzutów,
-wycinania otworów w połaci dachu, persystencji i danych rzeczywistych. Model
-Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory
-i schody z wykazów i rzutów, ale nie ma komina, materiałów, konstrukcji ani
-rzędnych konstrukcyjnych.
+Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, **analizatora
+projektów** (spisany jest tylko jego kontrakt), wycinania otworów w połaci dachu,
+grubości połaci i pasa podrynnowego, persystencji i danych rzeczywistych. Model
+Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory,
+schody i cechy rozpoznawcze elewacji z wykazów, rzutów i elewacji, ale nie ma
+komina, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 
 ## OPEN
 

@@ -189,7 +189,19 @@ internal class OrbitCameraState(
         const val FIELD_OF_VIEW_DEGREES: Double = 45.0
 
         private const val ORBIT_RADIANS_PER_PIXEL = 0.008f
-        private val MIN_PITCH = (-70.0 * PI / 180.0).toFloat()
+
+        /**
+         * How far below the horizon a drag may take the camera.
+         *
+         * Shallow on purpose. A camera that can swing far under the model ends
+         * up beneath the foundation plate looking up at its underside, with the
+         * reference plane across the whole screen and the building behind it —
+         * a state that is easy to reach with one careless drag and not obviously
+         * recoverable, because nothing on screen says which way is up any more.
+         * A few degrees below level is enough to look up at a soffit, which is
+         * the only reason to be down there at all.
+         */
+        private val MIN_PITCH = (-12.0 * PI / 180.0).toFloat()
         private val MAX_PITCH = (80.0 * PI / 180.0).toFloat()
 
         private const val MIN_DISTANCE_FACTOR = 0.55

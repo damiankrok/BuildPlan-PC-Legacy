@@ -754,11 +754,166 @@ Okna połaciowe są odrysowane co do pozycji, ale rysowane jako panele **na**
 połaci, bo ten etap nie wycina dziur w połaci. Jedno i drugie jest zapisane
 w `MarcowkiSourceEvidence.notModelled` i `displayAssumptions`.
 
+## Cechy rozpoznawcze modelu wizualnego (STAGE-013C)
+
+Etap odpowiada na drugą ocenę OWNER-a: model był poprawny wymiarowo i nadal nie
+był *tym* domem. Diagnoza z elewacji: brakowało pasów, po których ta bryła się
+rozpoznaje, a garaż kończył się 0,34 m niżej niż balkon obok niego, więc nic nie
+wiązało obu brył w jedną kompozycję.
+
+### Rozpoznawalność jest kryterium akceptacji
+
+Model referencyjny Marcówek ma jeden cel: OWNER stawia go obok strony ARCHON
+i mówi, czy to ten sam dom. Zgodność liczb jest warunkiem koniecznym, nie
+wystarczającym — dwa domy o tej samej powierzchni zabudowy, tym samym kącie
+dachu i tej samej liczbie okien mogą wyglądać zupełnie inaczej, a różnicę robią
+cechy rozpoznawcze: pasy, ramy, uskoki i to, co jest cofnięte względem czego.
+Dlatego od tego etapu **cecha rozpoznawcza jest osobnym elementem budynku**,
+z własną nazwą i własnym identyfikatorem, a nie skutkiem ubocznym innej bryły.
+
+### Rama podcienia szczytowego
+
+Każdy szczyt jest ramą: policzki podcienia i dwa pasy biegnące po połaci,
+wszystko w jednej płaszczyźnie czoła podcienia, z elewacją cofniętą o metr za
+nią. Szerokość pasa to grubość policzka — rama **jest** policzkiem wyprowadzonym
+ponad okap, a nie opaską naklejoną na niego. Elewacje mierzą widoczny pas na
+0,66 m przy 25,38 px/m; model niesie odrysowane z rzutu 0,44 m, bo pas szerszy
+od policzka, który kontynuuje, wprowadziłby uskok w linii rysowanej w źródle
+prosto. Różnica jest zapisana w `MarcowkiSourceEvidence`.
+
+Dwa czworokąty na szczyt, nie jeden szewron: szewron nie jest wypukły, a renderer
+trianguluje panel wachlarzem z pierwszego wierzchołka — wachlarz przez wcięcie
+zamalowałby otwór, który rama ma obramować. Cięte na kalenicy obie połówki są
+wypukłe i dzielą krótką krawędź, więc rama zamyka się dokładnie.
+
+Rama ma zasięg `WholeBuilding`. Przechodzi przez obie kondygnacje i zostaje
+w każdym stanie widoczności — to ona sprawia, że po zdjęciu dachu nadal widać
+ten sam dom, a nie niższy budynek o tym samym rzucie.
+
+### Opaska międzykondygnacyjna
+
+Jedna pozioma linia na +3,06: czoło balkonu w obu podcieniach i góra garażu.
+To ona wiąże wysoką bryłę ze szczytem z płaskim garażem — bez niej są to dwa
+budynki, które się stykają. Góra pasa to poziom stropu poddasza podany
+w przekroju, a jego wysokość 0,54 m to różnica między zwymiarowaną wysokością
+garażu (252) a tym poziomem, więc **oba końce pasa są poziomami ze źródła**, nie
+pikselami. Elewacje mierzą tę wysokość na 0,47–0,72 m zależnie od tego, którą
+się mierzy.
+
+Na domu opaska należy do kondygnacji, której krawędzią stropu jest, i znika
+razem z poddaszem — jako wygaszona siatka, jak każda zdjęta warstwa. Na garażu
+jest attyką samego stropodachu i nie potrzebuje osobnego elementu: stropodach
+garażu sięga teraz +3,06 zamiast 2,72.
+
+**Granica modelowania pasa.** Pas jest bryłą, a nie kolorem. `MeshStyle` nadal
+wynika z **typu prymitywu**, nie z `BuildingElementKind` — renderer nie dostał
+trzeciego stylu „rama", bo „to jest element charakterystyczny elewacji" jest
+faktem o domenie, a nie o geometrii. Pas czyta się z wysunięcia, z konturu
+i z cieniowania powierzchni poziomych, i to jest właściwy sposób.
+
+Płyta balkonowa jest cofnięta dokładnie o grubość pasa. Fasada przed licem
+płyty byłaby dwiema powierzchniami w jednej płaszczyźnie, a te migoczą przy
+ruchu kamery.
+
+### Siatka odniesienia — tylko prezentacja
+
+`render/filament/PresentationGrid` rysuje rastrową płaszczyznę pod modelem: linie
+co metr, co piąta mocniejsza, wyśrodkowane na rzucie i przyciągnięte do pełnych
+metrów od początku układu. Dom zawieszony na ciemnym tle czyta się jak przedmiot;
+ten sam dom na rastrze czyta się jak budynek o określonej wielkości.
+
+Reguła jest twarda: **siatka nie jest geometrią modelu.** Nie ma
+`BuildingElementId`, więc nie da się jej wybrać ani ukryć, żaden stan widoczności
+nic o niej nie mówi, a `geometry/` i `domain/` o niej nie wiedzą — pilnuje tego
+`C013C-06`. To nie jest teren, działka ani otoczenie i nie wolno tego w to
+rozwijać.
+
+### Kamera, presety i czytelność sterowania
+
+Presetów jest dziesięć: doszły `SIGNATURE_FACADE` (szczyt północny z bliska,
+prawie z poziomu — z góry pas 0,54 m na pionowym licu jest kreską),
+`GARAGE_RELATION` (naroże południowo-wschodnie, jedyny widok, z którego linia
+opaski biegnie przez cały ekran) i `SITE_CONTEXT` (z daleka, o siatce).
+
+Dolne ograniczenie pochylenia kamery podniesiono z −70° do −12°. Pod modelem
+kamera patrzy na spód płyty fundamentowej przez całą siatkę odniesienia i nic na
+ekranie nie mówi już, gdzie jest góra — stan łatwy do osiągnięcia jednym
+ruchem palca i nieoczywisty do cofnięcia. Kilka stopni poniżej poziomu wystarczy,
+żeby zajrzeć pod podcień, i to jedyny powód, żeby tam być.
+
+Etykiety chipów są jednowierszowe (`maxLines = 1`, bez zawijania), a rzędy chipów
+mają margines na obu końcach. Chip stojący dokładnie przy krawędzi rzędu ma
+pierwszy znak etykiety na granicy przycięcia — to jest to, co na zrzutach OWNER-a
+wyglądało jak ucięty tekst.
+
+
+## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
+
+Analizatora **nie ma** i ten etap go nie zaczyna. Ta sekcja zapisuje poprzeczkę,
+którą ustawił model Marcówek, żeby późniejszy etap miał do czego celować, a nie
+zaczynał od pytania „co to znaczy dobrze".
+
+### Wejścia wymagane
+
+- **Rzuty wszystkich kondygnacji** z co najmniej jednym łańcuchem wymiarowym na
+  osi X i jednym na osi Z. Bez wymiaru drukowanego na rzucie nie ma kalibracji,
+  a bez kalibracji każda liczba jest pikselem.
+- **Przekrój** z rzędnymi: poziom terenu, poziom parteru, poziom kondygnacji
+  wyższej, kalenica. Wysokości nie wolno wyprowadzać z rzutu.
+- **Wszystkie elewacje.** Rzut mówi, gdzie stoi ściana; elewacja mówi, co na
+  niej jest. Pasów, ram i uskoków nie widać na rzucie — cały ten etap jest tego
+  dowodem.
+- **Wizualizacje**, o ile są. Wolno z nich czytać *jak coś jest zestawione*,
+  nigdy *ile ma centymetrów*.
+- **Parametry tekstowe** ze strony: powierzchnie, kąt dachu, wysokość, ścianka
+  kolankowa. To one weryfikują odrys — rachunek zgodny z podaną powierzchnią
+  dachu jest tym, co ustaliło kierunek kalenicy w Marcówkach.
+
+### Cechy rozpoznawcze, które analizator musi odzyskać
+
+Model uznaje się za rozpoznawalny dopiero wtedy, gdy ma wszystkie z poniższych,
+o ile źródło je pokazuje:
+
+1. bryła i rzut zewnętrzny z podanymi kotwicami wymiarowymi;
+2. kierunek kalenicy, kąt i zasięg wysunięć dachu;
+3. podcienia, wnęki i wszystko, co jest cofnięte względem lica;
+4. **pasy, ramy i opaski elewacji** wraz z poziomem, na którym biegną;
+5. relacja bryły głównej do garażu lub innej przybudówki: wspólny poziom, wspólna
+   linia, wspólna płaszczyzna;
+6. otwory z wykazu, z parapetami i nadprożami;
+7. schody: liczba biegów, kierunek i klatka;
+8. strefy zewnętrzne osłonięte: taras, balkon, podcień.
+
+### Kiedy analizator musi zapytać
+
+Brak danych ma kończyć się pytaniem, nigdy wartością domyślną wyglądającą jak
+zmierzona. Wyzwalacze pytania do użytkownika:
+
+- brak łańcucha wymiarowego na jednej z osi rzutu, więc rysunku nie da się
+  wykalibrować;
+- rzędne nieczytelne albo sprzeczne między przekrojem a stroną;
+- kształt dachu nieoczywisty: brak kalenicy na rzucie, wysunięcia niemierzalne,
+  powierzchnia dachu niezgodna z rachunkiem o więcej niż kilka procent;
+- niejasna relacja garażu: nieznana wysokość, nieznany poziom góry, nieznane
+  połączenie z domem;
+- widoczna na elewacji cecha rozpoznawcza, której nie da się umiejscowić na
+  rzucie — pas bez poziomu, rama bez grubości;
+- brak elewacji z którejś strony, więc jedna ściana pozostaje niepotwierdzona;
+- wykaz stolarki niepełny albo niezgodny z przerwami w hatchu ścian;
+- niejednoznaczny podział przestrzeni otwartej, której źródło nie przegradza.
+
+Każda odpowiedź użytkownika na takie pytanie wchodzi do modelu jako
+`DISPLAY_ASSUMPTION` z podaną przyczyną — dokładnie tak, jak wchodzą dziś
+założenia odrysu ręcznego. Nierozstrzygnięta niepewność zostaje
+`TRACE_UNCERTAIN` i ma być widoczna, a nie zasypana wartością.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
-odrysowany, STAGE-013B poprawiło ten model — nie produkcjonizację hosta),
-izolacja pomieszczenia w UI, parser rzutów, wycinanie otworów w połaci dachu,
-docelowy `applicationId`, generowanie identyfikatorów, pełne reguły sumowania
-alokacji kosztów.
+odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
+rozpoznawcze — nie produkcjonizację hosta), izolacja pomieszczenia w UI,
+analizator rzutów (kontrakt spisany wyżej, implementacji nie ma), wycinanie
+otworów w połaci dachu, grubość połaci i pas podrynnowy, docelowy
+`applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
+kosztów.

@@ -109,6 +109,15 @@ kompilować, nie linkować i nie pakować.
 - **Po każdej zmianie wersji renderera powtórz kontrole natywne** na zbudowanym
   APK, nie na dokumentacji: inwentarz `.so`, wyrównanie każdego segmentu `LOAD`
   do co najmniej 2^14, `zipalign -c -P 16 -v 4`, obecność `GNU_RELRO`.
+- **Wsparcie prezentacji nie jest modelem.** Siatka odniesienia pod budynkiem
+  (`PresentationGrid`) powstaje w rendererze z `LocalBounds` i nie ma
+  `BuildingElementId` — nie da się jej wybrać ani ukryć, a `geometry/`
+  i `domain/` o niej nie wiedzą. Nie rozwijaj tego w teren, działkę ani
+  otoczenie.
+- **`MeshStyle` wynika z typu prymitywu, nigdy z `BuildingElementKind`.**
+  „To jest cienkie płaskie wypełnienie otworu" jest faktem o geometrii; „to jest
+  element charakterystyczny elewacji" jest faktem o domenie. Cechę rozpoznawczą
+  pokazuj bryłą i konturem, nie trzecim kolorem.
 
 ## Model odrysowany ze źródła (debug)
 
@@ -147,6 +156,20 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
 - **`MarcowkiReferenceProject` zostaje bez geometrii.** Model wizualny dekoruje
   go po identyfikatorach, ale kanoniczny zbiór nadal opisuje tylko to, co źródło
   podaje słowami: nazwy i powierzchnie.
+- **Kryterium jest rozpoznawalność, nie tylko zgodność liczb.** Model ma być
+  domem, który OWNER rozpozna, stawiając go obok strony ARCHON. Dwa domy o tej
+  samej powierzchni zabudowy, tym samym kącie dachu i tej samej liczbie okien
+  wyglądają zupełnie inaczej — różnicę robią cechy rozpoznawcze. Dlatego
+  **cecha rozpoznawcza jest osobnym elementem budynku**, z własną nazwą
+  i własnym identyfikatorem, a nie skutkiem ubocznym innej bryły. Dziś są to
+  rama podcienia szczytowego i opaska międzykondygnacyjna na +3,06; nie usuwaj
+  ich i nie zamieniaj na kolor.
+- **Cech rozpoznawczych szukaj na elewacjach.** Rzut mówi, gdzie stoi ściana;
+  co jest na tej ścianie, mówi elewacja. Pasy, ramy i uskoki nie mają na rzucie
+  śladu i nie da się ich stamtąd wyprowadzić.
+- **Ciągłości modelu nie wolno cofnąć.** Każdy stan widoczności jest podzbiorem
+  jednego kanonicznego modelu, a zdjęta warstwa zostaje przygaszoną siatką.
+  Rzut, otwory, garaż i relacje elewacyjne mają być stabilne między stanami.
 
 ## Urządzenia i emulatory
 
@@ -222,7 +245,11 @@ Analizator — automatyczne czytanie cudzych rzutów i budowanie z nich modelu �
 przyjęty pomysł na później, a nie zadanie tego etapu. Dopóki OWNER nie zleci go
 wprost, nie zaczynaj OCR, wizji komputerowej ani obsługi wielu domów: model
 Marcówek ma najpierw ustalić poprzeczkę jakości, którą taki analizator musiałby
-osiągać. Model domenowy i kontrakt geometrii
+osiągać. Jego kontrakt — wymagane wejścia, cechy do odzyskania i sytuacje,
+w których ma **dopytać użytkownika** zamiast podstawić wartość domyślną — jest
+spisany w `ARCHITECTURE.md` i jest dokumentacją, nie zadaniem. Brak danych ma
+kończyć się pytaniem; odpowiedź wchodzi do modelu jako `DISPLAY_ASSUMPTION`
+z podanym powodem, a nierozstrzygnięta niepewność zostaje `TRACE_UNCERTAIN`. Model domenowy i kontrakt geometrii
 istnieją, ale nic ich jeszcze nie zapisuje. Rysuje je wyłącznie debugowy spike
 na Filamencie (STAGE-012) — dowód wykonalności i wybór kandydata, a nie docelowa
 architektura renderera; ta należy do STAGE-013.

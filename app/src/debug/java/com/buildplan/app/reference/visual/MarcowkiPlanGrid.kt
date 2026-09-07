@@ -1,6 +1,8 @@
 package com.buildplan.app.reference.visual
 
 import com.buildplan.app.geometry.PlanPoint
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.tan
 
 /**
@@ -310,6 +312,73 @@ object MarcowkiPlanGrid {
     const val BALUSTRADE_THICKNESS: Double = 0.08
 
     // ---------------------------------------------------------------------
+    // Facade bands — traced from the four current elevations
+    // ---------------------------------------------------------------------
+
+    /**
+     * Width of the frame that runs around each gable portal.
+     *
+     * The trait the owner names first. On the front and garden elevations each
+     * gable is a picture frame: a band of constant width up both cheeks and
+     * along both slopes, with the facade recessed a metre behind it. The model
+     * had the cheeks and the roof but nothing along the slopes, so the frame was
+     * open at the top and the portal read as a hole rather than as a frame.
+     *
+     * It is the wall's own thickness rather than a number of its own, because
+     * the frame *is* the cheek carried up over the roof — one continuous band in
+     * one plane. The elevations measure the visible band at 0.66 m at 25.4 px/m,
+     * which is the wall plus its render and insulation; the model carries the
+     * structural 0.44 m the plan hatch gives, and drawing the frame wider than
+     * the cheek it continues would put a step in a line the source draws
+     * straight.
+     */
+    const val GABLE_FRAME_WIDTH: Double = EXTERIOR_WALL_THICKNESS
+
+    /** How far the frame's inner edge sits below the roof, measured vertically. */
+    val GABLE_FRAME_VERTICAL_DROP: Double =
+        GABLE_FRAME_WIDTH / cos(Math.toRadians(ROOF_PITCH_DEGREES))
+
+    /** How far along the plan the frame's inner edge comes down to the eaves line. */
+    val GABLE_FRAME_EAVES_RUN: Double =
+        GABLE_FRAME_WIDTH / sin(Math.toRadians(ROOF_PITCH_DEGREES))
+
+    /**
+     * Top of the horizontal band that ties the house and the garage together.
+     *
+     * All four elevations draw one unbroken line at this level: it is the front
+     * edge of the balcony inside each gable portal, and it is the top of the
+     * garage. Traced at 3.06 to 3.08 m above the drawn ground line on the front
+     * and garden elevations, which is the attic floor level the section states —
+     * so the band's top is a published level rather than a measured one.
+     */
+    const val STOREY_BAND_TOP_Y: Double = UPPER_FLOOR_Y
+
+    /**
+     * Underside of that band, and the garage's dimensioned clear height.
+     *
+     * Derived from two stated levels rather than chosen: the band reaches from
+     * the ceiling the section dimensions inside the garage up to the attic floor
+     * it levels. The elevations trace the visible depth at 0.47 to 0.72 m
+     * depending on which of them is measured, and 0.54 m sits inside that spread
+     * while owing nothing to the raster.
+     */
+    const val STOREY_BAND_BASE_Y: Double = GARAGE_CLEAR_HEIGHT
+
+    /** Depth of the band on the facade. */
+    val STOREY_BAND_DEPTH: Double = STOREY_BAND_TOP_Y - STOREY_BAND_BASE_Y
+
+    /**
+     * How thick the band is where it stands free of the storey slab behind it.
+     *
+     * The band replaces the outermost 0.12 m of the balcony slab rather than
+     * being laid on top of it: a fascia in front of a slab face would be two
+     * surfaces in the same plane, which flicker against each other as the camera
+     * moves. Taking the slab back by exactly this much leaves one face where the
+     * source draws one line.
+     */
+    const val STOREY_BAND_THICKNESS: Double = PARTITION_THICKNESS
+
+    // ---------------------------------------------------------------------
     // Openings — traced from the window and door schedule on both plans
     // ---------------------------------------------------------------------
 
@@ -548,14 +617,15 @@ object MarcowkiPlanGrid {
      * describes: the six perimeter centrelines, the nine ground-floor and eight
      * attic partition centrelines, the two traced thicknesses, the traced gable
      * overhang and the portal depth measured beside it, both edges of every
-     * traced opening, all four edges of every rooflight, and the seven lines
-     * that place the stair and its core.
+     * traced opening, all four edges of every rooflight, the seven lines that
+     * place the stair and its core, and the two lines the elevations add — the
+     * inner edge of the gable frame and the lower edge of the storey band.
      */
     val TRACED_LINE_COUNT: Int =
         6 + 9 + 8 + 2 + 1 + 1 +
             2 * allOpenings.size +
             4 * allRooflights.size +
-            7
+            7 + 2
 
     /** An axis-aligned rectangle on the plan, walked from its north-west corner. */
     fun rectangle(minX: Double, minZ: Double, maxX: Double, maxZ: Double): List<PlanPoint> =
