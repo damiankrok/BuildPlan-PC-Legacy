@@ -49,6 +49,32 @@ Domena mieszka w `app/src/main/java/com/buildplan/app/domain/`.
   otwarte do STAGE-015 — `CostAllocation` jest prowizoryczne i nie rozbudowuj
   go wcześniej.
 
+## Warstwa geometrii — reguły twarde
+
+Geometria mieszka w `app/src/main/java/com/buildplan/app/geometry/`.
+
+- **Zależność idzie w jedną stronę.** Geometria czyta domenę; domena nigdy nie
+  importuje geometrii. Pilnują tego `DomainPurityTest` i `GeometryPurityTest`.
+- **Złączenie z domeną to wyłącznie `BuildingElementId`.** Nie kopiuj do
+  prymitywów `roomIds`, `BuildingElementScope`, `BuildingElementKind` ani stanu
+  widoczności. Jeden element może mieć wiele prymitywów (dach dwuspadowy = dwie
+  połacie) i tak ma zostać — nie rozbijaj go na dwa elementy semantyczne.
+- **Metry i współrzędne lokalne.** Y w górę, rzut poziomy w płaszczyźnie XZ,
+  układ prawoskrętny. Żadnych pikseli, `dp`, współrzędnych ekranu, georeferencji
+  ani terenu. `NaN` i nieskończoności są odrzucane w konstruktorze.
+- **Żadnego stanu renderera w geometrii.** Kamera, projekcja, picking,
+  materiały, siatki trójkątów i flagi widoczności nie należą do tego pakietu.
+  `LocalBounds` to dane lokalne do późniejszego kadrowania, a nie kamera.
+- **Reguł selekcji nie duplikuj.** Co jest widoczne, rozstrzyga
+  `BuildingElementSelection.kt` w domenie. Most do geometrii to jedna funkcja
+  `primitivesOf(elements)` — nie dopisuj drugiej ścieżki decyzyjnej.
+- **Nigdy nie wyprowadzaj rzutu z powierzchni, opisów ani zrzutów ekranu.**
+  Jeśli źródło nie podaje współrzędnych, to ich nie ma. Zmyślony rzut wyglądający
+  na autorytatywny jest gorszy niż brak rzutu.
+- Syntetyczny dom demonstracyjny (`geometry/demo/SyntheticDemoHouse`, źródła
+  `debug`) ma wymyślone wymiary i nie jest rekonstrukcją żadnego realnego
+  projektu. Nie podpinaj jego geometrii do `MarcowkiReferenceProject`.
+
 ## Jak pracować
 
 - Trzymaj się zleconego zakresu. Nie rozszerzaj go samodzielnie.
@@ -84,7 +110,9 @@ deweloperskie, nie produkt.
 - **Proweniencja mieszka poza domeną.** Adresu źródła ani faktów o źródle nie
   dodawaj do encji domenowych.
 - **Nie dopisuj tam geometrii.** Współrzędne ścian, obrysy pomieszczeń, otwory
-  i rzędne kondygnacji należą do STAGE-011, nie do zbioru referencyjnego.
+  i rzędne kondygnacji nie należą do zbioru referencyjnego — jego źródło ich nie
+  podaje. Kształt do prac nad rendererem daje jawnie syntetyczny
+  `geometry/demo/SyntheticDemoHouse`.
 - Testy tego zbioru żyją w `src/testDebug/`, żeby wariant release nie zależał
   od treści osób trzecich.
 
@@ -102,6 +130,7 @@ Zostaw czysty worktree.
 
 ## Czego na tym etapie NIE ma
 
-Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych i renderera
-3D. Model domenowy istnieje, ale nic go jeszcze nie zapisuje. Jeżeli zadanie
-tego nie obejmuje wprost — nie dodawaj tego.
+Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych, parsera
+rzutów i renderera 3D (technologia niewybrana). Model domenowy i kontrakt
+geometrii istnieją, ale nic ich jeszcze nie zapisuje i nic ich nie rysuje.
+Jeżeli zadanie tego nie obejmuje wprost — nie dodawaj tego.

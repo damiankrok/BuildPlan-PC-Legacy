@@ -12,8 +12,22 @@
 - STAGE-010A reference structured building — jeden deterministyczny projekt
   referencyjny (dwie kondygnacje, 18 pomieszczeń, podane powierzchnie)
   w źródłach `debug`, wraz z proweniencją trzymaną poza domeną. Nie jest to
-  prawda produktu ani dane użytkownika; release go nie kompiluje. Nadal nie ma
-  parsera, geometrii ani renderera — kontrakt geometrii należy do STAGE-011.
+  prawda produktu ani dane użytkownika; release go nie kompiluje. Ten zbiór
+  nadal nie ma geometrii i nie dostanie jej bez źródła rzutu.
+- STAGE-011 minimal geometry contract — pakiet `geometry` (metry, Y w górę, rzut
+  w XZ, współrzędne lokalne): `PlanPoint`, `ModelPoint`, `WallGeometry`,
+  `SlabGeometry`, `RoofFacetGeometry`, `BuildingGeometry`, `LocalBounds`.
+  Złączenie z domeną wyłącznie po `BuildingElementId`, jeden element może mieć
+  wiele prymitywów (dach = dwie połacie), walidacja względem kanonicznego
+  `Building`. Jeden most z semantycznej selekcji do geometrii —
+  `primitivesOf(elements)` — reguły ukrywania i izolacji zostają w domenie.
+  Syntetyczny dom demonstracyjny (`geometry/demo/SyntheticDemoHouse`) w źródłach
+  `debug`; jego liczby są wymyślone i **nie** są rekonstrukcją projektu ARCHON+.
+
+## Czego nadal NIE ma
+
+Renderera 3D (technologia niewybrana), kamery, pickingu, parsera rzutów,
+geometrii drzwi/okien/schodów, persystencji i danych rzeczywistych.
 
 ## OPEN
 

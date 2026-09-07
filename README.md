@@ -3,8 +3,9 @@
 Natywna aplikacja **Android** do organizowania i analizowania kosztów budowy domu.
 
 > **Bardzo wczesny etap.** Repozytorium zawiera powłokę aplikacji (App Shell,
-> nawigacja, puste ekrany modułów) oraz kanoniczny model domenowy. Nie ma
-> jeszcze persystencji, backendu ani logiki biznesowej — nic nie zapisuje
+> nawigacja, puste ekrany modułów), kanoniczny model domenowy oraz kontrakt
+> geometrii budynku. Nie ma jeszcze renderera 3D, parsera rzutów,
+> persystencji, backendu ani logiki biznesowej — nic nie zapisuje
 > i nie odczytuje danych. Wszystkie wartości widoczne w interfejsie to
 > placeholdery (`—`), a nie dane.
 
@@ -64,6 +65,8 @@ app/src/main/java/com/buildplan/app/
     model/           encje, identyfikatory, kontrakt kosztów, zapytania o budynek
     money/           Money i waluty
     units/           jednostki miar
+  geometry/          kontrakt geometrii budynku (metry, Y w górę, rzut w XZ);
+                     bez renderera, kamery i zależności od Androida
   ui/
     AppShell.kt      ramka aplikacji: TopAppBar + ModalNavigationDrawer
     navigation/      lista sekcji, NavHost, zawartość szuflady
@@ -72,8 +75,10 @@ app/src/main/java/com/buildplan/app/
     theme/           kolory, typografia, kształty
 
 app/src/debug/java/com/buildplan/app/
-  reference/         referencyjny projekt domu do prac deweloperskich
-                     (tylko debug, nie trafia do release)
+  reference/         referencyjny projekt domu do prac deweloperskich,
+                     bez geometrii (tylko debug, nie trafia do release)
+  geometry/demo/     syntetyczny dom demonstracyjny z geometrią; wymyślone
+                     wymiary, nie jest rekonstrukcją realnego projektu
 ```
 
 ## Dokumentacja

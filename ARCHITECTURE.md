@@ -5,10 +5,12 @@ docelowej architektury.
 
 ## Stan na dziś
 
-Jedna natywna aplikacja Android: powłoka UI (STAGE-001) oraz kanoniczna warstwa
-domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A). Do tego
-jeden referencyjny zbiór danych w źródłach `debug` (STAGE-010A). Brak backendu,
-persystencji, autoryzacji, parsera i renderera 3D.
+Jedna natywna aplikacja Android: powłoka UI (STAGE-001), kanoniczna warstwa
+domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A) oraz
+kontrakt geometrii budynku (STAGE-011). Do tego dwa zbiory danych w źródłach
+`debug`: referencyjny projekt bez geometrii (STAGE-010A) i syntetyczny dom
+demonstracyjny z geometrią (STAGE-011). Brak backendu, persystencji,
+autoryzacji, parsera i renderera 3D.
 
 ## Decyzje
 
@@ -227,6 +229,131 @@ Roboczo `com.buildplan.app`. **To decyzja robocza** i wymaga potwierdzenia
 przez OWNER-a przed publikacją w Google Play. Migracji nazwy pakietu nie wolno
 wykonywać samodzielnie.
 
+## Kontrakt geometrii budynku (STAGE-011)
+
+Geometria **istnieje** i mieszka w osobnym pakiecie
+`app/src/main/java/com/buildplan/app/geometry/`. Jest to warstwa modelu, a nie
+renderer: nie wybrano jeszcze żadnej technologii 3D i nic w tym pakiecie jej nie
+przesądza.
+
+### Układ współrzędnych i jednostki
+
+- **Metry.** Każda współrzędna, rzędna, wysokość i grubość jest długością
+  w metrach. Pikseli, `dp` ani współrzędnych ekranu w geometrii nie ma —
+  zależą od wyświetlacza, a geometria zależna od wyświetlacza nie da się
+  przetestować ani użyć ponownie przez drugi renderer.
+- **Osie:** układ prawoskrętny z **Y w górę** (`X × Y = Z`). `X` i `Z` to osie
+  poziome, więc **rzut poziomy leży w płaszczyźnie XZ**.
+- **Kierunek obiegu wielokąta nie ma znaczenia semantycznego.** Walidacja
+  używa wartości bezwzględnej pola, żeby żaden prymityw nie zależał po cichu od
+  tego, czy obrys zapisano zgodnie z ruchem wskazówek zegara, czy przeciwnie.
+- **Współrzędne są lokalne dla jednego modelu budynku.** Nie ma działki,
+  terenu, georeferencji ani kamery.
+- `NaN` i nieskończoności są odrzucane w konstruktorze wszędzie. Próg
+  tożsamości punktów i degeneracji wielokąta jest jawny
+  (`GeometryTolerance`), a nie ukryty w porównaniach.
+
+### Granica: semantyka domeny vs geometria
+
+`Building` nic nie wie o geometrii; zależność idzie wyłącznie w jedną stronę
+(pilnuje tego `DomainPurityTest`). Dzięki temu budynek może istnieć, być
+kosztorysowany i testowany, zanim w ogóle dostanie kształt — dokładnie tak jak
+`MarcowkiReferenceProject`.
+
+Prymityw geometryczny niesie z domeny **wyłącznie `BuildingElementId`**. Nie
+powtarza `BuildingElementKind`, `BuildingElementScope`, `roomIds` ani stanu
+widoczności: te mają już jedną kanoniczną odpowiedź na `BuildingElement`,
+a druga kopia mogłaby wyłącznie się z nią rozjechać. Sprawdza to
+`GeometryPurityTest` (GEO011-07, GEO011-18).
+
+### Prymitywy
+
+Prymitywy są **wysokopoziomowe, nie są zapieczoną siatką trójkątów** — pieczenie
+zależy od renderera, którego nie ma.
+
+- `PlanPoint(x, z)` — punkt rzutu; `ModelPoint(x, y, z)` — punkt w przestrzeni
+  lokalnej. Nie są to typy `android.graphics`.
+- `WallGeometry` — **oś ściany** (`start`, `end`), rzędna dolna, dodatnia
+  wysokość i dodatnia grubość. Oś, a nie obrys: obrys trzeba by przy każdej
+  edycji uzgadniać z własną grubością. Otworów (drzwi, okna) tu nie ma.
+- `SlabGeometry` — obrys w rzucie, rzędna **spodu** i dodatnia grubość. To,
+  której płaszczyzny dotyczy rzędna, jest nazwane wprost, bo „strop na 2,80” jest
+  niejednoznaczne dokładnie o grubość stropu.
+- `RoofFacetGeometry` — jedna płaska połać dachu jako uporządkowane wierzchołki
+  3D. Pole liczone metodą Newella, czyli na płaszczyźnie połaci, a nie w rzucie.
+
+Pełnego solvera samoprzecięć **celowo nie ma**: obrys typu „muszka” to realny
+błąd, ale nic w produkcie nie generuje jeszcze obrysów.
+
+### Jeden element, wiele prymitywów
+
+Relacja jest jeden-do-wielu z założenia. Dach dwuspadowy to **jeden** semantyczny
+element `ROOF` (jedna nazwa, jeden koszt, jedno ukrycie) złożony z **dwóch**
+połaci, bo jedna płaszczyzna nie jest dachem dwuspadowym. Rozbijanie dachu na
+dwa elementy semantyczne wprowadziłoby szczegół renderowania do modelu kosztów.
+
+### Kolekcja, złączenie po ID i bounds
+
+`BuildingGeometry` trzyma uporządkowaną listę prymitywów; każde zapytanie
+zachowuje kolejność deklaracji, więc to samo pytanie zawsze daje tę samą
+odpowiedź w tej samej kolejności. Potrafi zwrócić prymitywy jednego elementu,
+przefiltrować się zbiorem `BuildingElementId` oraz **sprawdzić się względem
+kanonicznego `Building`** (`requireElementsIn`): geometria wskazująca nieistniejący
+element jest odrzucana, bo taki kształt byłby dalej rysowany, a nikt nie mógłby
+go nazwać, ukryć ani wycenić. Sprawdzenie jest na żądanie, a nie w konstruktorze,
+bo geometria powstaje **obok** budynku, nie po nim.
+
+`LocalBounds` to lokalny prostopadłościan osiowy do późniejszego kadrowania.
+Dla pustej geometrii jest `null`, a nie zerowe pudełko w początku układu —
+pudełko wokół niczego to kłamstwo, do którego kamera chętnie by poleciała.
+**To nie jest kamera:** ani kamery, ani projekcji, ani pickingu w tym pakiecie
+nie ma.
+
+### Most: selekcja semantyczna → geometria
+
+Reguły ukrywania i izolacji zostały już rozstrzygnięte raz — w domenie,
+w `BuildingElementSelection.kt`. Geometria ich **nie powtarza**. Cały most to
+jedna funkcja `BuildingGeometry.primitivesOf(elements)`, więc kompozycja zawsze
+wygląda tak:
+
+```kotlin
+val visible = building.visibleElements(BuildingVisibility(roofHidden = true))
+val toDraw = geometry.primitivesOf(visible)
+```
+
+Przetestowane na syntetycznym domu: ukrycie dachu usuwa obie połacie, ukrycie
+poddasza zostawia geometrię parteru, ukrycie obu zostawia ściany i strop parteru,
+a izolacja pomieszczenia zwraca ścianę dzieloną dokładnie raz.
+
+### Syntetyczny dom demonstracyjny
+
+`app/src/debug/java/com/buildplan/app/geometry/demo/SyntheticDemoHouse.kt` to
+`Building` **wraz z** geometrią: dwie kondygnacje, trzy pomieszczenia, ściana
+działowa połączona z dwoma pokojami, płyta fundamentowa, strop nad parterem
+i dach dwuspadowy o dwóch połaciach.
+
+**Wszystkie liczby są wymyślone.** Nic w nim nie zostało zmierzone, odrysowane,
+wyprowadzone ani zgadnięte z żadnego realnego domu, projektu, rysunku, zrzutu
+ekranu ani podanej powierzchni. Powstał wyłącznie po to, żeby pierwszy renderer
+miał co wyświetlić, zanim istnieje parser rzutów.
+
+**To nie jest rekonstrukcja domu z ARCHON+.** Zbiór `MarcowkiReferenceProject`
+pozostaje bez geometrii (`elements` jest puste), bo jego źródło nie podaje rzutu;
+doczepienie tych współrzędnych do jego identyfikatorów zamieniłoby uczciwe „nie
+znamy rzutu” w zmyślony rzut. Identyfikatory obu zbiorów są rozłączne, żaden nie
+odwołuje się do drugiego, a test tego pilnuje (GEO011-16, GEO011-17).
+
+Fixture żyje w `src/debug`, a jego testy w `src/testDebug` — wariant release ani
+go nie kompiluje, ani nie wysyła. Sprawdzone: w wyjściu `compileReleaseKotlin`
+jest pakiet `geometry`, ale nie ma klas `geometry.demo` ani `reference`,
+a `testReleaseUnitTest` przechodzi bez nich.
+
+### Czego w geometrii nie ma
+
+Drzwi, okien, schodów, elewacji, obrysów pomieszczeń jako prawdy produktu, ścian
+krzywoliniowych, dowolnych siatek, CAD/BIM i terenu. Pierwszy renderer potrzebuje
+tylko tyle, żeby udowodnić bryłę 3D i UX warstw/izolacji.
+
 ## Referencyjny zbiór danych (STAGE-010A)
 
 `app/src/debug/java/com/buildplan/app/reference/` zawiera jeden deterministyczny
@@ -248,12 +375,14 @@ pomieszczeń, podane powierzchnie.
   W repozytorium nie ma obrazów, rzutów ani opisów marketingowych pobranych ze
   strony projektu. Nie ma też parsera ani kodu sieciowego — zbiór jest literałem
   w Kotlinie.
-- **Geometria pozostaje nierozstrzygnięta i należy do STAGE-011.** Źródło podaje
-  nazwy i powierzchnie pomieszczeń; nie podaje współrzędnych ścian, obrysów
-  pomieszczeń, sąsiedztwa, otworów, geometrii schodów ani rzędnych kondygnacji.
-  Dlatego `Building.elements` referencyjnego budynku jest **puste**, a jego
-  `Floor` nie ma `elevation` ani `height`. Zmyślony rzut wyglądający na
-  autorytatywny byłby gorszy niż brak rzutu.
+- **Ten zbiór nadal nie ma geometrii i mieć jej nie będzie, dopóki nie pojawi
+  się źródło rzutu.** Źródło podaje nazwy i powierzchnie pomieszczeń; nie podaje
+  współrzędnych ścian, obrysów pomieszczeń, sąsiedztwa, otworów, geometrii
+  schodów ani rzędnych kondygnacji. Dlatego `Building.elements` referencyjnego
+  budynku jest **puste**, a jego `Floor` nie ma `elevation` ani `height`.
+  STAGE-011 dodał kontrakt geometrii, ale **nie** podpiął go tutaj: zmyślony rzut
+  wyglądający na autorytatywny byłby gorszy niż brak rzutu. Kształt do prac nad
+  rendererem daje osobny, jawnie syntetyczny `SyntheticDemoHouse`.
 - **Jedna powierzchnia na pomieszczenie.** Źródło pokazuje przy części
   pomieszczeń i sum wartość alternatywną w nawiasie. Zakodowano wyłącznie
   wartość podstawową: drugie pojęcie powierzchni nie jest częścią przyjętego
@@ -266,5 +395,6 @@ osób trzecich.
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, technologia renderera 3D,
-docelowy `applicationId`, generowanie identyfikatorów, pełne reguły sumowania
-alokacji kosztów.
+kamera i picking, parser rzutów, geometria otworów i schodów, docelowy
+`applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
+kosztów.

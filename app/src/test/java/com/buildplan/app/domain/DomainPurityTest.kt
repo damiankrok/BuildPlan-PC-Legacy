@@ -32,6 +32,9 @@ class DomainPurityTest {
         "com.google.android.",
         // The app UI layer
         "com.buildplan.app.ui.",
+        // The geometry layer: it reads the domain, never the other way round,
+        // so that a building can exist and be costed before it has a shape.
+        "com.buildplan.app.geometry.",
         // Persistence and serialization
         "kotlinx.serialization.",
         "javax.persistence.",
