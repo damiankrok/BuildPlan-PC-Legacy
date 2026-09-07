@@ -75,6 +75,44 @@ Geometria mieszka w `app/src/main/java/com/buildplan/app/geometry/`.
   `debug`) ma wymyślone wymiary i nie jest rekonstrukcją żadnego realnego
   projektu. Nie podpinaj jego geometrii do `MarcowkiReferenceProject`.
 
+## Warstwa renderera — reguły twarde
+
+Spike renderera mieszka w `app/src/debug/java/com/buildplan/app/render/filament/`
+i jest **wyłącznie debugowy** (`debugImplementation`). Wariant release ma go nie
+kompilować, nie linkować i nie pakować.
+
+- **Renderer nigdy nie jest właścicielem prawdy semantycznej.** Co jest widoczne,
+  rozstrzyga `BuildingElementSelection.kt` w domenie, a kształty podaje jedyny
+  most `primitivesOf(elements)`. Nie dopisuj w rendererze drugiej reguły o dachu,
+  kondygnacji ani pomieszczeniu — nawet „tymczasowo”.
+- **Złączenie z semantyką to nadal wyłącznie `BuildingElementId`.** Nie kopiuj do
+  siatek `roomIds`, `BuildingElementScope`, `BuildingElementKind` ani stanu
+  widoczności. Jeden element może mieć wiele siatek (dach dwuspadowy = dwie
+  połacie) i musi wtedy odpowiadać **jednym** id — zarówno przy ukrywaniu, jak
+  i przy pickingu.
+- **Nie przenoś prawdy geometrycznej do renderera.** Pieczenie trójkątów jest
+  adapterem nad `geometry/`; wysokopoziomowe fakty (oś ściany, grubość, obrys)
+  zostają w `geometry/`. Adapter ma się dać testować na czystym JVM, więc nie
+  importuj w nim typów Filamenta.
+- **Przełączenie widoczności nie przebudowuje geometrii.** Siatki wgrywaj raz;
+  zmiana widoku to dodanie i usunięcie encji ze sceny.
+- **Jeden właściciel silnika na jeden `SurfaceView`.** Bez globalnego singletona
+  renderera. Zasoby zwalniaj przy wyjściu z kompozycji; po odtworzeniu Activity
+  ma istnieć dokładnie jeden żywy silnik.
+- **Po każdej zmianie wersji renderera powtórz kontrole natywne** na zbudowanym
+  APK, nie na dokumentacji: inwentarz `.so`, wyrównanie każdego segmentu `LOAD`
+  do co najmniej 2^14, `zipalign -c -P 16 -v 4`, obecność `GNU_RELRO`.
+
+## Urządzenia i emulatory
+
+- Projekt używa **wyłącznie serialu `emulator-5570`**. Każde polecenie do
+  urządzenia podawaj jawnie: `adb -s emulator-5570 ...`.
+- Nie instaluj, nie testuj, nie restartuj i nie konfiguruj innych seriali
+  (m.in. `emulator-5554`, `emulator-5560`, `emulator-5580`). Nie wywołuj
+  `adb kill-server`.
+- Nie uruchamiaj ogólnych testów `connected*`, które mogłyby trafić we wszystkie
+  podłączone urządzenia.
+
 ## Jak pracować
 
 - Trzymaj się zleconego zakresu. Nie rozszerzaj go samodzielnie.
@@ -131,6 +169,8 @@ Zostaw czysty worktree.
 ## Czego na tym etapie NIE ma
 
 Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych, parsera
-rzutów i renderera 3D (technologia niewybrana). Model domenowy i kontrakt
-geometrii istnieją, ale nic ich jeszcze nie zapisuje i nic ich nie rysuje.
+rzutów i **produkcyjnego** renderera 3D. Model domenowy i kontrakt geometrii
+istnieją, ale nic ich jeszcze nie zapisuje. Rysuje je wyłącznie debugowy spike
+na Filamencie (STAGE-012) — dowód wykonalności i wybór kandydata, a nie docelowa
+architektura renderera; ta należy do STAGE-013.
 Jeżeli zadanie tego nie obejmuje wprost — nie dodawaj tego.

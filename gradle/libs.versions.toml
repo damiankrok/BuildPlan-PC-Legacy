@@ -10,6 +10,7 @@ composeMaterialIcons = "1.7.8"
 navigationCompose = "2.9.5"
 junit = "4.13.2"
 desugarJdkLibs = "2.1.5"
+filament = "1.75.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -24,6 +25,8 @@ androidx-compose-material-icons-core = { group = "androidx.compose.material", na
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
+filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
+filamat-android = { group = "com.google.android.filament", name = "filamat-android", version.ref = "filament" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

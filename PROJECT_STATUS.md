@@ -24,16 +24,39 @@
   Syntetyczny dom demonstracyjny (`geometry/demo/SyntheticDemoHouse`) w źródłach
   `debug`; jego liczby są wymyślone i **nie** są rekonstrukcją projektu ARCHON+.
 
+- STAGE-012 direct Filament renderer spike — syntetyczny dom demonstracyjny
+  renderowany interaktywnie przez Google Filament
+  (`com.google.android.filament:filament-android:1.75.1`, Apache-2.0), wyłącznie
+  w źródłach `debug`. Udowodnione: wgranie geometrii na GPU, deterministyczne
+  mapowanie `BuildingElementId` → encje (dach dwuspadowy = jedno id, dwie
+  połacie), kadrowanie z `BuildingGeometry.bounds`, orbita/skala/przesuwanie,
+  ukrycie dachu, ukrycie poddasza, ukrycie obu, przywrócenie, picking
+  rozstrzygający dokładny `BuildingElementId` (tło = brak elementu) oraz
+  stabilność po odtworzeniu Activity. Widoczność rozstrzyga nadal domena, most
+  do geometrii to nadal `primitivesOf`; renderer nie ma własnej reguły.
+  Wariant release jest bez zmian — nadal pokazuje zarezerwowany placeholder.
+  **To kandydat na renderer, nie renderer produkcyjny.**
+  Zgodność 16 KB sprawdzona na zbudowanym APK (wszystkie `LOAD` = 2^14,
+  `zipalign -P 16` przechodzi, `GNU_RELRO` obecne) **i zweryfikowana w runtime**
+  na lokalnym obrazie API 36 o stronie 16 KB — bez zastrzeżeń. Kontrole natywne
+  trzeba powtarzać po każdej zmianie wersji renderera.
+
+## Następny krok
+
+STAGE-013 — produkcjonizacja renderera: docelowy host, skompilowany `.filamat`
+zamiast kompilacji materiału na urządzeniu, izolacja pomieszczenia w UI
+i strojenie gestów.
+
 ## Czego nadal NIE ma
 
-Renderera 3D (technologia niewybrana), kamery, pickingu, parsera rzutów,
+Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, parsera rzutów,
 geometrii drzwi/okien/schodów, persystencji i danych rzeczywistych.
 
 ## OPEN
 
 - persistence
 - real project UI/data
-- 3D renderer
+- 3D renderer productionization (STAGE-013)
 - costs UI
 - domain model extensions (User, Document, Vendor, Contractor)
 - authentication

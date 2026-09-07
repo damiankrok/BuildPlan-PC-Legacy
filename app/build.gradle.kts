@@ -66,6 +66,13 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // STAGE-012 renderer spike. Debug only: filament-android draws the model and
+    // filamat-android compiles its one material on the device, so no matc binary
+    // and no committed .filamat are needed while the renderer is still a
+    // candidate. Neither reaches a release build.
+    debugImplementation(libs.filament.android)
+    debugImplementation(libs.filamat.android)
+
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)

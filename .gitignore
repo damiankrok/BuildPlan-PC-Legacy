@@ -12,6 +12,9 @@ local.properties
 *.ap_
 *.dex
 release/
+# `src/release` is a Gradle source set, not build output: the release variant
+# does not compile without it.
+!app/src/release/
 
 # IDE
 .idea/

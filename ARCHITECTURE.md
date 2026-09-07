@@ -9,8 +9,10 @@ Jedna natywna aplikacja Android: powłoka UI (STAGE-001), kanoniczna warstwa
 domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A) oraz
 kontrakt geometrii budynku (STAGE-011). Do tego dwa zbiory danych w źródłach
 `debug`: referencyjny projekt bez geometrii (STAGE-010A) i syntetyczny dom
-demonstracyjny z geometrią (STAGE-011). Brak backendu, persystencji,
-autoryzacji, parsera i renderera 3D.
+demonstracyjny z geometrią (STAGE-011). Do tego **spike renderera na Google
+Filament** (STAGE-012) — wyłącznie w źródłach `debug`, jako dowód wykonalności
+i podstawa wyboru technologii, nie jako docelowy renderer produkcyjny. Brak
+backendu, persystencji, autoryzacji i parsera rzutów.
 
 ## Decyzje
 
@@ -44,7 +46,11 @@ więc jej nie podejmowano.
 ### Minimalne zależności
 
 Poza powyższymi nie dodano nic: brak Room, Retrofit, Ktor, Hilt, Koin, Firebase,
-bibliotek wykresów, silnika 3D i bibliotek płatności.
+bibliotek wykresów i bibliotek płatności.
+
+Jedyny wyjątek to silnik 3D dodany w STAGE-012 i **wyłącznie jako
+`debugImplementation`** — patrz „Spike renderera 3D (STAGE-012)”. Wariant release
+nie kompiluje go, nie linkuje i nie pakuje.
 
 ## Warstwa domenowa (STAGE-002, STAGE-002A)
 
@@ -392,9 +398,131 @@ Mała syntetyczna atrapa `ReferenceBuilding` w `src/test/` zostaje bez zmian. Ma
 inny cel — testuje kontrakt własności elementów — i celowo nie zależy od faktów
 osób trzecich.
 
+## Spike renderera 3D (STAGE-012)
+
+Spike, nie produkcja. Zadaniem było rozstrzygnąć **jedno** pytanie: czy przyjęte
+warstwy — semantyczna domena i kontrakt geometrii — dają się interaktywnie
+narysować na Androidzie bez naginania któregokolwiek z ich niezmienników.
+Odpowiedź brzmi tak, a kod dowodzący tego żyje w całości w `src/debug`.
+
+### Zależność
+
+| Artefakt | Wersja | Licencja | Konfiguracja |
+| --- | --- | --- | --- |
+| `com.google.android.filament:filament-android` | 1.75.1 | Apache-2.0 | `debugImplementation` |
+| `com.google.android.filament:filamat-android` | 1.75.1 | Apache-2.0 | `debugImplementation` |
+
+1.75.1 to najwyższe **stabilne** wydanie faktycznie rozwiązywalne z Maven Central
+w chwili realizacji etapu (`maven-metadata.xml`: `<release>1.75.1</release>`).
+Żadnej wersji 1.76.x tam nie ma — pinowanie jej byłoby pinowaniem wersji, której
+nie da się pobrać. Obie biblioteki deklarują `minSdkVersion 21`, więc `minSdk 24`
+projektu zostaje bez zmian. Nie dodano SceneView; nie podnoszono żadnej innej
+zależności.
+
+### Dlaczego bezpośrednio Filament
+
+Filament to biblioteka renderująca z publicznym API Java/JNI, a nie framework
+sceny. Nie narzuca modelu danych, formatu zasobów ani nawigacji, więc geometria
+i semantyka mogą zostać dokładnie tam, gdzie są, a renderer pozostaje warstwą,
+która je **czyta**. Warstwa pośrednia w rodzaju SceneView dokładałaby własne
+pojęcie węzła i cyklu życia, a spike miał sprawdzić granicę, nie ukryć ją.
+
+### Granica geometria → GPU
+
+Kierunek zależności jest jednostronny i niezmieniony: renderer czyta geometrię,
+geometria nie wie o rendererze. `GeometryPurityTest` i `DomainPurityTest` badają
+`src/main`, a cały spike leży w `src/debug`, więc żaden typ Filamenta nie może
+wejść do domeny ani do geometrii.
+
+Pieczenie trójkątów to osobny, czysty adapter —
+`app/src/debug/java/com/buildplan/app/render/filament/BuildingRenderMesh.kt`:
+
+- `WallGeometry` i `SlabGeometry` → graniastosłup z obrysu, zamknięty czapkami;
+- `RoofFacetGeometry` → jedna płaska połać;
+- ściany nie są zgrzewane, więc każda ścianka ma własną, płaską normalną;
+- nawinięcie trójkąta jest **korygowane** do normalnej, którą jest cieniowany
+  (materiał jest dwustronny, a dwustronny materiał wnioskuje kierunek normalnej
+  z orientacji trójkąta);
+- adapter nie importuje niczego z Filamenta, więc testuje się na czystym JVM.
+
+Złączenie z semantyką to nadal **wyłącznie `BuildingElementId`**. Relacja
+jeden-do-wielu przechodzi przez adapter bez zmian: dach dwuspadowy to jeden
+`BuildingElementId` i dwie siatki, a więc dwie encje Filamenta odpowiadające tym
+samym id. Dotknięcie jednej połaci podświetla obie — bo to jeden element.
+
+### Widoczność: jedna ścieżka decyzyjna
+
+Renderer **nie ma** własnej reguły ukrywania. Ścieżka jest zawsze ta sama:
+
+```
+val visible    = building.visibleElements(visibility)   // domena decyduje
+val primitives = geometry.primitivesOf(visible)         // jedyny most
+renderer.setVisibleElements(primitives.map { it.elementId }.toSet())
+```
+
+Przełączenie widoczności **nie przebudowuje geometrii**: siatki są wgrywane raz,
+a zmiana widoku to dodanie i usunięcie encji ze sceny. Widoczne skutki uboczne są
+dokładnie takie, jakich wymaga model: ukrycie poddasza zostawia dach w powietrzu,
+bo dach ma zakres `WholeBuilding`, a nie `OnFloor(poddasze)`.
+
+### Cykl życia
+
+Jedna instancja renderera na jeden `SurfaceView`, tworzona przy wejściu do
+kompozycji i niszczona przy wyjściu. Brak singletona i brak statycznego silnika:
+po `recreate()` Activity poprzedni silnik jest już zniszczony, a nowy powstaje
+osobno. Potwierdzone na urządzeniu — dwa kolejne odtworzenia zalogowały
+`FEngine created` **pod tym samym adresem**, co znaczy, że poprzedni został
+w całości zwolniony.
+
+Zapamiętywany jest wyłącznie stan kamery (`rememberSaveable`), bo użytkownik
+ustawił ją ręcznie. Widoczność i zaznaczenie celowo **nie** są utrwalane.
+
+### Materiał
+
+Jeden materiał: neutralny, dwustronny, bez tekstur, z kolorem jako parametrem
+instancji. Tło jest ciemne, bryła jasna — wygląd techniczny, nie fotorealizm.
+Nie ma mapy środowiskowej ani zasobu IBL: człon ambient to jeden współczynnik
+sferyczny podany liczbą.
+
+Materiał jest kompilowany **na urządzeniu** przez `filamat-android`, żeby nie
+wciągać do builda narzędzia `matc` ani nie commitować binarnego `.filamat` dla
+materiału, który może nie przetrwać wyboru renderera. Koszt jest realny
+i ograniczony: `filamat-android` to druga biblioteka natywna, wyłącznie w debug.
+**Produkcjonizacja (STAGE-013) powinna zastąpić to skompilowanym `.filamat`.**
+
+### Natywne biblioteki i zgodność z 16 KB
+
+`filament-android` i `filamat-android` wnoszą `libfilament-jni.so`
+i `libfilamat-jni.so` w czterech ABI. (`libandroidx.graphics.path.so` było
+w APK już wcześniej — pochodzi z `androidx.graphics:graphics-path`, tranzytywnej
+zależności Compose UI.)
+
+Sprawdzone na **zbudowanym APK**, nie na dokumentacji:
+
+- każdy segment `LOAD` każdej z 12 spakowanych bibliotek ma `align = 0x4000`
+  (2^14), więc warunek 16 KB jest spełniony także w 32-bitowych ABI, których on
+  nie dotyczy;
+- `zipalign -c -P 16 -v 4` → `Verification successful`, każde `.so` na granicy
+  16 KB;
+- `GNU_RELRO` obecne we wszystkich 12 bibliotekach;
+- **runtime zweryfikowany**: ten sam APK uruchomiony na lokalnie zainstalowanym
+  obrazie API 36 o stronie 16 KB (`getconf PAGE_SIZE` = 16384) ładuje obie
+  biblioteki, renderuje, pickuje i przełącza widoczność bez awarii.
+
+Te kontrole trzeba powtarzać po każdej zmianie wersji renderera.
+
+### Granica spike / produkcja
+
+Spike dowodzi: wgrania geometrii, mapowania `BuildingElementId`, orbitowania,
+skali i przesuwania, ukrywania dachu i kondygnacji, pickingu i stabilności cyklu
+życia. Spike **nie** rozstrzyga: docelowej architektury renderera, hosta
+produkcyjnego, izolacji pomieszczenia w UI, systemu materiałów, cieni, poziomów
+szczegółowości ani wydajności na realnym sprzęcie. To zakres STAGE-013.
+
 ## Czego jeszcze nie ustalono
 
-Persystencja, API, autoryzacja, testy instrumentalne, technologia renderera 3D,
-kamera i picking, parser rzutów, geometria otworów i schodów, docelowy
+Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
+renderera 3D (kandydat wybrany w STAGE-012, produkcjonizacja w STAGE-013),
+izolacja pomieszczenia w UI, parser rzutów, geometria otworów i schodów, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
 kosztów.

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only labels for the STAGE-012 Filament renderer spike. They live in the
+  debug source set because the spike does, and neither reaches a release build.
+-->
+<resources>
+    <string name="model_spike_title">Podgląd 3D — spike renderera (debug)</string>
+    <string name="model_spike_description">Syntetyczny dom demonstracyjny renderowany silnikiem Filament. To rusztowanie deweloperskie do wyboru renderera, a nie docelowy widok modelu.</string>
+
+    <string name="model_spike_visibility_all">Wszystko</string>
+    <string name="model_spike_visibility_no_roof">Bez dachu</string>
+    <string name="model_spike_visibility_no_upper_floor">Bez poddasza</string>
+    <string name="model_spike_visibility_no_roof_no_upper_floor">Bez dachu i poddasza</string>
+
+    <string name="model_spike_reset_camera">Wyśrodkuj kamerę</string>
+    <string name="model_spike_gesture_hint">Jeden palec — obrót. Dwa palce — przesuwanie i skala. Dotknięcie — wybór elementu.</string>
+    <string name="model_spike_selection_none">Nie wybrano elementu. Dotknij bryły, aby sprawdzić jej identyfikator.</string>
+    <string name="model_spike_selection">Wybrano: %1$s (%2$s)</string>
+    <string name="model_spike_unavailable">Syntetyczny dom demonstracyjny nie ma geometrii do wyświetlenia.</string>
+</resources>
