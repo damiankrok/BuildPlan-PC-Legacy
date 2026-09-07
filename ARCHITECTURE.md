@@ -284,8 +284,16 @@ zależy od renderera, którego nie ma.
 - `PlanPoint(x, z)` — punkt rzutu; `ModelPoint(x, y, z)` — punkt w przestrzeni
   lokalnej. Nie są to typy `android.graphics`.
 - `WallGeometry` — **oś ściany** (`start`, `end`), rzędna dolna, dodatnia
-  wysokość i dodatnia grubość. Oś, a nie obrys: obrys trzeba by przy każdej
-  edycji uzgadniać z własną grubością. Otworów (drzwi, okna) tu nie ma.
+  wysokość, dodatnia grubość oraz `openings` (STAGE-013B). Oś, a nie obrys:
+  obrys trzeba by przy każdej edycji uzgadniać z własną grubością.
+- `WallOpening` (STAGE-013B) — prostokątna dziura w ścianie: odległość wzdłuż
+  osi, szerokość, rzędna parapetu, wysokość, oraz `BuildingElementId`
+  **wypełniającego ją okna lub drzwi**. Dziura należy do ściany, skrzydło do
+  okna. Rodzaju otworu tu nie ma — różnicę okno/drzwi opisuje w geometrii
+  wyłącznie parapet.
+- `OpeningPanelGeometry` (STAGE-013B) — płaskie wypełnienie otworu: szyba,
+  skrzydło, okno połaciowe. Walidowane na płaskość, nie na pionowość: okno
+  połaciowe leży w płaszczyźnie dachu.
 - `SlabGeometry` — obrys w rzucie, rzędna **spodu** i dodatnia grubość. To,
   której płaszczyzny dotyczy rzędna, jest nazwane wprost, bo „strop na 2,80” jest
   niejednoznaczne dokładnie o grubość stropu.
@@ -619,11 +627,138 @@ zrzut ekranu jest dowodem tylko wtedy, gdy da się go powtórzyć. Syntetyczny d
 zostaje jako fikstura regresyjna renderera: jego liczby są wymyślone, więc nie
 zmieniają się przy korekcie odrysu.
 
+## Korekta modelu wizualnego (STAGE-013B)
+
+OWNER obejrzał V1 i zgłosił cztery rzeczy: ukrycie warstwy dawało bryłę, o
+której nie było widać, że to ten sam dom; brakowało okien; schody były w złym
+miejscu; całość wyglądała jak klocek low-poly, a nie jak techniczny model
+studialny. Poniżej decyzje, które z tego wynikły. Wszystkie mieszczą się
+w `src/debug`, poza kontraktem otworów, który należy do `geometry/`.
+
+### Ciągłość modelu przy ukrywaniu warstw — reguła
+
+**Ukrycie warstwy nie może zmienić bryły, tylko to, ile z niej widać.**
+Egzekwują to trzy rzeczy naraz:
+
+- **Jeden kanoniczny model.** Nie ma uproszczonych wariantów geometrii dla
+  poszczególnych trybów. Każdy stan widoczności jest **podzbiorem** tego samego
+  `MarcowkiVisualModelV1.geometry`, a suma wszystkich stanów to całość modelu —
+  jest to sprawdzane testem, nie obietnicą.
+- **Warstwa zdjęta zostaje narysowana jako siatka.** Renderer dostaje dwa
+  zbiory: widoczny i usunięty. Widoczny rysuje jako bryłę z konturem, usunięty
+  wyłącznie jako kontur — jaśniejszy dla obecnego, przygaszony i bez testu
+  głębi dla zdjętego. Dach zdjęty z domu nadal wisi nad nim jako szkielet, więc
+  pytanie „czy to jeszcze ten sam budynek” nie ma jak powstać.
+- **Zbiór usunięty to dopełnienie, nie druga reguła.** Liczy się go jako
+  `wszystkie elementy geometrii − wynik zapytania domeny`. Renderer nadal nie
+  ma własnego zdania o tym, co jest dachem ani co jest kondygnacją.
+
+### Otwory: dziura należy do ściany, wypełnienie do okna
+
+`WallGeometry` ma teraz `openings: List<WallOpening>`. `WallOpening` to
+prostokątna dziura opisana **odległością wzdłuż osi ściany**, wysokością
+parapetu i wysokością otworu — plus `BuildingElementId` **innego** elementu:
+okna albo drzwi, które ją wypełniają.
+
+Podział jest celowy i przebiega tam, gdzie przebiega w rzeczywistości:
+
+- dziura jest własnością ściany, bo to ściana jest przewiercona;
+- skrzydło jest osobnym elementem (`WINDOW` / `DOOR`) z własną nazwą,
+  własnym pickingiem i własnym przyszłym kosztem;
+- ukrycie okna zostawia dziurę — bo dziura tym właśnie jest.
+
+`WallOpening` **nie** przenosi `BuildingElementKind`. Różnica między oknem
+a drzwiami to w geometrii wyłącznie poziom parapetu, a drugi egzemplarz
+odpowiedzi, którą domena już zna, mógłby się z nią tylko rozjechać.
+
+Otwór jest pozycjonowany **współrzędną planu**, nie odległością od początku
+ściany, i przeliczany na odległość dopiero przy budowie prymitywu. Ten etap
+przedłużył cztery ściany o metr w każdą stronę (podcienie); zapisana odległość
+przesunęłaby wtedy po cichu każde okno na tych ścianach.
+
+`OpeningPanelGeometry` to płaskie wypełnienie otworu: szyba, skrzydło, okno
+połaciowe. Osobny typ od `GablePanelGeometry`, bo nie jest pionowy (okno
+połaciowe leży w płaszczyźnie dachu), jest oglądany z obu stron i należy do
+własnego elementu, a nie do ściany. Walidowana jest płaskość.
+
+Pieczenie dziury polega na **niepieczeniu** kawałka ściany: mur dzieli się na
+odcinki pełnej wysokości obok otworu oraz podokiennik i nadproże nad nim. Węgarki
+wychodzą wtedy jako czoła sąsiednich odcinków — zawsze dokładnie w licu otworu,
+bo nic ich nie rysuje osobno.
+
+### Reprezentacja schodów
+
+Schody są elementem `STAIRS` na parterze, bo tam zaczyna się bieg. Nie wskazują
+żadnego pomieszczenia: źródło nazywa „Schody” dopiero na poddaszu, a wymyślanie
+pomieszczenia parteru po to, żeby schody miały gdzie mieszkać, jest dokładnie
+tym ruchem, którego model nie robi.
+
+Kształt to trzy biegi obracające się dwukrotnie wokół prostokątnego trzonu —
+tak rysują je oba rzuty. Kierunek nie jest zgadnięty: strzałka na rzucie
+poddasza wskazuje na zachód, w korytarz, co ustala całą sekwencję wstecz od
+miejsca dojścia. Każdy stopień to osobny stopień o własnej grubości, a nie
+bryła od podłogi — bryła wypełnia klatkę i z góry czyta się jak cokół, a widok
+z góry jest tym jedynym, w którym OWNER musi rozpoznać schody.
+
+Strop nad parterem jest w związku z tym cięty na kawałki wokół klatki. Schody
+przechodzące przez lity strop to pierwsza rzecz, w którą nikt nie uwierzy.
+
+### Wierność bryły: podcienie szczytowe
+
+Najważniejsza korekta zewnętrza. Na obu rzutach i na obu kondygnacjach hatch
+ścian zachodniej i wschodniej biegnie metr **za** ścianę szczytową. Wysunięcie
+dachu o 1,00 m nie jest więc samym okapem — idą z nim ściany, a każdy szczyt
+jest podcieniem z dwoma policzkami, z balkonem na poddaszu i przeszkleniem
+cofniętym w głąb. To jest cecha, po której ten dom się rozpoznaje, i V1 nie
+miał jej wcale.
+
+Konsekwencje w modelu: naroża należą teraz do ścian północ–południe (to one
+przechodzą przez oba szczyty), strop nad parterem wychodzi w oba podcienie jako
+płyta balkonowa, a płyta fundamentowa podchodzi pod policzki, żeby nie kończyły
+się w powietrzu.
+
+### Przeszklenia szczytów mają spadzisty nadproże
+
+Rzut poddasza podaje 2 × 234/303 i 270/320. Wysokość jest tam **maksimum**, nie
+stałą: otwór 303 stojący tam, gdzie zaczyna się zachodni, potrzebowałby 3,03 m
+połaci, a jest jej 2,38 m. Nadproża idą więc po dachu i sięgają podanej
+wysokości tam, gdzie dach na to pozwala. Dlatego trójkąt szczytu nie jest już
+jednym panelem, tylko pasmami: pełnymi od okapu i przeszklonymi od nadproża
+w górę. Jeden panel z dziurą wymagałby wielokąta niespójnego, którego nic w tym
+modelu nie upiecze.
+
+### Styl prezentacji: kontur zamiast bryły
+
+Do każdej siatki pieczony jest **drugi bufor indeksów** — lista linii ze
+wszystkich krawędzi ścian, każda raz (deduplikacja po pozycji). Rysuje je
+oddzielny materiał `UNLIT`, a bryła dostaje `setPolygonOffset`, żeby kontur
+wygrywał test głębi zamiast z nim remisować.
+
+To jest cała różnica między klockiem a rysunkiem technicznym: lite cieniowanie
+mówi, gdzie jest ściana, ale nie mówi, gdzie się kończy. Do tego szyby są
+ciemniejsze i chłodniejsze od muru — kolor wybierany po **typie prymitywu**,
+nie po `BuildingElementKind`, bo „to jest cienkie płaskie wypełnienie otworu”
+jest faktem o geometrii i renderer ma prawo go znać.
+
+Presetów jest siedem: doszły `FACADE_OPENINGS` (nisko, prawie z poziomu terenu
+— z 22° węgarek jest kreską) i `STAIRS_VIEW`, jedyny kadrujący **część** modelu.
+Framing bierze więc dwa pudełka: model, do którego skalują się limity kamery,
+i to, na co patrzy.
+
+### Czego świadomie nie zrobiono
+
+Komina — widać go na obu wizualizacjach, ale żaden rzut nie rysuje szybu, który
+dałoby się odróżnić od szaf kreskowanych tak samo. Komin postawiony z renderu,
+a nie z rzutu, byłby wymyśloną współrzędną w typie nieodróżnialnym od zmierzonej.
+Okna połaciowe są odrysowane co do pozycji, ale rysowane jako panele **na**
+połaci, bo ten etap nie wycina dziur w połaci. Jedno i drugie jest zapisane
+w `MarcowkiSourceEvidence.notModelled` i `displayAssumptions`.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
-odrysowany, nie produkcjonizację hosta), izolacja pomieszczenia w UI, parser
-rzutów, geometria otworów i schodów, docelowy
-`applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
-kosztów.
+odrysowany, STAGE-013B poprawiło ten model — nie produkcjonizację hosta),
+izolacja pomieszczenia w UI, parser rzutów, wycinanie otworów w połaci dachu,
+docelowy `applicationId`, generowanie identyfikatorów, pełne reguły sumowania
+alokacji kosztów.

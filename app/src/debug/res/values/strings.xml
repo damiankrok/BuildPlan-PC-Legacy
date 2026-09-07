@@ -16,6 +16,8 @@
     <string name="model_view_ground_cutaway">Przekrój parteru</string>
     <string name="model_view_ground_top">Parter z góry</string>
     <string name="model_view_upper_top">Poddasze z góry</string>
+    <string name="model_view_facade_openings">Elewacje — otwory</string>
+    <string name="model_view_stairs">Schody</string>
 
     <string name="model_spike_visibility_all">Wszystko</string>
     <string name="model_spike_visibility_no_roof">Bez dachu</string>

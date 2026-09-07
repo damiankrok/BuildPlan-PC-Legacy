@@ -211,6 +211,81 @@ object MarcowkiSourceEvidence {
             note = "Printed room dimensions on the upper-floor plan, used to place its " +
                 "partitions.",
         ),
+        FidelityRecord(
+            name = "Stolarka parteru",
+            value = "470/230, 300/230, 110/230, 105/210, 100/210, 90/230, 275/225, 140/140",
+            fidelity = SourceFidelity.SOURCE_EXACT,
+            note = "The circled width/height schedule on the ground-floor plan. Every one " +
+                "of them was cross-checked against the gap it labels in the wall hatch, " +
+                "and all eight agree to within 2 cm — which is what says the schedule and " +
+                "the drawing are describing the same openings.",
+        ),
+        FidelityRecord(
+            name = "Przeszklenia szczytów",
+            value = "2 x 234/303 (szczyt północny), 270/320 (szczyt południowy)",
+            fidelity = SourceFidelity.SOURCE_EXACT,
+            note = "The circled schedule on the upper-floor plan. Their heights are the " +
+                "maximum each reaches, not a constant: a 303 opening standing where the " +
+                "west one starts would need 2.38 m of roof and there is only 2.38 m at " +
+                "that point, so the heads follow the slope and reach 303 nearer the ridge.",
+        ),
+        FidelityRecord(
+            name = "Okna połaciowe",
+            value = "3 x 78/118",
+            fidelity = SourceFidelity.SOURCE_EXACT,
+            note = "Labelled on the upper-floor plan and dashed in over rooms 4, 5 and the " +
+                "stairwell. The 78 cm width was confirmed against the dashed outlines, " +
+                "which trace 0.79 m across and 0.85 m up the slope — 118 cm foreshortened " +
+                "by a 40 degree pitch is 0.90 m, so the two agree.",
+        ),
+    )
+
+    /**
+     * Numbers measured off the drawings that place something the schedule does
+     * not dimension.
+     *
+     * These are [SourceFidelity.SOURCE_TRACED] and are listed rather than
+     * counted, unlike the grid lines, because each is a claim about *where a
+     * thing is* rather than a coordinate the model would obviously need.
+     */
+    val tracedFeatures: List<FidelityRecord> = listOf(
+        FidelityRecord(
+            name = "Podcień szczytowy",
+            value = "1.00 m",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "On both plans and on both storeys the west and east wall hatch runs " +
+                "38 px past the north outer face and 36 px past the south one — 1.00 m " +
+                "and 0.95 m at the calibrated scale, and the same figure as the traced " +
+                "gable overhang. So each gable is a portal with two solid cheeks rather " +
+                "than a bare roof projection, which is the trait the first model missed.",
+        ),
+        FidelityRecord(
+            name = "Balkony w podcieniach",
+            value = "0.98 m głębokości",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "The upper-floor plan stipples the portal floor between the cheeks and " +
+                "draws a single line along its outer edge. The two 234/303 doors open " +
+                "onto the north one and the 270/320 onto the south one.",
+        ),
+        FidelityRecord(
+            name = "Klatka schodowa",
+            value = "5.35-7.47 x 5.18-8.80 m, rdzeń 5.35-6.46 x 6.18-7.77 m",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "Three flights turning twice around a rectangular core, traced from " +
+                "both plans: the flight the ground plan draws across the south of the " +
+                "stairwell lands within 5 cm of the one the upper plan draws there. The " +
+                "direction is fixed by the upper plan's arrow, which points west off the " +
+                "top flight into the attic corridor.",
+        ),
+        FidelityRecord(
+            name = "Drzwi z garażu do kotłowni",
+            value = "0.90 m szerokości",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "The one opening the schedule does not label, because internal doors " +
+                "are not scheduled on this plan. Its width is the gap in the wall hatch; " +
+                "its 2.10 m head is taken from the labelled doors beside it and is " +
+                "recorded as an assumption below.",
+        ),
     )
 
     /**
@@ -258,6 +333,98 @@ object MarcowkiSourceEvidence {
                 "split is a reading of the furniture and room numbering on the plan, and " +
                 "both zones are marked TRACE_UNCERTAIN because of it.",
         ),
+        FidelityRecord(
+            name = "Parapet okna kuchni",
+            value = "0.90 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The schedule gives width and height, never a sill. Eight of the nine " +
+                "ground-floor openings reach the floor and their sill is therefore stated " +
+                "by their own height; the 140/140 kitchen window does not, so its head is " +
+                "aligned with the 2.30 line the five 230-high openings print and its sill " +
+                "falls out of that. The side elevation shows a sill at about this height.",
+        ),
+        FidelityRecord(
+            name = "Nadproże drzwi garaż–kotłownia",
+            value = "2.10 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The only unlabelled opening in the model. Its width is traced; its " +
+                "head is borrowed from the 105/210 and 100/210 doors either side of it, " +
+                "because a door needs some head and no other number is available.",
+        ),
+        FidelityRecord(
+            name = "Balustrada balkonów",
+            value = "1.10 x 0.08 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The plan draws the balcony edge as a single line with no height " +
+                "against it. 1.10 m is the usual guarding height, and without something " +
+                "there the portal reads as a hole in the gable rather than a balcony.",
+        ),
+        FidelityRecord(
+            name = "Podesty w podcieniach",
+            value = "płyta do -0.32 m pod podcieniami",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The portal cheeks are traced but nothing under them is. The foundation " +
+                "plate is carried beneath both portals so they stand on something instead " +
+                "of ending in mid-air above the terrain; it is paving, not built area, and " +
+                "the stated 131.16 m2 footprint is unaffected by it.",
+        ),
+        FidelityRecord(
+            name = "Zadaszenie przed garażem",
+            value = "1.00 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The ground plan draws the garage's east wall one portal depth past the " +
+                "building line and dimensions nothing above it. The flat roof is carried " +
+                "over that metre so the wall is a sheltered entrance rather than a " +
+                "free-standing fin.",
+        ),
+        FidelityRecord(
+            name = "Balkon południowy na pełnej szerokości",
+            value = "7.89 m zamiast 3.81 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The upper plan stipples the south portal floor only east of x = 3.39, " +
+                "leaving the western half open to the entrance below. The model floors the " +
+                "whole width, because the alternative leaves a 0.34 m slot in the portal " +
+                "cheeks where the storey slab would have closed them.",
+        ),
+        FidelityRecord(
+            name = "Liczba stopni",
+            value = "17 stopni po 0.18 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The plans draw the treads but the watermark crosses them, so the count " +
+                "is derived from the two exact levels the section gives instead: 3.06 m of " +
+                "rise divided into seventeen puts each riser at 0.18 m. The three flights " +
+                "and their direction are traced; only the subdivision is chosen.",
+        ),
+        FidelityRecord(
+            name = "Okna połaciowe rysowane na połaci",
+            value = "0.08 m nad płaszczyzną dachu",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "Their positions are traced, but this stage does not cut holes in a roof " +
+                "facet, so each is drawn as a panel lying proud of the slope. It reads as a " +
+                "rooflight from outside and as a panel floating over the attic from inside; " +
+                "the second is the honest cost of not having cut the hole.",
+        ),
+    )
+
+    /**
+     * What the source shows and this model does not draw.
+     *
+     * Recorded rather than left out silently. An owner comparing the model with
+     * the published renders will notice these, and the useful answer is "known,
+     * and here is why" rather than a second review round discovering them.
+     */
+    val notModelled: List<String> = listOf(
+        "Komin. Both published renders show one on the ridge, but neither plan " +
+            "draws a shaft that can be told apart from the wardrobes hatched the " +
+            "same way, and the ground plan's fireplace does not fix where it comes " +
+            "out. A chimney placed from a render rather than a plan would be an " +
+            "invented coordinate wearing the same type as a measured one.",
+        "Elewacje materiałowe. The renders show vertical timber in the gables and " +
+            "dark render on the garage; this is a technical model with one surface " +
+            "colour and no materials, so none of that is represented.",
+        "Drzwi wewnętrzne poza jednymi. The plans schedule no internal doors, and " +
+            "only the garage-to-boiler-room opening is drawn clearly enough in the " +
+            "wall hatch to trace.",
     )
 
     /**
@@ -276,14 +443,15 @@ object MarcowkiSourceEvidence {
             "20-25 % larger; the difference is the slope, not a trace error."
 
     /** Everything classified, in one list, for counting and for the debug panel. */
-    val allRecords: List<FidelityRecord> get() = exactValues + displayAssumptions
+    val allRecords: List<FidelityRecord> get() = exactValues + tracedFeatures + displayAssumptions
 
     /**
      * How many classified data of one kind the model rests on.
      *
-     * [SourceFidelity.SOURCE_TRACED] is counted from the model itself rather
-     * than from a hand-written list: every traced coordinate is a grid line, and
-     * a list of them beside the grid would be a second copy to keep in step.
+     * [SourceFidelity.SOURCE_TRACED] is counted from the grid rather than only
+     * from [tracedFeatures]: every traced coordinate is a grid line, and a
+     * hand-written list of them beside the grid would be a second copy to keep
+     * in step.
      */
     fun countOf(fidelity: SourceFidelity): Int = when (fidelity) {
         SourceFidelity.SOURCE_TRACED -> MarcowkiVisualModelV1.TRACED_GRID_LINE_COUNT

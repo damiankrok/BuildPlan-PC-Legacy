@@ -149,9 +149,18 @@ private fun ModelStage(model: DebugModel) {
             .mapTo(LinkedHashSet()) { it.elementId }
     }
 
+    // What the same answer left out, drawn as a wireframe so that hiding a layer
+    // reads as this house with a layer removed rather than as a different, lower
+    // building. It is a *complement*, computed from the domain's own answer —
+    // not a second rule about roofs and storeys, which would be the one thing
+    // the renderer must never own.
+    val removedElementIds = remember(model, visibleElementIds) {
+        model.geometry.elementIds.filterNotTo(LinkedHashSet()) { it in visibleElementIds }
+    }
+
     val currentRenderer = renderer
     LaunchedEffect(currentRenderer, visibleElementIds) {
-        currentRenderer?.setVisibleElements(visibleElementIds)
+        currentRenderer?.setVisibleElements(visibleElementIds, removedElementIds)
     }
     // Outside composition on purpose: reading the camera during composition
     // would subscribe this composable to every frame of every drag.
@@ -241,7 +250,7 @@ private fun ModelStage(model: DebugModel) {
                     factory = { context ->
                         SurfaceView(context).also { surfaceView ->
                             val created = FilamentModelRenderer(surfaceView, meshes)
-                            created.setVisibleElements(visibleElementIds)
+                            created.setVisibleElements(visibleElementIds, removedElementIds)
                             created.resume()
                             renderer = created
                         }
@@ -263,7 +272,7 @@ private fun ModelStage(model: DebugModel) {
                     onClick = {
                         preset = option
                         visibility = option.visibility
-                        cameraState.apply(option.framing(bounds))
+                        cameraState.apply(option.framing(bounds, model.focusBounds(option.focus, bounds)))
                         currentRenderer?.pose = cameraState.pose()
                     },
                     label = { Text(stringResource(option.labelRes)) },

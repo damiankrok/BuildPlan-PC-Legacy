@@ -4,10 +4,12 @@ import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingVisibility
 import com.buildplan.app.domain.model.visibleElements
 import com.buildplan.app.geometry.ModelPoint
+import com.buildplan.app.geometry.OpeningPanelGeometry
 import com.buildplan.app.geometry.PlanPoint
 import com.buildplan.app.geometry.RoofFacetGeometry
 import com.buildplan.app.geometry.SlabGeometry
 import com.buildplan.app.geometry.WallGeometry
+import com.buildplan.app.geometry.WallOpening
 import com.buildplan.app.geometry.demo.SyntheticDemoHouse
 import com.buildplan.app.geometry.primitivesOf
 import kotlin.math.abs
@@ -202,7 +204,110 @@ class BuildingRenderMeshTest {
         assertTrue(SyntheticDemoHouse.groundCeilingSlabId in elementIds)
     }
 
+    @Test
+    fun `C013B-05 an opening is baked as an absence, not as a decal`() {
+        val windowId = BuildingElementId("e-test-window")
+        val wall = WallGeometry(
+            elementId = BuildingElementId("e-test-wall"),
+            start = PlanPoint(0.0, 0.0),
+            end = PlanPoint(6.0, 0.0),
+            baseElevation = 0.0,
+            height = 2.72,
+            thickness = 0.44,
+            openings = listOf(
+                WallOpening(
+                    elementId = windowId,
+                    distanceFromStart = 2.0,
+                    width = 1.4,
+                    sillElevation = 0.9,
+                    height = 1.4,
+                ),
+            ),
+        )
+
+        val solid = wall.toRenderMesh()
+        assertEquals("The hole belongs to the wall, not to the window", wall.elementId, solid.elementId)
+
+        // Four boxes: the pier either side, the sill under the opening and the
+        // head over it. Six faces each, two triangles a face.
+        assertEquals(4 * 6 * 2, solid.triangleCount)
+
+        // Nothing is baked inside the opening. This is the assertion that would
+        // fail if a hole were ever faked by drawing a dark rectangle on a solid
+        // wall — a picture of a window is indistinguishable from one until the
+        // camera moves round it, and then it is a sticker.
+        (0 until solid.vertexCount).forEach { index ->
+            val corner = solid.vertex(index)
+            val insideOpening = corner.x > 2.0 + TOLERANCE && corner.x < 3.4 - TOLERANCE &&
+                corner.y > 0.9 + TOLERANCE && corner.y < 2.3 - TOLERANCE
+            assertTrue("Vertex $corner sits inside the opening", !insideOpening)
+        }
+
+        // The reveal is real: the jamb faces are the end caps of the two piers,
+        // so the opening's own edges appear in the baked positions.
+        listOf(2.0f, 3.4f).forEach { jamb ->
+            assertTrue(
+                "No jamb face was baked at x = $jamb",
+                (0 until solid.vertexCount).any { abs(solid.vertex(it).x - jamb) < TOLERANCE },
+            )
+        }
+
+        // And a wall with no openings still bakes to exactly one box, so the
+        // splitting path cannot have changed the common case.
+        assertEquals(6 * 2, wall.copy(openings = emptyList()).toRenderMesh().triangleCount)
+    }
+
+    @Test
+    fun `C013B-05 a pane fills the opening it belongs to, on its own element`() {
+        val windowId = BuildingElementId("e-test-window")
+        val pane = OpeningPanelGeometry(
+            elementId = windowId,
+            vertices = listOf(
+                ModelPoint(2.0, 0.9, 0.0),
+                ModelPoint(3.4, 0.9, 0.0),
+                ModelPoint(3.4, 2.3, 0.0),
+                ModelPoint(2.0, 2.3, 0.0),
+            ),
+        ).toRenderMesh()
+
+        assertEquals(windowId, pane.elementId)
+        assertEquals("A pane is one quad", 2, pane.triangleCount)
+        assertEquals("A pane has four edges", 4, pane.edgeCount)
+    }
+
+    @Test
+    fun `C013B-10 every mesh carries a deduplicated outline of its own corners`() {
+        val box = SlabGeometry(
+            elementId = BuildingElementId("e-test-slab"),
+            outline = listOf(
+                PlanPoint(0.0, 0.0),
+                PlanPoint(2.0, 0.0),
+                PlanPoint(2.0, 3.0),
+                PlanPoint(0.0, 3.0),
+            ),
+            elevation = 0.0,
+            thickness = 0.3,
+        ).toRenderMesh()
+
+        // A box has twelve edges. It bakes as six faces of four corners each, so
+        // twenty-four edge candidates — the other twelve are the seams faces
+        // share, and drawing those twice is what makes an outline flicker.
+        assertEquals(12, box.edgeCount)
+        box.edgeIndices.forEach { index ->
+            assertTrue("Edge index $index is outside the vertex buffer", index < box.vertexCount)
+        }
+
+        // Every model the viewport can draw has an outline for every mesh, or
+        // the wireframe a removed layer is shown as would have holes in it.
+        SyntheticDemoHouse.geometry.primitives.toRenderMeshes().forEach { mesh ->
+            assertTrue("${mesh.elementId.value} bakes no outline", mesh.edgeCount > 0)
+        }
+    }
+
     // --- helpers -------------------------------------------------------------
+
+    /** A hundredth of a millimetre, in the float precision the bake works in. */
+    private val TOLERANCE = 1e-5f
 
     private data class Vector(val x: Float, val y: Float, val z: Float) {
         operator fun minus(other: Vector) = Vector(x - other.x, y - other.y, z - other.z)

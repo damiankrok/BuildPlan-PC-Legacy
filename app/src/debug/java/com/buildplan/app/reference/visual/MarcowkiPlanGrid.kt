@@ -258,6 +258,277 @@ object MarcowkiPlanGrid {
         EAVES_Y + minOf(x, HOUSE_WIDTH - x).coerceAtLeast(0.0) *
             tan(Math.toRadians(ROOF_PITCH_DEGREES))
 
+    /**
+     * The plan range over which the roof underside is above [y], or `null` when
+     * it never is.
+     *
+     * The inverse of [roofUndersideAt], and the reason a gable can be glazed
+     * without the glazing coming out through the roof: the answer is always one
+     * interval centred on the ridge, because the roof rises to the ridge from
+     * both eaves at the same pitch.
+     */
+    fun roofAbove(y: Double): ClosedFloatingPointRange<Double>? {
+        if (y >= RIDGE_Y) return null
+        val inset = ((y - EAVES_Y) / tan(Math.toRadians(ROOF_PITCH_DEGREES))).coerceAtLeast(0.0)
+        if (inset >= RIDGE_X) return null
+        return inset..(HOUSE_WIDTH - inset)
+    }
+
+    // ---------------------------------------------------------------------
+    // Gable portals
+    // ---------------------------------------------------------------------
+
+    /**
+     * How far the eaves walls run past each gable wall, north and south.
+     *
+     * Equal to [GABLE_OVERHANG] and traced independently of it: on both plans
+     * the west and east wall hatch continues 38 px past the north outer face and
+     * 36 px past the south one, on both storeys. So the roof's 1.00 m projection
+     * is not a bare soffit — the walls come with it, and each gable end is a
+     * portal with two solid cheeks. It is the trait that makes this house look
+     * like itself, and the first model had none of it.
+     */
+    const val PORTAL_DEPTH: Double = GABLE_OVERHANG
+
+    /** Outer face of the north portal, one portal depth north of the house. */
+    const val Z_PORTAL_NORTH_FACE: Double = -PORTAL_DEPTH
+
+    /** Outer face of the south portal. */
+    const val Z_PORTAL_SOUTH_FACE: Double = BUILDING_DEPTH + PORTAL_DEPTH
+
+    /**
+     * Height of the balustrade across each portal at attic level.
+     *
+     * A display assumption. Both plans draw the balcony edge as a single line
+     * with no height against it, and the published renders show a frameless
+     * glass balustrade; 1.10 m is the usual guarding height and is what the
+     * model draws, so the portal reads as a balcony rather than as a hole.
+     */
+    const val BALUSTRADE_HEIGHT: Double = 1.10
+
+    /** Thickness of that balustrade. Display only — glass has no traced section. */
+    const val BALUSTRADE_THICKNESS: Double = 0.08
+
+    // ---------------------------------------------------------------------
+    // Openings — traced from the window and door schedule on both plans
+    // ---------------------------------------------------------------------
+
+    /**
+     * One opening as the plans dimension it.
+     *
+     * [nearEdge] is an absolute plan coordinate on the wall's own axis — X for a
+     * wall running east-west, Z for one running north-south — rather than a
+     * distance along the wall. The distance is what
+     * [com.buildplan.app.geometry.WallOpening] wants, but it is measured from
+     * whichever end the model happens to start that wall at, and this stage
+     * extends four walls past their old ends to build the portals. A coordinate
+     * survives that; a distance would have silently moved every window on those
+     * walls by a metre.
+     *
+     * The circled labels on the plans read *width/height* in centimetres, and
+     * those two numbers are [width] and [height]. [sill] is not in the schedule:
+     * it is 0.00 for everything that reaches the floor, which is every door and
+     * every full-height glazing here, and is derived once for the one window
+     * that does not — see [MarcowkiSourceEvidence.displayAssumptions].
+     */
+    data class OpeningTrace(
+        val nearEdge: Double,
+        val width: Double,
+        val sill: Double,
+        val height: Double,
+        /** The label the plan prints for this opening, kept for the evidence ledger. */
+        val label: String,
+    ) {
+        val farEdge: Double get() = nearEdge + width
+        val head: Double get() = sill + height
+    }
+
+    /**
+     * The head every full-height opening on the ground floor reaches.
+     *
+     * Not assumed: five of the nine ground-floor openings are dimensioned 230
+     * high and sit on the floor, so the 2.30 line is printed rather than chosen.
+     * It matters because it is what the one raised sill is derived from.
+     */
+    const val GROUND_OPENING_HEAD: Double = 2.30
+
+    /** Room 4's glazed wall onto the north terrace. Printed 470/230. */
+    val GF_LIVING_NORTH_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 2.28, width = 4.70, sill = 0.0, height = 2.30, label = "470/230")
+
+    /** Room 4's glazed door onto the east terrace. Printed 300/230. */
+    val GF_LIVING_EAST_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 0.90, width = 3.00, sill = 0.0, height = 2.30, label = "300/230")
+
+    /** Room 4's west window. Printed 90/230, and full height, as the side elevation draws it. */
+    val GF_LIVING_WEST_WINDOW: OpeningTrace =
+        OpeningTrace(nearEdge = 3.67, width = 0.90, sill = 0.0, height = 2.30, label = "90/230")
+
+    /**
+     * Room 3's west window. Printed 140/140 — the only opening here that does
+     * not reach the floor, so its 0.90 sill is the one derived level.
+     */
+    val GF_KITCHEN_WINDOW: OpeningTrace = OpeningTrace(
+        nearEdge = 5.39,
+        width = 1.40,
+        sill = GROUND_OPENING_HEAD - 1.40,
+        height = 1.40,
+        label = "140/140",
+    )
+
+    /** Room 7's south window. Printed 110/230. */
+    val GF_BEDROOM_WINDOW: OpeningTrace =
+        OpeningTrace(nearEdge = 1.40, width = 1.10, sill = 0.0, height = 2.30, label = "110/230")
+
+    /** The front door into room 1. Printed 105/210. */
+    val GF_ENTRANCE_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 4.18, width = 1.05, sill = 0.0, height = 2.10, label = "105/210")
+
+    /** The garage door. Printed 275/225, inside the dimensioned 252 clear height. */
+    val GF_GARAGE_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 8.58, width = 2.75, sill = 0.0, height = 2.25, label = "275/225")
+
+    /** The garage's own door to the outside, in its north wall. Printed 100/210. */
+    val GF_GARAGE_SIDE_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 9.93, width = 1.00, sill = 0.0, height = 2.10, label = "100/210")
+
+    /**
+     * The door between the garage and the boiler room.
+     *
+     * The only opening here the schedule does not label — internal doors are not
+     * scheduled on this plan — so its 0.90 m width is measured from the gap in
+     * the wall hatch and its 2.10 head is taken from the labelled doors beside
+     * it. It is modelled because it is the one thing that makes the cutaway show
+     * how the garage and the house connect.
+     */
+    val GF_BOILER_GARAGE_DOOR: OpeningTrace =
+        OpeningTrace(nearEdge = 10.46, width = 0.90, sill = 0.0, height = 2.10, label = "—")
+
+    /**
+     * How tall a gable glazing is allowed to get.
+     *
+     * The gable openings are the one place where the printed height is a
+     * *maximum* rather than a constant: their heads follow the roof, as both
+     * published renders show and as the arithmetic requires — a 3.03 m opening
+     * standing at x = 0.95 would come out through a roof plane that is only
+     * 2.38 m above the attic floor there. So the model reads 303 and 320 as the
+     * height the glazing reaches where the roof is high enough to allow it, and
+     * clips it to the roof everywhere else.
+     */
+    val UF_NORTH_GABLE_WEST_DOOR: OpeningTrace = OpeningTrace(
+        nearEdge = 0.95,
+        width = 2.34,
+        sill = UPPER_FLOOR_Y,
+        height = 3.03,
+        label = "234/303",
+    )
+
+    /** Its mirror image on the other side of the ridge. Printed 234/303. */
+    val UF_NORTH_GABLE_EAST_DOOR: OpeningTrace = OpeningTrace(
+        nearEdge = 4.61,
+        width = 2.34,
+        sill = UPPER_FLOOR_Y,
+        height = 3.03,
+        label = "234/303",
+    )
+
+    /** The front gable's glazing, starting at the ridge. Printed 270/320. */
+    val UF_SOUTH_GABLE_DOOR: OpeningTrace = OpeningTrace(
+        nearEdge = 3.95,
+        width = 2.70,
+        sill = UPPER_FLOOR_Y,
+        height = 3.20,
+        label = "270/320",
+    )
+
+    /** Every traced opening, for the fidelity ledger and its tests. */
+    val allOpenings: List<OpeningTrace> = listOf(
+        GF_LIVING_NORTH_DOOR,
+        GF_LIVING_EAST_DOOR,
+        GF_LIVING_WEST_WINDOW,
+        GF_KITCHEN_WINDOW,
+        GF_BEDROOM_WINDOW,
+        GF_ENTRANCE_DOOR,
+        GF_GARAGE_DOOR,
+        GF_GARAGE_SIDE_DOOR,
+        GF_BOILER_GARAGE_DOOR,
+        UF_NORTH_GABLE_WEST_DOOR,
+        UF_NORTH_GABLE_EAST_DOOR,
+        UF_SOUTH_GABLE_DOOR,
+    )
+
+    // ---------------------------------------------------------------------
+    // Rooflights
+    // ---------------------------------------------------------------------
+
+    /**
+     * The plan projection of one rooflight, as the upper plan dashes it in.
+     *
+     * Three of them, all labelled 78/118. They are given as plan rectangles
+     * because that is how they were traced; their height comes from the roof
+     * plane they lie in, which is why they are not [OpeningTrace]s.
+     */
+    data class RooflightTrace(val minX: Double, val minZ: Double, val maxX: Double, val maxZ: Double)
+
+    /** Over room 5, in the west slope. */
+    val ROOFLIGHT_WEST_NORTH: RooflightTrace = RooflightTrace(0.45, 5.60, 1.30, 6.39)
+
+    /** Over room 4, in the west slope. */
+    val ROOFLIGHT_WEST_SOUTH: RooflightTrace = RooflightTrace(0.45, 7.74, 1.30, 8.53)
+
+    /** Over the stairwell, in the east slope. */
+    val ROOFLIGHT_EAST: RooflightTrace = RooflightTrace(6.59, 7.74, 7.44, 8.53)
+
+    val allRooflights: List<RooflightTrace> =
+        listOf(ROOFLIGHT_WEST_NORTH, ROOFLIGHT_WEST_SOUTH, ROOFLIGHT_EAST)
+
+    /** How far a rooflight is drawn proud of the roof plane it sits in. */
+    const val ROOFLIGHT_PROUD_OF_ROOF: Double = 0.08
+
+    // ---------------------------------------------------------------------
+    // Stair
+    // ---------------------------------------------------------------------
+
+    /**
+     * The stair's footprint, and the core it wraps.
+     *
+     * Both plans draw the same three flights turning twice around a rectangular
+     * core, and both agree on where they are: the flight the ground plan draws
+     * across the south of the stairwell lands within 5 cm of the one the upper
+     * plan draws there. The travel direction is not guessed either — the upper
+     * plan's arrow on the top flight points west, into the attic corridor, which
+     * fixes the whole sequence backwards from its arrival.
+     */
+    const val STAIR_WEST_X: Double = 5.35
+    const val STAIR_EAST_X: Double = 7.47
+    const val STAIR_NORTH_Z: Double = 5.18
+    const val STAIR_SOUTH_Z: Double = 8.80
+
+    /** East face of the core the flights turn around; its west face is [STAIR_WEST_X]. */
+    const val STAIR_CORE_EAST_X: Double = 6.46
+    const val STAIR_CORE_NORTH_Z: Double = 6.18
+    const val STAIR_CORE_SOUTH_Z: Double = 7.77
+
+    /**
+     * Width of a flight, taken as the narrowest of the three traced bands so
+     * that no step is drawn outside the stairwell the plans give it.
+     */
+    const val STAIR_FLIGHT_WIDTH: Double = 1.01
+
+    /**
+     * How many risers carry the flight from 0.00 to +3.06.
+     *
+     * A display subdivision, not a schedule: the plans draw the treads but the
+     * watermark crosses them, so the count is derived from the two exact levels
+     * instead. Seventeen risers put each at exactly 0.18 m, which is a stair a
+     * person could climb; the alternative of drawing a ramp and calling it a
+     * stair would tell the owner nothing about the circulation.
+     */
+    const val STAIR_RISER_COUNT: Int = 17
+
+    /** Rise of one step, from the two levels the section states. */
+    val STAIR_RISER_HEIGHT: Double = (UPPER_FLOOR_Y - GROUND_FLOOR_Y) / STAIR_RISER_COUNT
+
     // ---------------------------------------------------------------------
     // Derived faces, for the room zones
     // ---------------------------------------------------------------------
@@ -275,10 +546,16 @@ object MarcowkiPlanGrid {
      *
      * Counted rather than listed, so it cannot fall out of step with the grid it
      * describes: the six perimeter centrelines, the nine ground-floor and eight
-     * attic partition centrelines, the two traced thicknesses and the traced
-     * gable overhang.
+     * attic partition centrelines, the two traced thicknesses, the traced gable
+     * overhang and the portal depth measured beside it, both edges of every
+     * traced opening, all four edges of every rooflight, and the seven lines
+     * that place the stair and its core.
      */
-    const val TRACED_LINE_COUNT: Int = 6 + 9 + 8 + 2 + 1
+    val TRACED_LINE_COUNT: Int =
+        6 + 9 + 8 + 2 + 1 + 1 +
+            2 * allOpenings.size +
+            4 * allRooflights.size +
+            7
 
     /** An axis-aligned rectangle on the plan, walked from its north-west corner. */
     fun rectangle(minX: Double, minZ: Double, maxX: Double, maxZ: Double): List<PlanPoint> =

@@ -47,6 +47,9 @@ internal class OrbitCameraState(
     initialDistance: Float,
     initialPanRight: Float,
     initialPanUp: Float,
+    initialFocusX: Float = 0f,
+    initialFocusY: Float = 0f,
+    initialFocusZ: Float = 0f,
 ) {
 
     private var yaw by mutableFloatStateOf(initialYaw)
@@ -54,6 +57,20 @@ internal class OrbitCameraState(
     private var distance by mutableFloatStateOf(initialDistance)
     private var panRight by mutableFloatStateOf(initialPanRight)
     private var panUp by mutableFloatStateOf(initialPanUp)
+
+    /**
+     * Where this view looks, as an offset from the model's own centre in metres.
+     *
+     * A preset that wants the stair rather than the house cannot say so by
+     * distance alone: pulling the camera in around the centre of the building
+     * arrives inside the living room. So a framing carries the point it is about,
+     * and it is a world offset rather than a screen pan because the same point
+     * has to stay the same point when the preset is applied from any previous
+     * camera.
+     */
+    private var focusX by mutableFloatStateOf(initialFocusX)
+    private var focusY by mutableFloatStateOf(initialFocusY)
+    private var focusZ by mutableFloatStateOf(initialFocusZ)
 
     /** Half the diagonal of the model's box: the radius everything is scaled against. */
     private val radius: Double = 0.5 * sqrt(
@@ -108,6 +125,9 @@ internal class OrbitCameraState(
         distance = framing.distance.coerceIn(minDistance, maxDistance)
         panRight = 0f
         panUp = 0f
+        focusX = framing.focusX
+        focusY = framing.focusY
+        focusZ = framing.focusZ
     }
 
     fun pose(): OrbitPose {
@@ -133,9 +153,9 @@ internal class OrbitCameraState(
         val upZ = -cosYaw * sinPitch
 
         val center = bounds.center
-        val targetX = center.x + rightX * panRight + upX * panUp
-        val targetY = center.y + upY * panUp
-        val targetZ = center.z + rightZ * panRight + upZ * panUp
+        val targetX = center.x + focusX + rightX * panRight + upX * panUp
+        val targetY = center.y + focusY + upY * panUp
+        val targetZ = center.z + focusZ + rightZ * panRight + upZ * panUp
 
         val currentDistance = distance.toDouble()
         return OrbitPose(
@@ -150,9 +170,18 @@ internal class OrbitCameraState(
         )
     }
 
-    internal fun saveableState(): List<Float> = listOf(yaw, pitch, distance, panRight, panUp)
+    internal fun saveableState(): List<Float> =
+        listOf(yaw, pitch, distance, panRight, panUp, focusX, focusY, focusZ)
 
-    internal data class Framing(val yaw: Float, val pitch: Float, val distance: Float)
+    internal data class Framing(
+        val yaw: Float,
+        val pitch: Float,
+        val distance: Float,
+        /** Offset of the point looked at from the model centre, in metres. */
+        val focusX: Float = 0f,
+        val focusY: Float = 0f,
+        val focusZ: Float = 0f,
+    )
 
     companion object {
 
@@ -198,17 +227,39 @@ internal class OrbitCameraState(
             yawDegrees: Double,
             pitchDegrees: Double,
             margin: Double,
+        ): Framing = framing(bounds, bounds, yawDegrees, pitchDegrees, margin)
+
+        /**
+         * A view of [focus] within [bounds]: the angles and margin decide where
+         * the camera stands, and [focus] decides both what it looks at and how
+         * big the thing being framed is.
+         *
+         * Two boxes rather than one because they answer different questions.
+         * [bounds] is the model, and is what the camera's own limits are scaled
+         * against; [focus] is the part of it this view is about. Passing the
+         * same box for both — which every whole-building preset does — gives
+         * exactly the previous behaviour.
+         */
+        fun framing(
+            bounds: LocalBounds,
+            focus: LocalBounds,
+            yawDegrees: Double,
+            pitchDegrees: Double,
+            margin: Double,
         ): Framing {
             val radius = 0.5 * sqrt(
-                bounds.sizeX * bounds.sizeX +
-                    bounds.sizeY * bounds.sizeY +
-                    bounds.sizeZ * bounds.sizeZ,
+                focus.sizeX * focus.sizeX +
+                    focus.sizeY * focus.sizeY +
+                    focus.sizeZ * focus.sizeZ,
             )
             val halfFov = Math.toRadians(FIELD_OF_VIEW_DEGREES / 2.0)
             return Framing(
                 yaw = (yawDegrees * PI / 180.0).toFloat(),
                 pitch = (pitchDegrees * PI / 180.0).toFloat(),
                 distance = (radius / tan(halfFov) * margin).toFloat(),
+                focusX = (focus.center.x - bounds.center.x).toFloat(),
+                focusY = (focus.center.y - bounds.center.y).toFloat(),
+                focusZ = (focus.center.z - bounds.center.z).toFloat(),
             )
         }
     }
@@ -236,6 +287,9 @@ internal fun rememberOrbitCameraState(bounds: LocalBounds): OrbitCameraState =
                     initialDistance = saved[2],
                     initialPanRight = saved[3],
                     initialPanUp = saved[4],
+                    initialFocusX = saved[5],
+                    initialFocusY = saved[6],
+                    initialFocusZ = saved[7],
                 )
             },
         ),

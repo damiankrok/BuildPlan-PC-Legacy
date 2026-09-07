@@ -9,6 +9,7 @@ import com.buildplan.app.domain.model.elementsOnFloor
 import com.buildplan.app.domain.model.roofElements
 import com.buildplan.app.domain.model.visibleElements
 import com.buildplan.app.geometry.GablePanelGeometry
+import com.buildplan.app.geometry.OpeningPanelGeometry
 import com.buildplan.app.geometry.RoofFacetGeometry
 import com.buildplan.app.geometry.SlabGeometry
 import com.buildplan.app.geometry.WallGeometry
@@ -156,12 +157,21 @@ class MarcowkiVisualModelV1Test {
                 is WallGeometry -> listOf(
                     primitive.start.x, primitive.start.z, primitive.end.x, primitive.end.z,
                     primitive.baseElevation, primitive.height, primitive.thickness,
-                )
+                ) + primitive.openings.flatMap { opening ->
+                    listOf(
+                        opening.distanceFromStart,
+                        opening.width,
+                        opening.sillElevation,
+                        opening.height,
+                    )
+                }
                 is SlabGeometry ->
                     primitive.outline.flatMap { listOf(it.x, it.z) } +
                         listOf(primitive.elevation, primitive.thickness)
                 is RoofFacetGeometry -> primitive.vertices.flatMap { listOf(it.x, it.y, it.z) }
                 is GablePanelGeometry -> primitive.vertices.flatMap { listOf(it.x, it.y, it.z) }
+                is OpeningPanelGeometry ->
+                    primitive.vertices.flatMap { listOf(it.x, it.y, it.z) }
             }
         } + MarcowkiRoomTrace.all.flatMap { trace ->
             trace.outline.flatMap { listOf(it.x, it.z) }
@@ -180,14 +190,33 @@ class MarcowkiVisualModelV1Test {
         // The whole building, across the printed 1205 anchor.
         assertEquals(Grid.BUILDING_WIDTH, bounds.sizeX, traceToleranceMeters)
 
+        // In depth the model now reaches one portal depth past each gable, so
+        // the printed 1260 anchor is what is left after taking those two off.
+        // Asserted this way round on purpose: writing the outer number would
+        // stop saying anything about the printed one.
+        val portals = 2 * Grid.PORTAL_DEPTH
+        assertEquals(Grid.BUILDING_DEPTH, bounds.sizeZ - portals, traceToleranceMeters)
+
         val groundBounds = boundsOfFloor(model.groundFloorId)
         assertEquals(Grid.BUILDING_WIDTH, groundBounds.sizeX, traceToleranceMeters)
-        assertEquals(Grid.BUILDING_DEPTH, groundBounds.sizeZ, traceToleranceMeters)
+        assertEquals(Grid.BUILDING_DEPTH, groundBounds.sizeZ - portals, traceToleranceMeters)
 
         // The attic covers the house alone, across the printed 790 anchor.
         val atticBounds = boundsOfFloor(model.atticId)
         assertEquals(Grid.HOUSE_WIDTH, atticBounds.sizeX, traceToleranceMeters)
-        assertEquals(Grid.BUILDING_DEPTH, atticBounds.sizeZ, traceToleranceMeters)
+        assertEquals(Grid.BUILDING_DEPTH, atticBounds.sizeZ - portals, traceToleranceMeters)
+
+        // The walled envelope, portals excluded, is still exactly the anchors.
+        val walls = geometry.primitives.filterIsInstance<WallGeometry>()
+        assertEquals(
+            "The house's own outer faces must still span the printed 790",
+            Grid.HOUSE_WIDTH,
+            walls.filter { it.baseElevation == Grid.GROUND_FLOOR_Y }
+                .flatMap { it.footprint() }
+                .filter { it.x <= Grid.HOUSE_WIDTH + 0.01 }
+                .let { faces -> faces.maxOf { it.x } - faces.minOf { it.x } },
+            traceToleranceMeters,
+        )
 
         // The two printed splits of the 1205 anchor.
         assertEquals(12.05, Grid.HOUSE_WIDTH + 4.16, traceToleranceMeters)
@@ -372,15 +401,31 @@ class MarcowkiVisualModelV1Test {
         // Pinned so that a trace correction that quietly drops a wall, or adds a
         // second shape for one, shows up as a failure rather than as a model the
         // owner has to re-review from scratch.
-        assertEquals("Element count", 32, building.elements.size)
-        assertEquals("Primitive count", 42, geometry.primitives.size)
-        assertEquals(28, geometry.primitives.count { it is WallGeometry })
-        assertEquals(4, geometry.primitives.count { it is SlabGeometry })
+        assertEquals("Element count", 47, building.elements.size)
+        assertEquals("Primitive count", 89, geometry.primitives.size)
+        assertEquals(
+            "The 28 walls, plus the two balustrades across the portals",
+            30,
+            geometry.primitives.count { it is WallGeometry },
+        )
+        assertEquals(
+            "Four foundation plates, six pieces of storey slab, the garage roof, " +
+                "and seventeen stair treads",
+            28,
+            geometry.primitives.count { it is SlabGeometry },
+        )
         assertEquals("A gable roof is two facets", 2, geometry.primitives.count { it is RoofFacetGeometry })
         assertEquals(
-            "Two gables plus the six attic partitions that run across the slope",
-            8,
+            "Six attic partitions across the slope, plus the five bands the north " +
+                "gable is cut into by its two glazings and the three the south gable " +
+                "is cut into by its one",
+            14,
             geometry.primitives.count { it is GablePanelGeometry },
+        )
+        assertEquals(
+            "One pane per traced opening, plus the three rooflights",
+            15,
+            geometry.primitives.count { it is OpeningPanelGeometry },
         )
     }
 
@@ -421,7 +466,11 @@ class MarcowkiVisualModelV1Test {
     fun `M013-18 no geometry number escapes its fidelity classification`() {
         // Every wall is built from the grid; a hand-typed dimension anywhere in
         // the assembly would show up here as a value the grid does not contain.
-        val allowedThicknesses = setOf(Grid.EXTERIOR_WALL_THICKNESS, Grid.PARTITION_THICKNESS)
+        val allowedThicknesses = setOf(
+            Grid.EXTERIOR_WALL_THICKNESS,
+            Grid.PARTITION_THICKNESS,
+            Grid.BALUSTRADE_THICKNESS,
+        )
         val allowedBases = setOf(Grid.GROUND_FLOOR_Y, Grid.UPPER_FLOOR_Y)
         // An attic wall may also stop early where the roof comes down to meet
         // it, which is a height the grid computes rather than one it lists.
@@ -429,6 +478,7 @@ class MarcowkiVisualModelV1Test {
             Grid.GROUND_CLEAR_HEIGHT,
             Grid.ATTIC_CLEAR_HEIGHT,
             Grid.ATTIC_PERIMETER_WALL_HEIGHT,
+            Grid.BALUSTRADE_HEIGHT,
         )
 
         geometry.primitives.filterIsInstance<WallGeometry>().forEach { wall ->
@@ -448,8 +498,9 @@ class MarcowkiVisualModelV1Test {
             )
         }
 
-        // The three slab thicknesses that the source does not state are exactly
-        // the ones declared as display assumptions.
+        // Everything the source does not state is exactly what is declared as a
+        // display assumption — no more, so the list cannot rot, and no fewer, so
+        // a new invented number cannot arrive unlabelled.
         val assumptionNames = MarcowkiSourceEvidence.displayAssumptions.map { it.name }.toSet()
         assertEquals(
             setOf(
@@ -457,6 +508,14 @@ class MarcowkiVisualModelV1Test {
                 "Grubość stropodachu garażu",
                 "Ściana okapowa poddasza rysowana do połaci",
                 "Granica kuchni i holu",
+                "Parapet okna kuchni",
+                "Nadproże drzwi garaż–kotłownia",
+                "Balustrada balkonów",
+                "Podesty w podcieniach",
+                "Zadaszenie przed garażem",
+                "Balkon południowy na pełnej szerokości",
+                "Liczba stopni",
+                "Okna połaciowe rysowane na połaci",
             ),
             assumptionNames,
         )

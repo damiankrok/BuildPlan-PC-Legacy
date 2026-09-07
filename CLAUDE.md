@@ -96,6 +96,13 @@ kompilować, nie linkować i nie pakować.
   importuj w nim typów Filamenta.
 - **Przełączenie widoczności nie przebudowuje geometrii.** Siatki wgrywaj raz;
   zmiana widoku to dodanie i usunięcie encji ze sceny.
+- **Ukrycie warstwy musi zachować ciągłość modelu.** Każdy stan widoczności jest
+  podzbiorem jednego kanonicznego modelu; bryła się nie zmienia, zmienia się
+  tylko to, ile z niej jest lite. Nie utrzymuj uproszczonych wariantów geometrii
+  dla poszczególnych trybów — dwa warianty rozjeżdżają się przy pierwszej
+  korekcie i OWNER widzi wtedy dwa różne domy. Warstwę zdjętą rysuj dalej jako
+  przygaszoną siatkę. Zbiór usunięty licz jako dopełnienie odpowiedzi domeny,
+  nigdy jako drugą regułę o dachu czy kondygnacji.
 - **Jeden właściciel silnika na jeden `SurfaceView`.** Bez globalnego singletona
   renderera. Zasoby zwalniaj przy wyjściu z kompozycji; po odtworzeniu Activity
   ma istnieć dokładnie jeden żywy silnik.
@@ -130,8 +137,13 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
   wyłącznie fakty tekstowe: adresy, moment odczytu i liczby. Pilnuje tego test
   `M013-13` — nie obchodź go.
 - **Jedna prawda odrysu.** Wszystkie współrzędne mieszkają w `MarcowkiPlanGrid`;
-  ściany i strefy pomieszczeń są z niej generowane. Nie dopisuj drugiego,
-  ręcznie utrzymywanego zestawu współrzędnych obok.
+  ściany, otwory, schody i strefy pomieszczeń są z niej generowane. Nie dopisuj
+  drugiego, ręcznie utrzymywanego zestawu współrzędnych obok.
+- **Otwór to dziura w ścianie plus osobny element, który ją wypełnia.**
+  `WallOpening` należy do `WallGeometry`; okno albo drzwi to własny
+  `BuildingElement` z własną szybą. Nie rysuj otworu jako ciemnego prostokąta na
+  litej ścianie — z boku widać, że to naklejka. Nie kopiuj do `WallOpening`
+  `BuildingElementKind`: różnicę okno/drzwi opisuje w geometrii sam parapet.
 - **`MarcowkiReferenceProject` zostaje bez geometrii.** Model wizualny dekoruje
   go po identyfikatorach, ale kanoniczny zbiór nadal opisuje tylko to, co źródło
   podaje słowami: nazwy i powierzchnie.
@@ -204,7 +216,13 @@ Zostaw czysty worktree.
 ## Czego na tym etapie NIE ma
 
 Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych, parsera
-rzutów i **produkcyjnego** renderera 3D. Model domenowy i kontrakt geometrii
+rzutów, **analizatora projektów** i **produkcyjnego** renderera 3D.
+
+Analizator — automatyczne czytanie cudzych rzutów i budowanie z nich modelu — to
+przyjęty pomysł na później, a nie zadanie tego etapu. Dopóki OWNER nie zleci go
+wprost, nie zaczynaj OCR, wizji komputerowej ani obsługi wielu domów: model
+Marcówek ma najpierw ustalić poprzeczkę jakości, którą taki analizator musiałby
+osiągać. Model domenowy i kontrakt geometrii
 istnieją, ale nic ich jeszcze nie zapisuje. Rysuje je wyłącznie debugowy spike
 na Filamencie (STAGE-012) — dowód wykonalności i wybór kandydata, a nie docelowa
 architektura renderera; ta należy do STAGE-013.

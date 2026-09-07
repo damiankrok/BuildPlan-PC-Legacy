@@ -332,7 +332,8 @@ class GeometryPrimitiveTest {
         baseElevation: Double = 0.0,
         height: Double = 2.5,
         thickness: Double = 0.3,
-    ) = WallGeometry(elementId, start, end, baseElevation, height, thickness)
+        openings: List<WallOpening> = emptyList(),
+    ) = WallGeometry(elementId, start, end, baseElevation, height, thickness, openings)
 
     private fun slab(
         outline: List<PlanPoint> = rectangle(10.0, 8.0),
@@ -355,4 +356,111 @@ class GeometryPrimitiveTest {
         PlanPoint(width, depth),
         PlanPoint(0.0, depth),
     )
+
+    // --- openings ------------------------------------------------------------
+
+    @Test
+    fun `an opening must fit inside the wall it is cut in`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            wall(openings = listOf(opening(distanceFromStart = 9.5, width = 1.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wall(openings = listOf(opening(distanceFromStart = -0.5)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wall(openings = listOf(opening(sillElevation = -0.5)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wall(openings = listOf(opening(sillElevation = 2.0, height = 2.0)))
+        }
+    }
+
+    @Test
+    fun `two openings may not share the same stretch of wall`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            wall(
+                openings = listOf(
+                    opening(distanceFromStart = 1.0, width = 2.0),
+                    opening(distanceFromStart = 2.0, width = 2.0),
+                ),
+            )
+        }
+        // Touching is not overlapping: two openings sharing a jamb is a mullion,
+        // and the bake simply produces no pier between them.
+        wall(
+            end = PlanPoint(6.0, 0.0),
+            openings = listOf(
+                opening(distanceFromStart = 1.0, width = 2.0),
+                opening(distanceFromStart = 3.0, width = 2.0),
+            ),
+        )
+    }
+
+    @Test
+    fun `a wall reports the footprint of any stretch of itself`() {
+        val subject = wall(start = PlanPoint(0.0, 0.0), end = PlanPoint(10.0, 0.0), thickness = 0.4)
+
+        val whole = subject.footprint()
+        assertEquals(whole, subject.footprintBetween(0.0, subject.length))
+
+        val middle = subject.footprintBetween(2.0, 5.0)
+        assertEquals(2.0, middle.minOf { it.x }, TOLERANCE)
+        assertEquals(5.0, middle.maxOf { it.x }, TOLERANCE)
+        // Still half a thickness either side of the centreline: a stretch of a
+        // wall is as thick as the wall.
+        assertEquals(0.4, middle.maxOf { it.z } - middle.minOf { it.z }, TOLERANCE)
+    }
+
+    @Test
+    fun `an opening panel must be planar and enclose an area`() {
+        // A pane bent across its own diagonal.
+        assertThrows(IllegalArgumentException::class.java) {
+            OpeningPanelGeometry(
+                elementId,
+                listOf(
+                    ModelPoint(0.0, 0.0, 0.0),
+                    ModelPoint(1.0, 0.0, 0.0),
+                    ModelPoint(1.0, 1.0, 0.5),
+                    ModelPoint(0.0, 1.0, 0.0),
+                ),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            OpeningPanelGeometry(
+                elementId,
+                listOf(ModelPoint(0.0, 0.0, 0.0), ModelPoint(1.0, 0.0, 0.0)),
+            )
+        }
+
+        // A sloped rooflight is legal where a gable panel would not be: this
+        // shape lies in a roof plane, and refusing it is what would force a
+        // rooflight to pretend to be vertical.
+        val rooflight = OpeningPanelGeometry(
+            elementId,
+            listOf(
+                ModelPoint(0.0, 4.0, 0.0),
+                ModelPoint(1.0, 5.0, 0.0),
+                ModelPoint(1.0, 5.0, 1.0),
+                ModelPoint(0.0, 4.0, 1.0),
+            ),
+        )
+        assertTrue(rooflight.area > 1.0)
+    }
+
+    private fun opening(
+        distanceFromStart: Double = 1.0,
+        width: Double = 1.4,
+        sillElevation: Double = 0.9,
+        height: Double = 1.4,
+    ) = WallOpening(
+        elementId = BuildingElementId("e-opening"),
+        distanceFromStart = distanceFromStart,
+        width = width,
+        sillElevation = sillElevation,
+        height = height,
+    )
+
+    private companion object {
+        const val TOLERANCE = 1e-9
+    }
 }

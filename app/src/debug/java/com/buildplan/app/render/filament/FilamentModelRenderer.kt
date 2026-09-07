@@ -70,15 +70,19 @@ internal class FilamentModelRenderer(
     private val view = engine.createView()
 
     private val entityManager: EntityManager = EntityManager.get()
+    private val renderableManager: RenderableManager = engine.renderableManager
     private val cameraEntity: Int = entityManager.create()
     private val camera: Camera = engine.createCamera(cameraEntity)
 
     private val material: Material = TechnicalMaterial.build(engine)
+    private val lineMaterial: Material = TechnicalMaterial.buildLine(engine, depthTested = true)
+    private val ghostLineMaterial: Material =
+        TechnicalMaterial.buildLine(engine, depthTested = false)
     private val materialInstances = ArrayList<MaterialInstance>()
     private val vertexBuffers = ArrayList<VertexBuffer>()
     private val indexBuffers = ArrayList<IndexBuffer>()
 
-    /** Every renderable entity, in mesh order. */
+    /** Every surface entity, in mesh order. */
     private val renderableEntities = ArrayList<Int>()
 
     /** The renderer-to-domain direction of the join, used to answer a pick. */
@@ -89,6 +93,39 @@ internal class FilamentModelRenderer(
 
     /** The material instance of each mesh, so one element can be tinted when selected. */
     private val instanceByEntity = HashMap<Int, MaterialInstance>()
+
+    /**
+     * The colour each mesh returns to when it stops being selected.
+     *
+     * Stored rather than recomputed as "the neutral one", because glazing is not
+     * neutral: a pane that came back the colour of a wall after being tapped
+     * would quietly turn every window back into masonry.
+     */
+    private val baseColorByEntity = HashMap<Int, FloatArray>()
+
+    /**
+     * The edge overlay of every mesh, keyed the same way as the surfaces.
+     *
+     * A parallel structure rather than a second list of meshes, because an
+     * element's outline and its surfaces are two ways of drawing *the same*
+     * shape: they are added and removed together, they answer to the same id,
+     * and there is exactly one of these per surface entity.
+     */
+    private val outlines = ArrayList<Outline>()
+
+    /** Every mesh's outline, by the element it belongs to. */
+    private val outlinesByElementId = LinkedHashMap<BuildingElementId, MutableList<Outline>>()
+
+    /** One mesh's edges, and the two ways they can be drawn. */
+    private class Outline(
+        val entity: Int,
+        /** Depth-tested and bright: the element is here. */
+        val present: MaterialInstance,
+        /** Drawn through everything and faint: the element has been taken away. */
+        val removed: MaterialInstance,
+    ) {
+        var showingRemoved: Boolean = false
+    }
 
     private val skybox: Skybox
     private val indirectLight: IndirectLight
@@ -191,14 +228,23 @@ internal class FilamentModelRenderer(
             .build(engine)
         indexBuffer.setBuffer(engine, mesh.indices.toDirectBuffer())
 
+        val baseColor = when (mesh.style) {
+            MeshStyle.SOLID -> NEUTRAL
+            MeshStyle.GLAZING -> GLAZING
+        }
         val instance = material.createInstance()
         instance.setParameter(
             TechnicalMaterial.BASE_COLOR_PARAMETER,
-            NEUTRAL[0],
-            NEUTRAL[1],
-            NEUTRAL[2],
+            baseColor[0],
+            baseColor[1],
+            baseColor[2],
             1.0f,
         )
+        // Pushes the surface away from the camera by a hair, so that the edge
+        // drawn along it wins the depth test instead of tying with it. Without
+        // this the two are at exactly the same depth and the outline breaks into
+        // a dashed line that reshuffles itself every time the camera moves.
+        instance.setPolygonOffset(SURFACE_DEPTH_OFFSET, SURFACE_DEPTH_OFFSET)
 
         val entity = entityManager.create()
         RenderableManager.Builder(1)
@@ -224,29 +270,125 @@ internal class FilamentModelRenderer(
         elementIdByEntity[entity] = mesh.elementId
         entitiesByElementId.getOrPut(mesh.elementId) { ArrayList() } += entity
         instanceByEntity[entity] = instance
+        baseColorByEntity[entity] = baseColor
+
+        uploadOutline(mesh, vertexBuffer)
+    }
+
+    /**
+     * Uploads the same mesh a second time as a line list, sharing its vertex
+     * buffer.
+     *
+     * Sharing is the point: the outline is not an approximation of the surface
+     * drawn beside it, it is the surface's own corners. A separately generated
+     * wireframe would drift from the geometry it outlines the first time either
+     * changed, and drift by less than a pixel is exactly what looks like a
+     * rendering bug rather than a design.
+     */
+    private fun uploadOutline(mesh: BuildingRenderMesh, vertexBuffer: VertexBuffer) {
+        if (mesh.edgeCount == 0) return
+
+        val edgeBuffer = IndexBuffer.Builder()
+            .indexCount(mesh.edgeIndices.size)
+            .bufferType(IndexBuffer.Builder.IndexType.UINT)
+            .build(engine)
+        edgeBuffer.setBuffer(engine, mesh.edgeIndices.toDirectBuffer())
+
+        val present = lineMaterial.createInstance()
+        present.setParameter(
+            TechnicalMaterial.BASE_COLOR_PARAMETER,
+            EDGE[0], EDGE[1], EDGE[2], EDGE[3],
+        )
+        val removed = ghostLineMaterial.createInstance()
+        removed.setParameter(
+            TechnicalMaterial.BASE_COLOR_PARAMETER,
+            GHOST_EDGE[0], GHOST_EDGE[1], GHOST_EDGE[2], GHOST_EDGE[3],
+        )
+
+        val entity = entityManager.create()
+        RenderableManager.Builder(1)
+            .boundingBox(Box(mesh.boundsCenter, mesh.boundsHalfExtent))
+            .geometry(
+                0,
+                RenderableManager.PrimitiveType.LINES,
+                vertexBuffer,
+                edgeBuffer,
+                0,
+                mesh.edgeIndices.size,
+            )
+            .material(0, present)
+            .castShadows(false)
+            .receiveShadows(false)
+            .culling(true)
+            .build(engine, entity)
+
+        indexBuffers += edgeBuffer
+        materialInstances += present
+        materialInstances += removed
+        val outline = Outline(entity = entity, present = present, removed = removed)
+        outlines += outline
+        outlinesByElementId.getOrPut(mesh.elementId) { ArrayList() } += outline
     }
 
     // --- Visibility ----------------------------------------------------------
 
     /**
-     * Shows exactly the elements in [visibleElementIds] and hides the rest.
+     * Draws the elements in [visibleElementIds] as solid, and the elements in
+     * [removedElementIds] as their outline alone.
      *
-     * Nothing is rebuilt: the meshes were uploaded once and stay on the GPU.
-     * Toggling the roof adds or removes two entities from the scene, which is
-     * why it costs nothing and why the canonical geometry is never touched.
+     * ## Why a removed element is still drawn
+     *
+     * Because taking the roof off has to leave the same house standing. Drawing
+     * nothing where a layer used to be gives the owner two pictures with no
+     * visible relationship between them, and the honest question that follows is
+     * whether the second one is even the same model. Keeping the removed layer
+     * as a wireframe answers it in the picture itself: the roof is still there,
+     * over the same footprint, at the same pitch — it has been made transparent,
+     * not swapped out.
+     *
+     * It is not a second opinion about what is visible. Both sets are handed in,
+     * both come from the one selection the domain made, and this method's whole
+     * contribution is which of two ways to draw each id.
+     *
+     * ## Why nothing is rebuilt
+     *
+     * The meshes were uploaded once and stay on the GPU. Toggling the roof adds
+     * and removes entities and swaps a material instance; no geometry is
+     * regenerated, so the shape an owner reviewed cannot change as a side effect
+     * of looking at it from a different state.
      */
-    fun setVisibleElements(visibleElementIds: Set<BuildingElementId>) {
+    fun setVisibleElements(
+        visibleElementIds: Set<BuildingElementId>,
+        removedElementIds: Set<BuildingElementId> = emptySet(),
+    ) {
         if (destroyed) return
         entitiesByElementId.forEach { (elementId, entities) ->
             val shouldShow = elementId in visibleElementIds
-            entities.forEach { entity ->
-                val inScene = scene.hasEntity(entity)
-                if (shouldShow && !inScene) {
-                    scene.addEntity(entity)
-                } else if (!shouldShow && inScene) {
-                    scene.removeEntity(entity)
+            entities.forEach { entity -> setInScene(entity, shouldShow) }
+        }
+        outlinesByElementId.forEach { (elementId, elementOutlines) ->
+            val present = elementId in visibleElementIds
+            val removed = !present && elementId in removedElementIds
+            elementOutlines.forEach { outline ->
+                if (outline.showingRemoved != removed) {
+                    outline.showingRemoved = removed
+                    renderableManager.setMaterialInstanceAt(
+                        renderableManager.getInstance(outline.entity),
+                        0,
+                        if (removed) outline.removed else outline.present,
+                    )
                 }
+                setInScene(outline.entity, present || removed)
             }
+        }
+    }
+
+    private fun setInScene(entity: Int, shouldBeInScene: Boolean) {
+        val inScene = scene.hasEntity(entity)
+        if (shouldBeInScene && !inScene) {
+            scene.addEntity(entity)
+        } else if (!shouldBeInScene && inScene) {
+            scene.removeEntity(entity)
         }
     }
 
@@ -256,7 +398,11 @@ internal class FilamentModelRenderer(
         selectedElementId = elementId
         renderableEntities.forEach { entity ->
             val instance = instanceByEntity[entity] ?: return@forEach
-            val color = if (elementIdByEntity[entity] == elementId) SELECTED else NEUTRAL
+            val color = if (elementIdByEntity[entity] == elementId) {
+                SELECTED
+            } else {
+                baseColorByEntity[entity] ?: NEUTRAL
+            }
             instance.setParameter(
                 TechnicalMaterial.BASE_COLOR_PARAMETER,
                 color[0],
@@ -316,12 +462,14 @@ internal class FilamentModelRenderer(
 
         uiHelper.detach()
 
-        renderableEntities.forEach { entity ->
+        (renderableEntities + outlines.map { it.entity }).forEach { entity ->
             scene.removeEntity(entity)
             engine.destroyEntity(entity)
             entityManager.destroy(entity)
         }
         renderableEntities.clear()
+        outlines.clear()
+        outlinesByElementId.clear()
         elementIdByEntity.clear()
         entitiesByElementId.clear()
         instanceByEntity.clear()
@@ -334,6 +482,8 @@ internal class FilamentModelRenderer(
         indexBuffers.clear()
 
         engine.destroyMaterial(material)
+        engine.destroyMaterial(lineMaterial)
+        engine.destroyMaterial(ghostLineMaterial)
 
         scene.removeEntity(sunEntity)
         engine.destroyEntity(sunEntity)
@@ -423,6 +573,39 @@ internal class FilamentModelRenderer(
         val BACKGROUND = floatArrayOf(0.010f, 0.011f, 0.013f)
         val NEUTRAL = floatArrayOf(0.55f, 0.57f, 0.60f)
         val SELECTED = floatArrayOf(0.13f, 0.46f, 0.74f)
+
+        /**
+         * Glazing: much darker than the fabric around it, and cooler.
+         *
+         * A window drawn the colour of a wall is a window nobody can see. Dark
+         * is the right direction rather than bright, because that is what glass
+         * does in daylight from outside — it reads as a hole — and because the
+         * reveal the bake produces around the pane then has something to cast
+         * its edge against.
+         */
+        val GLAZING = floatArrayOf(0.10f, 0.13f, 0.17f)
+
+        /**
+         * The edge overlay, as premultiplied linear RGBA.
+         *
+         * Brighter than any surface can be lit, so an outline always separates
+         * from the face it bounds rather than disappearing into whichever wall
+         * happens to be catching the sun. The removed-layer lines are the same
+         * hue at about a third of the strength — clearly readable against both
+         * the background and a lit wall, because the whole job of a removed
+         * layer is to still be seen, but far enough below the present lines that
+         * no reviewer could mistake one for the other.
+         */
+        val EDGE = floatArrayOf(0.86f, 0.90f, 0.96f, 0.90f)
+        val GHOST_EDGE = floatArrayOf(0.34f, 0.39f, 0.48f, 0.55f)
+
+        /**
+         * How far behind itself a lit surface is pushed so its own outline wins
+         * the depth test. Positive is away from the camera in Filament's
+         * convention, and one unit of each term is the smallest offset that is
+         * reliable across drivers without the line detaching visibly.
+         */
+        const val SURFACE_DEPTH_OFFSET = 1.0f
 
         /**
          * Lighting in Filament's physical units, balanced against the camera

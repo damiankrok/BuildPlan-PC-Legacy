@@ -68,18 +68,72 @@
   W repozytorium nie ma żadnego obrazu ani HTML-a ARCHON — materiał źródłowy był
   przejściowy, poza worktree.
 
+- STAGE-013B marcowki model correction — **korekta zakończona, brama wizualna
+  OWNER-a otwarta ponownie.** Odpowiedź na cztery uwagi z pierwszego przeglądu.
+
+  **Ciągłość modelu.** Każdy stan widoczności jest podzbiorem jednego
+  kanonicznego `MarcowkiVisualModelV1.geometry`, a warstwa zdjęta jest nadal
+  rysowana — jako przygaszona siatka bez testu głębi. Dach zdjęty z domu wisi
+  nad nim jako szkielet, więc bryła nie zmienia się między kadrami, zmienia się
+  tylko to, ile z niej jest lite. Zbiór usunięty liczony jako dopełnienie
+  odpowiedzi domeny, nie jako druga reguła w rendererze.
+
+  **Otwory.** Dwanaście otworów z wykazu stolarki na obu rzutach: 470/230,
+  300/230, 110/230, 105/210, 100/210, 90/230, 275/225, 140/140 na parterze,
+  2 × 234/303 i 270/320 w szczytach, plus jedne nieopisane drzwi garaż–kotłownia
+  odmierzone z hatchu. Wszystkie skonfrontowane z lukami w hatchu i zgodne co do
+  2 cm. Dziura jest cięta w ścianie (`WallOpening`), skrzydło jest osobnym
+  elementem `WINDOW`/`DOOR` z własną szybą (`OpeningPanelGeometry`). Nadproża
+  przeszkleń szczytowych biegną po połaci — podana wysokość jest tam maksimum,
+  bo inaczej otwór wychodziłby przez dach. Trzy okna połaciowe 78/118
+  odrysowane co do pozycji, ale rysowane **na** połaci, nie wycinane w niej.
+
+  **Schody.** Element `STAIRS` na parterze, bez przypisanego pomieszczenia (na
+  parterze źródło żadnego nie nazywa). Trzy biegi wokół prostokątnego trzonu,
+  17 stopni po 0,18 m między dwoma podanymi poziomami. Kierunek ustalony
+  strzałką rzutu poddasza, nie zgadnięty. Strop nad parterem pocięty wokół
+  klatki, więc bieg nie przechodzi przez litą płytę.
+
+  **Bryła zewnętrzna.** Główna korekta: **podcienie szczytowe**. Ściany
+  okapowe biegną metr za każdy szczyt na obu kondygnacjach (odrysowane z hatchu
+  obu rzutów), tworząc portal z policzkami, balkonem na poddaszu i cofniętym
+  przeszkleniem. Do tego balustrady balkonów, zadaszenie przed garażem
+  i podesty w podcieniach.
+
+  **Prezentacja.** Do każdej siatki pieczony drugi bufor indeksów — kontur
+  wszystkich krawędzi, każda raz — rysowany osobnym materiałem `UNLIT` nad
+  bryłą odsuniętą `setPolygonOffset`. Szyby ciemniejsze i chłodniejsze od muru,
+  kolor po typie prymitywu, nie po `BuildingElementKind`. Presetów siedem
+  (doszły `FACADE_OPENINGS` i `STAIRS_VIEW`).
+
+  47 elementów i 89 prymitywów (30 ścian z balustradami, 28 płyt z 17 stopniami,
+  2 połacie, 14 paneli szczytowych, 15 szyb). Wiarygodność: `SOURCE_EXACT` 22,
+  `SOURCE_TRACED` 4 nazwane cechy + 71 linii siatki, `DISPLAY_ASSUMPTION` 12 —
+  każde założenie z uzasadnieniem i sprawdzane testem `M013-18`.
+  Renderer bez zmian: Filament 1.75.1, `debugImplementation`, release nadal bez
+  `.so` Filamenta. W repozytorium nadal żadnego obrazu ARCHON — tym razem
+  doszły cztery elewacje i dwie wizualizacje, wszystkie odmierzone poza worktree.
+
+  **Czego to nadal nie jest:** dokumentacji budowlanej. Komina nie ma — widać go
+  na wizualizacjach, ale żaden rzut nie rysuje szybu dającego się odróżnić od
+  szaf kreskowanych tak samo, a komin postawiony z renderu byłby wymyśloną
+  współrzędną. Materiałów elewacji nie ma. Drzwi wewnętrznych poza jednymi nie
+  ma. Wszystko trzy zapisane w `MarcowkiSourceEvidence.notModelled`.
+
 ## Następny krok
 
-GATE-3D-SHAPE-01 — OWNER porównuje model z rzutami ARCHON i decyduje, czy odrys
-jest wystarczająco wierny. Dopiero po tej ocenie STAGE-014 (izolacja
-pomieszczenia). PASS techniczny STAGE-013 **nie jest** akceptacją wizualną.
+GATE-3D-SHAPE-01 **ponownie** — OWNER porównuje poprawiony model z rzutami
+i wizualizacjami ARCHON i decyduje, czy wierność jest wystarczająca. Dopiero po
+tej ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013B
+**nie jest** akceptacją wizualną.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, parsera rzutów,
-geometrii drzwi/okien/schodów, persystencji i danych rzeczywistych. Model
-Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: nie ma otworów,
-schodów, kominów ani rzędnych konstrukcyjnych.
+wycinania otworów w połaci dachu, persystencji i danych rzeczywistych. Model
+Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory
+i schody z wykazów i rzutów, ale nie ma komina, materiałów, konstrukcji ani
+rzędnych konstrukcyjnych.
 
 ## OPEN
 

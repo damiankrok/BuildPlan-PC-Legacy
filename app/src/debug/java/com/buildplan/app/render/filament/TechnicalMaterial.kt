@@ -35,6 +35,8 @@ internal object TechnicalMaterial {
     const val BASE_COLOR_PARAMETER: String = "baseColor"
 
     private const val NAME = "buildplanTechnical"
+    private const val LINE_NAME = "buildplanTechnicalLine"
+    private const val GHOST_LINE_NAME = "buildplanGhostLine"
 
     private val SHADER = """
         void material(inout MaterialInputs material) {
@@ -46,6 +48,13 @@ internal object TechnicalMaterial {
         }
     """.trimIndent()
 
+    private val LINE_SHADER = """
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            material.baseColor = materialParams.baseColor;
+        }
+    """.trimIndent()
+
     /**
      * Compiles the material and uploads it to [engine].
      *
@@ -53,28 +62,65 @@ internal object TechnicalMaterial {
      *   deliberately fatal rather than caught: a spike that silently drew
      *   nothing would be reported as a renderer that cannot draw.
      */
-    fun build(engine: Engine): Material {
-        MaterialBuilder.init()
-        try {
-            val compiled = MaterialBuilder()
-                .name(NAME)
-                .shading(MaterialBuilder.Shading.LIT)
-                .blending(MaterialBuilder.BlendingMode.OPAQUE)
-                // Double-sided with no culling: hiding the roof puts the camera
-                // inside the building, where a single-sided wall is invisible.
+    fun build(engine: Engine): Material = compile(engine, NAME) { builder ->
+        builder
+            .shading(MaterialBuilder.Shading.LIT)
+            .blending(MaterialBuilder.BlendingMode.OPAQUE)
+            // Double-sided with no culling: hiding the roof puts the camera
+            // inside the building, where a single-sided wall is invisible.
+            .doubleSided(true)
+            .culling(MaterialBuilder.CullingMode.NONE)
+            .material(SHADER)
+    }
+
+    /**
+     * The material the edge overlay is drawn with: unlit, so a line is the
+     * colour it was given rather than a colour the sun happened to leave on it.
+     *
+     * [depthTested] is the whole difference between the two kinds of line this
+     * renderer draws, and it is not a tuning knob. Edges of geometry that is
+     * *present* are depth tested, so the far side of a wall is hidden by the
+     * near side and the model reads as solid. Edges of a layer that has been
+     * *removed* are not, so the roof that was just taken off keeps hanging over
+     * the house as a wireframe instead of disappearing and leaving the owner to
+     * wonder whether this is even the same building.
+     *
+     * Both blend, so a removed layer can be drawn faint enough to stay behind
+     * the layer being looked at.
+     */
+    fun buildLine(engine: Engine, depthTested: Boolean): Material =
+        compile(engine, if (depthTested) LINE_NAME else GHOST_LINE_NAME) { builder ->
+            builder
+                .shading(MaterialBuilder.Shading.UNLIT)
+                .blending(MaterialBuilder.BlendingMode.TRANSPARENT)
+                .depthCulling(depthTested)
+                // Lines never occlude anything: they are drawn over the model,
+                // not part of it, and a line that wrote depth would punch a
+                // one-pixel hole in whatever was drawn after it.
+                .depthWrite(false)
                 .doubleSided(true)
                 .culling(MaterialBuilder.CullingMode.NONE)
+                .material(LINE_SHADER)
+        }
+
+    private fun compile(
+        engine: Engine,
+        name: String,
+        configure: (MaterialBuilder) -> MaterialBuilder,
+    ): Material {
+        MaterialBuilder.init()
+        try {
+            val compiled = configure(MaterialBuilder().name(name))
                 .uniformParameter(MaterialBuilder.UniformType.FLOAT4, BASE_COLOR_PARAMETER)
-                .material(SHADER)
                 // No optimisation: this runs once at start-up on the device, and
-                // the shader is four assignments. Optimising it would only spend
-                // the user's start-up time in the SPIR-V toolchain.
+                // the shaders are a handful of assignments. Optimising them would
+                // only spend the user's start-up time in the SPIR-V toolchain.
                 .optimization(MaterialBuilder.Optimization.NONE)
                 .platform(MaterialBuilder.Platform.MOBILE)
                 .targetApi(MaterialBuilder.TargetApi.OPENGL)
                 .build()
 
-            check(compiled.isValid) { "Filament could not compile the $NAME material" }
+            check(compiled.isValid) { "Filament could not compile the $name material" }
 
             val payload = compiled.buffer
             return Material.Builder()

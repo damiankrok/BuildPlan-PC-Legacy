@@ -5,6 +5,7 @@ import com.buildplan.app.render.filament.DebugModel
 import com.buildplan.app.render.filament.ModelViewPreset
 import com.buildplan.app.render.filament.SpikeVisibility
 import java.io.File
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -97,7 +98,7 @@ class Stage013GuardrailTest {
     }
 
     @Test
-    fun `M013-17 the five evidence presets are deterministic and distinct`() {
+    fun `M013-17 the evidence presets are deterministic and distinct`() {
         val bounds = requireNotNull(MarcowkiVisualModelV1.geometry.bounds)
 
         assertEquals(
@@ -107,6 +108,8 @@ class Stage013GuardrailTest {
                 ModelViewPreset.GROUND_CUTAWAY,
                 ModelViewPreset.GROUND_TOP,
                 ModelViewPreset.UPPER_TOP,
+                ModelViewPreset.FACADE_OPENINGS,
+                ModelViewPreset.STAIRS_VIEW,
             ),
             ModelViewPreset.entries.toList(),
         )
@@ -129,6 +132,29 @@ class Stage013GuardrailTest {
             ModelViewPreset.GROUND_TOP.framing(bounds),
             ModelViewPreset.UPPER_TOP.framing(bounds),
         )
+
+        // The stair view is the only one that frames something other than the
+        // whole model, and it has to actually be closer for that to mean
+        // anything.
+        val stairFocus = DebugModel.MARCOWKI.focusBounds(
+            ModelViewPreset.STAIRS_VIEW.focus,
+            bounds,
+        )
+        val stairFraming = ModelViewPreset.STAIRS_VIEW.framing(bounds, stairFocus)
+        assertTrue(
+            "The stair view must frame a part of the model, not the whole of it",
+            stairFocus.sizeX < bounds.sizeX / 3.0 && stairFocus.sizeZ < bounds.sizeZ / 3.0,
+        )
+        assertTrue(
+            "The stair view must move in, not sit at the general view's distance",
+            stairFraming.distance < ModelViewPreset.FULL_AXON.framing(bounds).distance,
+        )
+        assertTrue(
+            "The stair view must look at the stair rather than the building centre",
+            abs(stairFraming.focusX) + abs(stairFraming.focusZ) > 1.0f,
+        )
+        // Still a pure function of its two boxes, like every other preset.
+        assertEquals(stairFraming, ModelViewPreset.STAIRS_VIEW.framing(bounds, stairFocus))
 
         assertEquals(SpikeVisibility.EVERYTHING, ModelViewPreset.FULL_AXON.visibility)
         assertEquals(SpikeVisibility.ROOF_HIDDEN, ModelViewPreset.ROOF_OFF_AXON.visibility)

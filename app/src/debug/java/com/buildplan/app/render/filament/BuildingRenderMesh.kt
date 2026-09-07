@@ -6,6 +6,7 @@ import com.buildplan.app.geometry.GablePanelGeometry
 import com.buildplan.app.geometry.GeometryTolerance
 import com.buildplan.app.geometry.LocalBounds
 import com.buildplan.app.geometry.ModelPoint
+import com.buildplan.app.geometry.OpeningPanelGeometry
 import com.buildplan.app.geometry.PlanPoint
 import com.buildplan.app.geometry.RoofFacetGeometry
 import com.buildplan.app.geometry.SlabGeometry
@@ -49,6 +50,25 @@ class BuildingRenderMesh internal constructor(
     val positions: FloatArray,
     val normals: FloatArray,
     val indices: IntArray,
+    /**
+     * The same shape as a line list: every boundary of every baked face, each
+     * one once.
+     *
+     * It is what turns a solid block into a technical drawing. A lit surface
+     * alone tells the eye where a face is but not where it ends — two walls
+     * meeting at a shallow angle, or a window head against the wall above it,
+     * differ by a few percent of grey and vanish at most viewing angles. Drawing
+     * the boundaries on top restores the line every architectural drawing has,
+     * and it is also what makes a layer that has been *removed* still readable
+     * as the same house: the renderer keeps drawing these and stops drawing the
+     * triangles.
+     *
+     * Shared edges are deduplicated by position, so the seam where two faces of
+     * one prism meet is one line rather than two coincident ones.
+     */
+    val edgeIndices: IntArray,
+    /** How this mesh should read: as building fabric, or as the glass in a hole. */
+    val style: MeshStyle,
     /** Centre of the axis-aligned box the renderer culls against. */
     val boundsCenter: FloatArray,
     /** Half-size of that box, never zero on any axis — see [nonDegenerateHalfExtent]. */
@@ -56,6 +76,29 @@ class BuildingRenderMesh internal constructor(
 ) {
     val vertexCount: Int get() = positions.size / 3
     val triangleCount: Int get() = indices.size / 3
+    val edgeCount: Int get() = edgeIndices.size / 2
+}
+
+/**
+ * How a baked mesh should be shaded.
+ *
+ * Derived from the *primitive type*, never from the element's
+ * [com.buildplan.app.domain.model.BuildingElementKind]. That distinction is the
+ * whole point: "this shape is a thin planar fill of a hole" is a fact about the
+ * geometry, and the renderer is allowed to know it. "This element is a window"
+ * is a fact about the domain, and if the renderer knew that it would be a second
+ * place where the semantics live.
+ *
+ * They agree here anyway, but they would stop agreeing the moment a shape was
+ * used somewhere the kind did not follow — and then the renderer would be the
+ * one that was wrong.
+ */
+enum class MeshStyle {
+    /** Walls, slabs, roofs, gables: opaque building fabric. */
+    SOLID,
+
+    /** A pane, a leaf, a rooflight: read as an opening rather than as more wall. */
+    GLAZING,
 }
 
 /** Bakes every primitive in order, so draw order stays the geometry's order. */
@@ -66,8 +109,9 @@ fun List<BuildingGeometryPrimitive>.toRenderMeshes(): List<BuildingRenderMesh> =
  * Bakes one primitive.
  *
  * Walls and slabs are prisms: a plan outline extruded between two levels and
- * closed with a cap at each end. A roof facet and a gable panel are already
- * planar, so each is triangulated where it is.
+ * closed with a cap at each end — a wall with openings is several such prisms,
+ * one per solid stretch of it. A roof facet, a gable panel and the pane filling
+ * an opening are already planar, so each is triangulated where it is.
  *
  * Caps are fan-triangulated from the first vertex, which is correct for a convex
  * outline and wrong for a concave one. Every outline the model can currently
@@ -78,12 +122,14 @@ fun List<BuildingGeometryPrimitive>.toRenderMeshes(): List<BuildingRenderMesh> =
 fun BuildingGeometryPrimitive.toRenderMesh(): BuildingRenderMesh {
     val mesh = MeshAccumulator()
     when (this) {
-        is WallGeometry -> mesh.addPrism(footprint(), baseElevation, topElevation)
+        is WallGeometry -> mesh.addWall(this)
         is SlabGeometry -> mesh.addPrism(outline, elevation, topElevation)
         is RoofFacetGeometry -> mesh.addPlanarFacet(vertices)
-        is GablePanelGeometry -> mesh.addVerticalPanel(vertices)
+        is GablePanelGeometry -> mesh.addPlanarPanel(vertices)
+        is OpeningPanelGeometry -> mesh.addPlanarPanel(vertices)
     }
-    return mesh.build(elementId, bounds)
+    val style = if (this is OpeningPanelGeometry) MeshStyle.GLAZING else MeshStyle.SOLID
+    return mesh.build(elementId, style, bounds)
 }
 
 /**
@@ -100,6 +146,66 @@ private class MeshAccumulator {
     private val positions = ArrayList<Float>()
     private val normals = ArrayList<Float>()
     private val indices = ArrayList<Int>()
+
+    /** The first vertex index seen at each distinct position, for edge dedup. */
+    private val vertexAtPosition = HashMap<Long, Int>()
+
+    /** Undirected edges, packed as the lower index in the high word. */
+    private val edges = LinkedHashSet<Long>()
+
+    /**
+     * A wall, split around its openings.
+     *
+     * A hole is made by *not baking* the piece of wall it occupies: the wall
+     * becomes the stretches either side of each opening at full height, plus the
+     * sill and the head over the opening itself. Every reveal face — jamb, head,
+     * sill — then falls out as an end cap of a neighbouring stretch, which is
+     * why nothing here draws one explicitly and why they are always exactly
+     * flush with the hole.
+     */
+    fun addWall(wall: WallGeometry) {
+        if (wall.openings.isEmpty()) {
+            addPrism(wall.footprint(), wall.baseElevation, wall.topElevation)
+            return
+        }
+        var solidFrom = 0.0
+        wall.openings.sortedBy { it.distanceFromStart }.forEach { opening ->
+            addWallBand(wall, solidFrom, opening.distanceFromStart, wall.baseElevation, wall.topElevation)
+            addWallBand(
+                wall,
+                opening.distanceFromStart,
+                opening.distanceToEnd,
+                wall.baseElevation,
+                opening.sillElevation,
+            )
+            addWallBand(
+                wall,
+                opening.distanceFromStart,
+                opening.distanceToEnd,
+                opening.headElevation,
+                wall.topElevation,
+            )
+            solidFrom = opening.distanceToEnd
+        }
+        addWallBand(wall, solidFrom, wall.length, wall.baseElevation, wall.topElevation)
+    }
+
+    /**
+     * One solid stretch of a wall. Bands with no width or no height are skipped
+     * rather than baked flat: a door reaching the floor has no sill band, and a
+     * window flush with a corner has no pier beside it.
+     */
+    private fun addWallBand(
+        wall: WallGeometry,
+        fromDistance: Double,
+        toDistance: Double,
+        bottomY: Double,
+        topY: Double,
+    ) {
+        if (toDistance - fromDistance <= GeometryTolerance.LENGTH_METERS) return
+        if (topY - bottomY <= GeometryTolerance.LENGTH_METERS) return
+        addPrism(wall.footprintBetween(fromDistance, toDistance), bottomY, topY)
+    }
 
     /** A plan outline extruded from [bottomY] to [topY], with both caps closed. */
     fun addPrism(plan: List<PlanPoint>, bottomY: Double, topY: Double) {
@@ -139,15 +245,16 @@ private class MeshAccumulator {
     }
 
     /**
-     * A single vertical planar panel, shaded by its own normal exactly as
-     * written.
+     * A single planar panel with no thickness — a gable, a window pane, a
+     * rooflight — shaded by its own normal exactly as written.
      *
      * No flip, unlike [addPlanarFacet]: "outwards" has no meaning for a lone
-     * vertical polygon — a gable is seen from one side or the other depending
-     * on where the camera is — so the normal is left alone and the spike's
-     * double-sided material resolves the facing per fragment.
+     * sheet. A gable is seen from one side or the other depending on where the
+     * camera is, and a pane is seen from both at once, so the normal is left
+     * alone and the spike's double-sided material resolves the facing per
+     * fragment.
      */
-    fun addVerticalPanel(vertices: List<ModelPoint>) {
+    fun addPlanarPanel(vertices: List<ModelPoint>) {
         val usable = vertices.withoutRepeatedVertices()
         if (usable.size < 3) return
         val normal = usable.newellUnitNormal() ?: return
@@ -173,14 +280,50 @@ private class MeshAccumulator {
             indices += base + corner
             indices += base + corner + 1
         }
+
+        // The face's own boundary, added once per distinct pair of positions so
+        // the seam two faces share is one line. Coincident lines are not a
+        // performance problem — they are a visual one: two of them at the same
+        // depth flicker against each other as the camera moves.
+        ordered.indices.forEach { corner ->
+            val from = canonicalVertex(ordered[corner], base + corner)
+            val next = (corner + 1) % ordered.size
+            val to = canonicalVertex(ordered[next], base + next)
+            if (from != to) {
+                edges += (minOf(from, to).toLong() shl Int.SIZE_BITS) or maxOf(from, to).toLong()
+            }
+        }
     }
 
-    fun build(elementId: BuildingElementId, bounds: LocalBounds): BuildingRenderMesh =
+    /**
+     * The vertex index this position was first written at.
+     *
+     * Faces are never welded — every vertex keeps its own face normal, which is
+     * what makes the shading faceted — so the same corner appears in the buffer
+     * several times over. For a line it makes no difference which of them is
+     * used, and picking one consistently is what lets an edge be recognised as
+     * one already drawn.
+     */
+    private fun canonicalVertex(point: ModelPoint, index: Int): Int =
+        vertexAtPosition.getOrPut(point.positionKey()) { index }
+
+    fun build(
+        elementId: BuildingElementId,
+        style: MeshStyle,
+        bounds: LocalBounds,
+    ): BuildingRenderMesh =
         BuildingRenderMesh(
             elementId = elementId,
+            style = style,
             positions = positions.toFloatArray(),
             normals = normals.toFloatArray(),
             indices = indices.toIntArray(),
+            edgeIndices = IntArray(edges.size * 2).also { packed ->
+                edges.forEachIndexed { edge, key ->
+                    packed[edge * 2] = (key ushr Int.SIZE_BITS).toInt()
+                    packed[edge * 2 + 1] = key.toInt()
+                }
+            },
             boundsCenter = floatArrayOf(
                 bounds.center.x.toFloat(),
                 bounds.center.y.toFloat(),
@@ -203,6 +346,26 @@ private class MeshAccumulator {
  */
 internal fun nonDegenerateHalfExtent(size: Double): Float =
     maxOf(size / 2.0, GeometryTolerance.LENGTH_METERS).toFloat()
+
+/**
+ * A position quantised to a tenth of a millimetre and packed into one key.
+ *
+ * Quantised because two corners that a metre of arithmetic has left a
+ * nanometre apart are the same corner of the same building, and an exact
+ * comparison would draw their shared edge twice. A tenth of a millimetre is far
+ * finer than any coordinate the model expresses and far coarser than the noise.
+ */
+private fun ModelPoint.positionKey(): Long {
+    var key = Math.round(x * POSITION_QUANTUM)
+    key = key * POSITION_HASH_PRIME + Math.round(y * POSITION_QUANTUM)
+    return key * POSITION_HASH_PRIME + Math.round(z * POSITION_QUANTUM)
+}
+
+/** Tenths of a millimetre per metre. */
+private const val POSITION_QUANTUM = 10_000.0
+
+/** An odd multiplier large enough that three quantised coordinates rarely collide. */
+private const val POSITION_HASH_PRIME = 1_000_003L
 
 /**
  * The outward horizontal normal of the side face on edge [from] to [to], or null
