@@ -29,6 +29,9 @@ android {
     }
 
     compileOptions {
+        // The domain uses java.time, which is only in the platform from API 26.
+        // Desugaring keeps minSdk 24 supported rather than dropping Android 7.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -62,6 +65,8 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
 }

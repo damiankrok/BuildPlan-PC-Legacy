@@ -2,10 +2,11 @@
 
 Natywna aplikacja **Android** do organizowania i analizowania kosztów budowy domu.
 
-> **Bardzo wczesny etap.** Repozytorium zawiera dopiero szkielet aplikacji:
-> App Shell, nawigację i puste ekrany modułów. Nie ma jeszcze modelu domenowego,
-> backendu, bazy danych ani żadnej logiki biznesowej. Wszystkie wartości widoczne
-> w interfejsie to placeholdery (`—`), a nie dane.
+> **Bardzo wczesny etap.** Repozytorium zawiera powłokę aplikacji (App Shell,
+> nawigacja, puste ekrany modułów) oraz kanoniczny model domenowy. Nie ma
+> jeszcze persystencji, backendu ani logiki biznesowej — nic nie zapisuje
+> i nie odczytuje danych. Wszystkie wartości widoczne w interfejsie to
+> placeholdery (`—`), a nie dane.
 
 ## Stack
 
@@ -59,12 +60,16 @@ Na Windows użyj `gradlew.bat`.
 ```text
 app/src/main/java/com/buildplan/app/
   MainActivity.kt
+  domain/            kanoniczny model domenowy (bez zależności od Androida)
+    model/           encje, identyfikatory, kontrakt kosztów
+    money/           Money i waluty
+    units/           jednostki miar
   ui/
-    AppShell.kt        ramka aplikacji: TopAppBar + ModalNavigationDrawer
-    navigation/        lista sekcji, NavHost, zawartość szuflady
-    screens/           ekrany modułów (obecnie placeholdery)
-    components/        komponenty współdzielone
-    theme/             kolory, typografia, kształty
+    AppShell.kt      ramka aplikacji: TopAppBar + ModalNavigationDrawer
+    navigation/      lista sekcji, NavHost, zawartość szuflady
+    screens/         ekrany modułów (obecnie placeholdery)
+    components/      komponenty współdzielone
+    theme/           kolory, typografia, kształty
 ```
 
 ## Dokumentacja
