@@ -1,8 +1,13 @@
 package com.buildplan.app.reference.visual
 
 import com.buildplan.app.domain.model.BuildingElementId
+import com.buildplan.app.geometry.OpeningPanelGeometry
 import com.buildplan.app.presentation.DecompositionGroup
 import com.buildplan.app.presentation.DecompositionProfile
+import com.buildplan.app.presentation.RoofCoverBlocker
+import com.buildplan.app.presentation.RoofCoverProfile
+import com.buildplan.app.presentation.RoofCoverSpec
+import com.buildplan.app.presentation.RoofCoverStyle
 
 /**
  * How a reference element's surfaces should read in the technical study, when
@@ -72,4 +77,58 @@ object MarcowkiVisualPresentation {
         (MarcowkiVisualModelV1.gableFrameIds + MarcowkiVisualModelV1.fasciaId)
             .associateWith { DecompositionGroup.ROOF_ENVELOPE },
     )
+
+    /**
+     * The tile module the two roof facets are drawn with: a display
+     * assumption, recorded as one in [MarcowkiSourceEvidence.displayAssumptions].
+     *
+     * The page names a pitched, tiled roof and gives its area and pitch; it
+     * does not give a tile, and the model does not pretend it does. These are
+     * the proportions of a plain curved clay tile laid at a gauge a study can
+     * afford — about two thousand tiles over 150 m² — chosen for the read at
+     * the distances the owner reviews from, not for any manufacturer's
+     * profile. Nothing in the canonical roof changes: the facets keep the
+     * 150.4 m² that reconciles with the published area, and the covering is
+     * drawn a centimetre above them.
+     */
+    val roofCoverSpec: RoofCoverSpec = RoofCoverSpec(
+        style = RoofCoverStyle.CURVED_TILE,
+        moduleWidth = 0.25,
+        moduleLength = 0.40,
+        exposure = 0.30,
+        tailRound = 0.05,
+        camber = 0.025,
+        lift = 0.01,
+        step = 0.02,
+    )
+
+    /**
+     * How far a tile stops short of a stack or a rooflight. Display only: it
+     * is the flashing a real roof has there, reduced to a gap.
+     */
+    const val ROOF_COVER_BLOCKER_MARGIN: Double = 0.03
+
+    /**
+     * Which of this model's elements are drawn with a covering, and what the
+     * covering must avoid.
+     *
+     * Only the roof itself. The gable frames' soffits and tops are
+     * `RoofFacetGeometry` too, and they are not tiled: they are trim, and a
+     * tiled soffit would be a roof where the elevations draw a bar. The
+     * blockers are the two stacks and the three rooflights — read off the
+     * bounds of the geometry the model already draws for them, by id, so the
+     * stack the tiles avoid is the stack that is on screen. No coordinate is
+     * written a second time here.
+     */
+    val roofCover: RoofCoverProfile = RoofCoverProfile(
+        covers = mapOf(MarcowkiVisualModelV1.roofId to roofCoverSpec),
+        blockers = roofCoverBlockers(),
+    )
+
+    private fun roofCoverBlockers(): List<RoofCoverBlocker> {
+        val geometry = MarcowkiVisualModelV1.geometry
+        val stacks = MarcowkiVisualModelV1.stackIds.flatMap { geometry.primitivesFor(it) }
+        val rooflights = geometry.primitivesFor(MarcowkiVisualModelV1.roofId).filterIsInstance<OpeningPanelGeometry>()
+        return (stacks + rooflights).map { RoofCoverBlocker.aroundPlan(it.bounds, ROOF_COVER_BLOCKER_MARGIN) }
+    }
 }

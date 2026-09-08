@@ -81,6 +81,15 @@ internal class FilamentModelRenderer(
      */
     private val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> = emptyMap(),
     initialStyle: RenderStyle = RenderStyle.DEFAULT,
+    /**
+     * The roof coverings, one batch per covered facet, already laid.
+     *
+     * Each batch carries its roof's element id and is uploaded as exactly
+     * one renderable — never one per tile — so it sits in the same id maps as
+     * the roof's own planes and goes in and out of the scene with them. The
+     * renderer does not know what a tile is; it knows a mesh with an id.
+     */
+    roofCovers: List<RoofCoverMesh> = emptyList(),
 ) : Choreographer.FrameCallback {
 
     init {
@@ -119,6 +128,9 @@ internal class FilamentModelRenderer(
 
     /** Which surface entities are glass, whose colour no style changes. */
     private val glassEntities = HashSet<Int>()
+
+    /** Which surface entities are a roof covering, coloured by the style's cover value. */
+    private val roofCoverEntities = HashSet<Int>()
 
     /**
      * The edge overlay of every mesh, keyed the same way as the surfaces.
@@ -208,6 +220,7 @@ internal class FilamentModelRenderer(
         scene.addEntity(sunEntity)
 
         meshes.forEach(::uploadMesh)
+        roofCovers.forEach(::uploadRoofCover)
         grid?.let(::uploadGrid)
 
         camera.setExposure(APERTURE, SHUTTER_SPEED, SENSITIVITY)
@@ -355,6 +368,88 @@ internal class FilamentModelRenderer(
     }
 
     /**
+     * Uploads one facet's covering as one renderable.
+     *
+     * One entity for the whole batch, whatever its tile count: the covering
+     * is registered under its roof's id exactly as a roof plane is, so
+     * [setVisibleElements] and [pick] treat it as the roof without a line of
+     * their own about it. No outline is uploaded — a covering reads from its
+     * relief, and two thousand outlined quads would be the wireframe
+     * STAGE-013E removed, put back.
+     *
+     * The third buffer is the tile signal — phase and position along the
+     * tile — carried as `UV0`. No material reads it yet; it is the seam a
+     * later vertex-shader animation attaches to without the geometry, the
+     * entity count or the id maps changing.
+     */
+    private fun uploadRoofCover(cover: RoofCoverMesh) {
+        val vertexBuffer = VertexBuffer.Builder()
+            .bufferCount(3)
+            .vertexCount(cover.vertexCount)
+            .attribute(
+                VertexBuffer.VertexAttribute.POSITION,
+                0,
+                VertexBuffer.AttributeType.FLOAT3,
+                0,
+                POSITION_STRIDE_BYTES,
+            )
+            .attribute(
+                VertexBuffer.VertexAttribute.TANGENTS,
+                1,
+                VertexBuffer.AttributeType.FLOAT4,
+                0,
+                TANGENT_STRIDE_BYTES,
+            )
+            .attribute(
+                VertexBuffer.VertexAttribute.UV0,
+                2,
+                VertexBuffer.AttributeType.FLOAT2,
+                0,
+                SIGNAL_STRIDE_BYTES,
+            )
+            .build(engine)
+        vertexBuffer.setBufferAt(engine, 0, cover.positions.toDirectBuffer())
+        vertexBuffer.setBufferAt(engine, 1, tangentFrames(cover.normals))
+        vertexBuffer.setBufferAt(engine, 2, cover.signals.toDirectBuffer())
+
+        val indexBuffer = IndexBuffer.Builder()
+            .indexCount(cover.indices.size)
+            .bufferType(IndexBuffer.Builder.IndexType.UINT)
+            .build(engine)
+        indexBuffer.setBuffer(engine, cover.indices.toDirectBuffer())
+
+        val instance = material.createInstance()
+        instance.setColor(style.roofCover)
+
+        val entity = entityManager.create()
+        RenderableManager.Builder(1)
+            .boundingBox(Box(cover.boundsCenter, cover.boundsHalfExtent))
+            .geometry(
+                0,
+                RenderableManager.PrimitiveType.TRIANGLES,
+                vertexBuffer,
+                indexBuffer,
+                0,
+                cover.indices.size,
+            )
+            .material(0, instance)
+            // The relief is the point: each course shadows the one below.
+            .castShadows(true)
+            .receiveShadows(true)
+            .culling(true)
+            .build(engine, entity)
+
+        vertexBuffers += vertexBuffer
+        indexBuffers += indexBuffer
+        materialInstances += instance
+        renderableEntities += entity
+        elementIdByEntity[entity] = cover.elementId
+        entitiesByElementId.getOrPut(cover.elementId) { ArrayList() } += entity
+        instanceByEntity[entity] = instance
+        roofCoverEntities += entity
+    }
+
+    /**
      * Uploads the reference plane as two line lists sharing one vertex buffer.
      *
      * Added to the scene here rather than in [setVisibleElements], and never
@@ -490,7 +585,7 @@ internal class FilamentModelRenderer(
         renderableEntities.forEach { entity ->
             if (entity in glassEntities) return@forEach
             val tinted = elementIdByEntity[entity] == selectedElementId
-            instanceByEntity[entity]?.setColor(if (tinted) SELECTED else applied.surface)
+            instanceByEntity[entity]?.setColor(if (tinted) SELECTED else baseColorOf(entity, applied))
         }
         outlines.forEach { it.instance.setColor(applied.edge) }
         gridMinorInstance?.setColor(applied.gridMinor)
@@ -515,6 +610,15 @@ internal class FilamentModelRenderer(
         .build(engine)
 
     /**
+     * The colour an unselected opaque entity returns to under [applied]: the
+     * covering's value for a roof covering, the surface value for everything
+     * else. The one place the renderer tells the two apart, and it does so by
+     * which upload registered the entity — never by the element's kind.
+     */
+    private fun baseColorOf(entity: Int, applied: RenderStyle): FloatArray =
+        if (entity in roofCoverEntities) applied.roofCover else applied.surface
+
+    /**
      * Tints every mesh of [elementId], and returns every other mesh to its own
      * base colour.
      *
@@ -529,7 +633,7 @@ internal class FilamentModelRenderer(
             val instance = instanceByEntity[entity] ?: return@forEach
             val glass = entity in glassEntities
             val color = when {
-                elementIdByEntity[entity] != elementId -> if (glass) GLASS else style.surface
+                elementIdByEntity[entity] != elementId -> if (glass) GLASS else baseColorOf(entity, style)
                 glass -> floatArrayOf(SELECTED[0], SELECTED[1], SELECTED[2], GlassPresentation.SELECTED_ALPHA)
                 else -> SELECTED
             }
@@ -599,6 +703,7 @@ internal class FilamentModelRenderer(
         entitiesByElementId.clear()
         instanceByEntity.clear()
         glassEntities.clear()
+        roofCoverEntities.clear()
         gridMinorInstance = null
         gridMajorInstance = null
 
@@ -749,6 +854,7 @@ internal class FilamentModelRenderer(
 
         const val POSITION_STRIDE_BYTES = 12
         const val TANGENT_STRIDE_BYTES = 16
+        const val SIGNAL_STRIDE_BYTES = 8
     }
 }
 

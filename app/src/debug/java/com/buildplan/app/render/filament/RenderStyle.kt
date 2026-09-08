@@ -33,6 +33,13 @@ internal enum class RenderStyle(
     val background: FloatArray,
     /** Base colour of every opaque surface. */
     val surface: FloatArray,
+    /**
+     * Base colour of a roof covering: the same neutral a step darker, so the
+     * tiles read as a different material from the walls and still as one
+     * study. The value is the *only* thing that differs — see
+     * [FilamentModelRenderer] — and it is monochrome like everything here.
+     */
+    val roofCover: FloatArray,
     /** Premultiplied colour of the feature-edge overlay. */
     val edge: FloatArray,
     /** The fine and the emphasised grid lines, premultiplied. */
@@ -46,6 +53,7 @@ internal enum class RenderStyle(
         labelRes = R.string.model_style_clay,
         background = floatArrayOf(0.58f, 0.58f, 0.57f),
         surface = floatArrayOf(0.74f, 0.74f, 0.73f, 1.0f),
+        roofCover = floatArrayOf(0.62f, 0.62f, 0.61f, 1.0f),
         edge = floatArrayOf(0.06f, 0.065f, 0.07f, 0.72f),
         gridMinor = floatArrayOf(0.44f, 0.44f, 0.43f, 0.40f),
         gridMajor = floatArrayOf(0.34f, 0.34f, 0.33f, 0.55f),
@@ -57,6 +65,7 @@ internal enum class RenderStyle(
         labelRes = R.string.model_style_lines,
         background = floatArrayOf(0.010f, 0.011f, 0.013f),
         surface = floatArrayOf(0.55f, 0.56f, 0.58f, 1.0f),
+        roofCover = floatArrayOf(0.46f, 0.47f, 0.49f, 1.0f),
         edge = floatArrayOf(0.90f, 0.91f, 0.93f, 0.90f),
         gridMinor = floatArrayOf(0.11f, 0.12f, 0.13f, 0.42f),
         gridMajor = floatArrayOf(0.20f, 0.21f, 0.23f, 0.60f),

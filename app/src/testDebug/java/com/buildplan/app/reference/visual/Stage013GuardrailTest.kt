@@ -115,6 +115,7 @@ class Stage013GuardrailTest {
                 ModelViewPreset.FULL_REAR_AXON,
                 ModelViewPreset.GLASS_RAILING_CLOSEUP,
                 ModelViewPreset.ROOF_FASCIA_CLOSEUP,
+                ModelViewPreset.ROOF_COVER_CLOSEUP,
                 ModelViewPreset.SITE_CONTEXT,
                 ModelViewPreset.STAIRS_VIEW,
             ),

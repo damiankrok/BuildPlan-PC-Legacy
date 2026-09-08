@@ -131,6 +131,11 @@ private fun ModelStage(model: DebugModel) {
 
     val meshes = remember(model) { model.geometry.primitives.toRenderMeshes() }
 
+    // The roof coverings, laid once over the facets the model's presentation
+    // names and handed to the renderer beside the meshes. They carry the
+    // roof's own id, so the visibility path below needs no word about them.
+    val roofCovers = remember(model) { model.geometry.roofCoverMeshes(model.roofCover) }
+
     // Built from the model's extent and handed to the renderer, so the ruled
     // plane is a fact about how big this model is rather than a constant that
     // would be the wrong size for the other one.
@@ -247,8 +252,14 @@ private fun ModelStage(model: DebugModel) {
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
                         SurfaceView(context).also { surfaceView ->
-                            val created =
-                                FilamentModelRenderer(surfaceView, meshes, grid, model.surfaceRoles, style)
+                            val created = FilamentModelRenderer(
+                                surfaceView = surfaceView,
+                                meshes = meshes,
+                                grid = grid,
+                                surfaceRoles = model.surfaceRoles,
+                                initialStyle = style,
+                                roofCovers = roofCovers,
+                            )
                             created.setVisibleElements(visibleElementIds)
                             created.resume()
                             renderer = created

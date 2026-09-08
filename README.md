@@ -82,13 +82,16 @@ app/src/debug/java/com/buildplan/app/
                      każdej liczby; do wizualnej weryfikacji, nie do wymiarowania
   geometry/demo/     syntetyczny dom demonstracyjny z geometrią; wymyślone
                      wymiary, nie jest rekonstrukcją realnego projektu
+  presentation/      profile prezentacji po identyfikatorze elementu:
+                     dekompozycja widoku i pokrycie dachu (tylko debug)
   render/filament/   debugowy renderer i host podglądu 3D
 ```
 
 Ekran **Model 3D** w wariancie debug otwiera się na modelu Marcówek. Przełącznik
 u góry pozwala wrócić do syntetycznego domu (fikstura regresyjna renderera),
-a pięć presetów widoku ustawia powtarzalnie kamerę i widoczność — od widoku
-ogólnego po rzut poddasza z góry. Wariant release nadal pokazuje placeholder.
+a presety widoku ustawiają powtarzalnie kamerę i widoczność — od widoku
+ogólnego, przez zbliżenie pokrycia dachu, po rzut poddasza z góry. Wariant
+release nadal pokazuje placeholder.
 
 ## Dokumentacja
 

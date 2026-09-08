@@ -560,6 +560,7 @@ class MarcowkiVisualModelV1Test {
                 "Liczba stopni",
                 "Okna połaciowe rysowane na połaci",
                 "Wymiary drzwi wewnętrznych",
+                "Moduł pokrycia dachu",
             ),
             assumptionNames,
         )

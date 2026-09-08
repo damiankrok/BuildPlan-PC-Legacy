@@ -10,6 +10,7 @@ import com.buildplan.app.geometry.LocalBounds
 import com.buildplan.app.geometry.primitivesOf
 import com.buildplan.app.geometry.demo.SyntheticDemoHouse
 import com.buildplan.app.presentation.DecompositionProfile
+import com.buildplan.app.presentation.RoofCoverProfile
 import com.buildplan.app.reference.visual.MarcowkiVisualModelV1
 import com.buildplan.app.reference.visual.MarcowkiVisualPresentation
 import com.buildplan.app.reference.visual.VisualSurfaceRole
@@ -36,12 +37,15 @@ internal enum class DebugModel(val labelRes: Int) {
             get() = MarcowkiVisualPresentation.surfaceRoles
         override val decomposition: DecompositionProfile
             get() = MarcowkiVisualPresentation.decomposition
+        override val roofCover: RoofCoverProfile
+            get() = MarcowkiVisualPresentation.roofCover
 
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = when (focus) {
             PresetFocus.WHOLE_MODEL -> null
             PresetFocus.STAIR -> MarcowkiVisualModelV1.stairId
             PresetFocus.NORTH_BALUSTRADE -> MarcowkiVisualModelV1.balustradeIds.first()
             PresetFocus.NORTH_FRAME -> MarcowkiVisualModelV1.gableFrameIds.first()
+            PresetFocus.ROOF -> MarcowkiVisualModelV1.roofId
         }
     },
 
@@ -51,6 +55,7 @@ internal enum class DebugModel(val labelRes: Int) {
         override val atticId: FloorId get() = SyntheticDemoHouse.atticId
         override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> get() = emptyMap()
         override val decomposition: DecompositionProfile get() = DecompositionProfile.NONE
+        override val roofCover: RoofCoverProfile get() = RoofCoverProfile.NONE
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = null
     },
     ;
@@ -74,6 +79,14 @@ internal enum class DebugModel(val labelRes: Int) {
      * roof is its roof and nothing else is seen as part of it.
      */
     abstract val decomposition: DecompositionProfile
+
+    /**
+     * Which of this model's roofs are drawn with a covering, and what the
+     * covering avoids. Presentation beside the model, like the roles and the
+     * decomposition: the synthetic fixture declares none and stays the plain
+     * planes the renderer's regression tests know.
+     */
+    abstract val roofCover: RoofCoverProfile
 
     /**
      * The one decision path for what is on screen: the domain says which
@@ -113,7 +126,7 @@ internal enum class DebugModel(val labelRes: Int) {
 }
 
 /** What a preset is a view *of*. */
-internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FRAME }
+internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FRAME, ROOF }
 
 /**
  * A named, reproducible view of the model: a visibility state and a camera.
@@ -313,6 +326,28 @@ internal enum class ModelViewPreset(
         pitchDegrees = 12.0,
         distanceMargin = 1.10,
         focus = PresetFocus.NORTH_FRAME,
+    ),
+
+    /**
+     * The east slope of the roof, close in and from the south-east, where the
+     * sun is: the covering's course rhythm, the rolls running down the slope,
+     * both stacks and the east rooflight standing in it, and the ridge and
+     * the eaves closing it top and bottom.
+     *
+     * Framed on the roof's own box rather than the building's, and cropped
+     * into it, because at the distance that fits the house a tile is a
+     * texture and the question this view asks — does the roof read as tiles,
+     * do they stop clean at the stacks — is a question about a few square
+     * metres of it. Seen from the lit side on purpose: relief that is only
+     * ambient-lit is relief a reviewer has to take on trust.
+     */
+    ROOF_COVER_CLOSEUP(
+        labelRes = R.string.model_view_roof_cover,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 120.0,
+        pitchDegrees = 34.0,
+        distanceMargin = 0.62,
+        focus = PresetFocus.ROOF,
     ),
 
     /**

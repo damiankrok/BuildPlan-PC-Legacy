@@ -231,12 +231,45 @@
   poza repozytorium. Czas etapu przekroczył politykę 30 min (ok. 60 min
   łącznie z dowodami) — odnotowane, bez dodatkowej pętli.
 
+- STAGE-013F modular monochrome roof tiles — **PASS techniczny, brama
+  wizualna OWNER-a nadal otwarta.** Zlecone przez OWNER-a przed zamknięciem
+  `GATE-3D-SHAPE-01-R5`: warstwa pokrycia dachu jako prezentacja, jeden styl
+  `CURVED_TILE`. Kanoniczny dach bez zmian (dwie połacie, 150,4 m²); pokrycie
+  to `presentation/RoofCover.kt` (`RoofCoverStyle`, `RoofCoverSpec`,
+  `RoofCoverBlocker`, `RoofCoverProfile` obok modelu referencyjnego jak role
+  szkła i dekompozycja) plus generator `render/filament/RoofCoverMesh.kt`
+  ogólny względem połaci (baza z normalnej i najstromszego wzniesienia,
+  rzędy od okapu do kalenicy, przycinanie do obrysu; sprawdzony na dachu
+  syntetycznym z kalenicą wzdłuż X, trójkącie kopertowym, pulpicie obróconym
+  o 30° i połaci płaskiej). Dachówka: 10 wierzchołków, 8 trójkątów, beczkowe
+  wybrzuszenie, zaokrąglony ogon, przechył (głowa 0,01 m, ogon 0,03 m nad
+  połacią), rzędy wyrównane. Marcówki: 2 encje (po jednej na połać),
+  2016 dachówek, 20 160 wierzchołków, 15 984 trójkątów; kominy i okna
+  połaciowe jako blokery z `LocalBounds` własnych prymitywów (+0,03 m), bez
+  powtórzonych współrzędnych. Partia odpowiada identyfikatorem dachu, więc
+  „Bez dachu" usuwa ją tą samą ścieżką bez żadnej nowej reguły; dotknięcie
+  dachówki wybiera dach. Bez konturu na dachówkach, bez tekstury, ten sam
+  materiał, kolor `RenderStyle.roofCover` o stopień ciemniejszy. Szew pod
+  animację: `RoofCoverTile` (rząd, kolumna, porządek, faza) i sygnał `UV0`
+  na wierzchołek — nic go dziś nie czyta. Nowy preset „Pokrycie dachu".
+  Wiarygodność: `DISPLAY_ASSUMPTION` 15 (nowy „Moduł pokrycia dachu").
+  Testy `RoofCoverMeshTest` TILE013F-01…12 (178 testów zielonych), lint
+  i `assembleDebug` zielone; release bez zmian. Samoaudyt A1–A12: **23/24**
+  po pierwszej implementacji (A7 = 1: kalenica bez gąsiora), korekta
+  uznana za niepotrzebną, re-audyt `NOT_NEEDED`. Dowody na `emulator-5570`
+  poza repozytorium (`D:\TRAVELAPPS\_stage013f_roof_tiles_evidence`).
+  Odnotowane: w trakcie dowodów kompozytor emulatora zawiesił się po
+  dotknięciach w strefie gestu nawigacji (stare warstwy zostały po
+  `force-stop`); po `adb -s emulator-5570 reboot` cykl tło→pierwszy plan
+  aplikacji przeszedł bez zastrzeżeń, więc nie jest to regresja renderera.
+
 ## Następny krok
 
 GATE-3D-SHAPE-01 **po raz piąty** (`RETEST_PENDING`) — OWNER porównuje
 model z rzutami, elewacjami, wizualizacjami ARCHON i własnym pakietem
-referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy schody z zabiegami, drzwi wewnętrzne, czyste „Bez dachu"
-i prezentacja studyjna (cienie, SSAO, krawędzie cech) czytają się jako ten dom
+referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy schody z zabiegami, drzwi wewnętrzne, czyste „Bez dachu",
+prezentacja studyjna (cienie, SSAO, krawędzie cech) i modułowe pokrycie dachu
+ze STAGE-013F czytają się jako ten dom
 bez objaśnień. Dopiero po tej
 ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013D **nie
 jest** akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
@@ -246,7 +279,8 @@ w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
 
 Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, **analizatora
 projektów** (spisany jest tylko jego kontrakt), wycinania otworów w połaci dachu,
-grubości połaci, pickingu przez szkło, persystencji i danych rzeczywistych. Model
+grubości połaci, gąsiora na kalenicy, drugiego stylu pokrycia dachu, animacji
+dachówek, pickingu przez szkło, persystencji i danych rzeczywistych. Model
 Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory,
 schody, cechy rozpoznawcze elewacji, pas okapowy i kominy ponad dachem
 z wykazów, rzutów, elewacji i przekroju, ale nie ma trzonów kominowych,

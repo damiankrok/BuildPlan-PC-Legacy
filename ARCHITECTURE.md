@@ -13,11 +13,12 @@ demonstracyjny z geometrią (STAGE-011). Do tego **spike renderera na Google
 Filament** (STAGE-012) — wyłącznie w źródłach `debug`, jako dowód wykonalności
 i podstawa wyboru technologii, nie jako docelowy renderer produkcyjny. Na tym
 rendererze stoi **model wizualny „Dom w marcówkach (GE)" V1** (STAGE-013,
-poprawiany w STAGE-013B/C/D):
+poprawiany w STAGE-013B/C/D/E):
 pierwsza geometria odrysowana z aktualnych rzutów ARCHON, z jawną klasyfikacją
 wiarygodności każdej liczby, również w źródłach `debug` i przeznaczona do
-wizualnej weryfikacji przez OWNER-a. Brak backendu, persystencji, autoryzacji
-i parsera rzutów.
+wizualnej weryfikacji przez OWNER-a. Nad nim modułowe pokrycie dachu
+(STAGE-013F) — prezentacja generowana z połaci, bez zmiany kanonicznego dachu.
+Brak backendu, persystencji, autoryzacji i parsera rzutów.
 
 ## Decyzje
 
@@ -1054,6 +1055,131 @@ wygładzają linie. Kamera nie schodzi pod płaszczyznę siatki (minimalny pitch
 Kierunku otwierania skrzydeł, poręczy i balustrady wewnętrznej przy pustce
 klatki, ściany rdzenia od strony holu (rzut nie rozstrzyga), wycinania otworów
 w połaci, materiałów. Analizatora nadal nie ma.
+
+## Modułowe pokrycie dachu — dachówka studyjna (STAGE-013F)
+
+Etap zlecony przez OWNER-a przed zamknięciem `GATE-3D-SHAPE-01-R5`: dach ma
+czytać się jako powtarzalne, zachodzące na siebie dachówki (łuski), a nie jako
+płaska płaszczyzna — nadal monochromatycznie, lekko i rozkładalnie. Przebieg:
+implementacja → samoaudyt A1–A12 (23/24) → korekta uznana za niepotrzebną →
+`NOT_NEEDED`. Samoaudyt nie jest akceptacją OWNER-a.
+
+### Pokrycie jest wyłącznie prezentacją
+
+Kanoniczny dach nie zmienił się o bajt: jeden element `ROOF`, dwie
+`RoofFacetGeometry`, te same wierzchołki i te same 150,4 m², które uzgadniają
+się z podaną powierzchnią. Nie ma elementu „dachówka", nie ma
+`BuildingElementId` na kafelek, nie ma rodzaju elementu, kosztu ani schematu
+persystencji dla pokrycia. Dotknięcie dachówki to dotknięcie dachu
+(`marcowki-v1-dach`), potwierdzone na urządzeniu.
+
+Warstwa mieszka w dwóch plikach `src/debug`:
+
+- `presentation/RoofCover.kt` — słownik prezentacji: `RoofCoverStyle` (dziś
+  tylko `CURVED_TILE`; drugi styl musi zostać najpierw wyłożony w generatorze,
+  bo `when` jest wyczerpujące), `RoofCoverSpec` (moduł: szerokość, długość,
+  krycie, zaokrąglenie ogona, wybrzuszenie, wyniesienie, stopień — wszystko
+  w metrach wzdłuż normalnej połaci, z walidacją: krycie < długość, ogon <
+  zakład), `RoofCoverBlocker` (wypukły wielokąt na rzucie, którego żadna
+  dachówka nie przekracza) i `RoofCoverProfile` — mapa
+  `BuildingElementId → RoofCoverSpec` plus lista blokerów, trzymana obok modelu
+  referencyjnego tak samo jak role szkła i `DecompositionProfile`. Syntetyczny
+  dom deklaruje `RoofCoverProfile.NONE`.
+- `render/filament/RoofCoverMesh.kt` — czysty adapter na JVM bez importów
+  Filamenta: `RoofCoverGenerator.cover(facet, ordinal, spec, blockers)`
+  i `BuildingGeometry.roofCoverMeshes(profile)`.
+
+### Generator jest ogólny względem połaci
+
+Wejściem jest jedna płaska `RoofFacetGeometry`. Generator wyznacza własną bazę
+połaci — normalną (odwróconą w górę), kierunek najstromszego wzniesienia
+i kierunek w poprzek — bez wiedzy o kalenicy, dwuspadowości, `MarcowkiPlanGrid`
+ani liczbie połaci (TILE013F-03: dach syntetyczny z kalenicą wzdłuż X, trójkąt
+kopertowy, dach pulpitowy obrócony o 30° i połać płaska). Rzędy biegną
+w poprzek połaci od jej najniższej krawędzi do najwyższej na **rozstawie
+dzielącym spadek dokładnie** (nie większym niż krycie), więc górny rząd kończy
+się na kalenicy bez skrawka. Każda dachówka jest przycinana do obrysu na swoim
+rzędzie: wierzchołki ogona (o nieco różnym `t`) dzielą część wspólną przedziałów
+obrysu na obu końcach tego zakresu — dla obrysu wypukłego przedział ten leży
+w połaci na całej długości — a wierzchołki głowy przedział na swoim `t`.
+Dachówka węższa niż 25 % modułu jest pomijana. Powierzchnie zakrzywione są
+poza kontraktem, bo `RoofFacetGeometry` jest z definicji płaska.
+
+### Dachówka: dziesięć wierzchołków, osiem trójkątów
+
+Pięć wierzchołków na ogonie i pięć na głowie: beczkowe wybrzuszenie
+w poprzek (parabola, `camber`), zaokrąglony ogon (narożniki cofnięte
+o `tailRound` po łuku), przechył wzdłuż długości — głowa `lift` nad płaszczyzną,
+ogon `lift + step`, bo ogon leży na rzędzie poniżej. Bez spodu, bez bryły:
+płaszczyznę pod dachówkami rysuje sama połać. Normalne liczone analitycznie
+z pochodnych powierzchni (`n − f_t·u − f_s·a`), więc beczka łapie światło bez
+tekstury. Rzędy są wyrównane (bez przesunięcia o pół modułu), żeby krawędź
+dachówki nigdy nie musiała minąć grzbietu tej pod nią; prześwit ogona nad
+głową rzędu niżej wynosi `step · rozstaw / długość` ≈ 14 mm. Trójkąt o polu
+poniżej 1 mm² (mocno przycięty segment) nie jest emitowany.
+
+Moduł Marcówek (`MarcowkiVisualPresentation.roofCoverSpec`,
+`DISPLAY_ASSUMPTION` „Moduł pokrycia dachu"): 0,25 × 0,40 m, krycie 0,30 m,
+ogon 0,05 m, wybrzuszenie 0,025 m, wyniesienie 0,01 m, stopień 0,02 m
+(maksymalne wyniesienie 0,055 m — poniżej 0,08 m okien połaciowych).
+
+### Jedna partia na połać, nigdy encja na dachówkę
+
+`FilamentModelRenderer.uploadRoofCover` wgrywa całą partię jako **jedną**
+encję z trzema buforami wierzchołków (pozycja, ramka styczna, `UV0`) i jednym
+buforem indeksów, rejestruje ją pod identyfikatorem dachu w tych samych mapach
+co połacie (`entitiesByElementId`, `elementIdByEntity`, `instanceByEntity`)
+i w zbiorze `roofCoverEntities`, który rozstrzyga tylko kolor bazowy. Żadnego
+konturu: dachówki czytają się z reliefu, cienia i SSAO, a dwa tysiące
+obrysowanych czworokątów byłoby powrotem siatki, którą 013E usunęło.
+
+Marcówki: 2 partie (po jednej na połać), 2016 dachówek (2124 przed wycięciami),
+20 160 wierzchołków, 15 984 trójkątów — w budżecie ≤ 4 encji i ≤ 25 000
+trójkątów (TILE013F-08).
+
+### Wycięcia: blokery z geometrii, nie z drugiej listy współrzędnych
+
+Dwa kominy i trzy okna połaciowe są blokerami zbudowanymi
+z `LocalBounds` prymitywów, które model już rysuje pod tymi identyfikatorami
+(`RoofCoverBlocker.aroundPlan(bounds, 0.03 m)`); w `MarcowkiVisualPresentation`
+nie ma żadnej współrzędnej powtórzonej z siatki (TILE013F-07 sprawdza to
+tekstowo). Dachówka, której rzut nachodzi na bloker (test osi rozdzielającej),
+nie jest kładziona; luka jest co najwyżej jednomodułowym pierścieniem i czyta
+się jak obróbka blacharska. Wypukłość blokera jest założeniem: wklęsły byłby
+badany po otoczce.
+
+### Dekompozycja: to samo id, ta sama ścieżka
+
+Partia odpowiada identyfikatorem dachu, więc `setVisibleElements` nie ma o niej
+ani słowa: „Wszystko" i „Bez poddasza" pokazują dach z pokryciem, „Bez dachu"
+i „Bez dachu i poddasza" nie zostawiają ani dachówki, ani widma, ani linii
+(TILE013F-09, dowody na urządzeniu). `DecompositionProfile` nie wie
+o pokryciu; nie ma drugiej prawdy o widoczności.
+
+### Szew pod przyszłą animację
+
+Nie ma animacji. Jest deterministyczna tożsamość prezentacyjna każdej
+dachówki (`RoofCoverTile`: połać, rząd, kolumna, porządek, środek na
+płaszczyźnie, faza w `[0,1)` z mieszania całkowitoliczbowego — ta sama na
+każdej JVM i każdym telefonie) oraz sygnał na wierzchołek w `UV0`: faza
+i położenie wzdłuż dachówki (0 ogon, 1 głowa). Żaden materiał tego dziś nie
+czyta; przyszły ruch łuskowy to przemieszczenie w vertex shaderze na tym
+sygnale, bez zmiany liczby encji, map identyfikatorów ani domeny.
+
+### Styl
+
+`RenderStyle.roofCover` to ta sama neutralna szarość o stopień ciemniejsza od
+powierzchni (CLAY 0,62 wobec 0,74; LINE_STUDY 0,46 wobec 0,55), bez odcienia,
+bez tekstury, bez mapy normalnych, tym samym materiałem `TechnicalMaterial`.
+Preset `ROOF_COVER_CLOSEUP` („Pokrycie dachu") kadruje wschodnią połać od
+strony słońca.
+
+### Czego świadomie nie zrobiono
+
+Gąsiora na kalenicy (kalenica to szereg grzbietów obu połaci — czysta, ale
+niezwieńczona), przesunięcia rzędów, drugiego stylu pokrycia, katalogu
+pokryć w UI, animacji, koloru, refleksów i profilu producenta. Blokery
+wklęsłe i połacie wklęsłe są obsługiwane po otoczce, nie dokładnie.
 
 ## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
 

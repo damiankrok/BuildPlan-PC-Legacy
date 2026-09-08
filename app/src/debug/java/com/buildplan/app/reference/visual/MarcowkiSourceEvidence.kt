@@ -589,6 +589,17 @@ object MarcowkiSourceEvidence {
                 "rooflight from outside and as a panel floating over the attic from inside; " +
                 "the second is the honest cost of not having cut the hole.",
         ),
+        FidelityRecord(
+            name = "Moduł pokrycia dachu",
+            value = "dachówka 0.25 x 0.40 m, krycie 0.30 m, wyniesienie 0.01–0.055 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The page names a tiled roof and gives its area and pitch; it gives no " +
+                "tile. The covering is a presentation layer laid over the two facets " +
+                "in aligned courses of cambered, round-tailed patches at a gauge " +
+                "a mobile study can afford. The facets themselves are unchanged and keep " +
+                "the 150.4 m2 that reconciles with the published area; the tiles stop " +
+                "0.03 m short of the stacks and the rooflights and go away with the roof.",
+        ),
     )
 
     /**

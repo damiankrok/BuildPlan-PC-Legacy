@@ -140,6 +140,20 @@ kompilować, nie linkować i nie pakować.
   czystej funkcji. Domena i `geometry/` nie znają ról (`C013D-06`). Szkło jest
   jedynym wyjątkiem od jednego koloru i wyjątkiem jest wyłącznie
   przezroczystość: bez refrakcji, tekstur ani biblioteki materiałów.
+- **Pokrycie dachu to prezentacja, nie dach.** Dachówki żyją
+  w `presentation/RoofCover.kt` (spec i profil po `BuildingElementId` obok
+  modelu referencyjnego) i w generatorze `render/filament/RoofCoverMesh.kt`,
+  który czyta jedną płaską `RoofFacetGeometry` i nie zna kalenicy, liczby
+  połaci ani Marcówek. Kanoniczny dach — jego połacie, wierzchołki
+  i powierzchnia — nie zmienia się o bajt; nie ma elementu ani identyfikatora
+  na dachówkę, a dotknięcie dachówki oznacza dach. Jedna encja Filamenta na
+  połać, nigdy na dachówkę; bez konturu na dachówkach; ta sama mapa
+  identyfikatorów, więc „Bez dachu" usuwa pokrycie bez żadnej nowej reguły.
+  Blokery (kominy, okna połaciowe) buduj z `LocalBounds` prymitywów, które
+  model już rysuje — nie z drugiej listy współrzędnych. Moduł, wybrzuszenie
+  i wyniesienie to `DISPLAY_ASSUMPTION`. Bez tekstur, koloru, animacji
+  i katalogu pokryć; metadane (`RoofCoverTile`, sygnał `UV0`) są szwem pod
+  przyszły ruch, nie ruchem.
 - **Rozpoznawalności nie kupuj kosztem rozkładalności.** Podobieństwo do
   wizualizacji ma wynikać z osobnych, nazwanych elementów w jednym kanonicznym
   modelu — nigdy ze scalonej siatki, wariantu geometrii dla jednego widoku ani
