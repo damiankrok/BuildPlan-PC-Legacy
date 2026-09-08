@@ -164,24 +164,69 @@
   Analizatora nie ma: STAGE-013C spisał tylko jego kontrakt wejść i wyzwalaczy
   pytań w `ARCHITECTURE.md`.
 
+- STAGE-013D marcowki fidelity audit + bounded autofix — **korekta zakończona,
+  brama wizualna OWNER-a nadal otwarta.** Odpowiedź na trzeci przegląd (model
+  z cechami rozpoznawczymi nadal nie czytał się mocno jako ten projekt) po
+  zestawieniu z pakietem referencyjnym OWNER-a (`references/01`, poza gitem)
+  i ponownym odczycie rzutów, elewacji i przekroju ARCHON.
+
+  **Pętla samoaudytu.** AUDIT-0 (10/22) → CORRECTION-1 (8 zmian) → AUDIT-1
+  (21/22). Warunek stopu spełniony po pierwszej rundzie; **użyto jednej rundy
+  korekt z dwóch dozwolonych**, CORRECTION-2 nie było. Wynik techniczny:
+  `PASS_STAGE_013D_READY_FOR_OWNER_REVIEW` — co nadal nie jest akceptacją
+  OWNER-a.
+
+  **Co się zmieniło.** Policzki podcieni 0,64 m z rzutu poddasza i ściany
+  okapowe jako trzy pryzmy jednego elementu; rama tej samej szerokości, ze
+  skosem w narożu i głębokością (lico, podniebienie, wierzch) na obu szczytach;
+  balkon, opaska i balustrada południowa od x = 3,39 m, podcień otwarty na dwie
+  kondygnacje na zachód od tej linii, szczelina w policzkach zamknięta stropem
+  wewnątrz policzków; szkło techniczne (`buildGlass`, alfa 0,38) dla szyb
+  i balustrad, z rolą prezentacji `VisualSurfaceRole` po identyfikatorze poza
+  domeną; balustrady 2 cm, południowa ze skrętem na wolnym końcu; pas okapowy
+  0,24 m jako osobny element `WholeBuilding` bez zmiany połaci; dwa kominy
+  ponad dachem z trzech widoków; cztery presety dowodowe. 53 elementy, 119
+  prymitywów (43 ściany, 33 płyty, 10 połaci — 2 dachu i 8 ramy, 18 paneli
+  szczytowych, 15 szyb). Wiarygodność: `SOURCE_EXACT` 22, `SOURCE_TRACED`
+  11 nazwanych cech + 85 linii siatki, `DISPLAY_ASSUMPTION` 13.
+
+  **Guardraile.** `Stage013DFidelityTest` C013D-01…15: jeden model pod każdym
+  stanem, ukrywanie jako podzbiór, ramy i opaska rozdzielne, zasięg balkonu
+  w tolerancji odrysu, rola szkła poza domeną, szkło przezroczyste, dach bez
+  zmiany powierzchni, siatka tylko w rendererze, schody i otwory z 013B,
+  brak rastrów w repo (`references/` w `.gitignore`), Filament 1.75.1 bez
+  SceneView, brak analizatora, tylko `emulator-5570`, bramy jakości bez zmian.
+
+  **Ograniczenia znane.** Picking przechodzi przez szkło (pass pickingu
+  Filamenta pomija powierzchnie blendowane — sprawdzone na urządzeniu
+  z `depthWrite` wyłączonym i włączonym); pas okapowy przy jednym kolorze czyta
+  się z reliefu 4 cm, subtelniej niż ciemny pas na elewacji; trzony kominowe pod
+  dachem, grubość połaci, pochwyt balustrady i ramy okien nadal nie istnieją;
+  rzut parteru kreskuje policzki na 0,48 m, model niesie 0,64 m z rzutu
+  poddasza na obu kondygnacjach. Natywne zależności bez zmian — pełne badanie
+  16 KB ze STAGE-012 nie było powtarzane, sprawdzono tylko inwentarz `.so`
+  w APK.
+
 ## Następny krok
 
-GATE-3D-SHAPE-01 **po raz trzeci** — OWNER porównuje model z rzutami,
-elewacjami i wizualizacjami ARCHON i decyduje, czy rozpoznaje swój dom. Pytanie
-jest teraz węższe niż poprzednio: czy rama podcienia i opaska na +3,06 czytają
-się jako te cechy, po których ten dom się rozpoznaje. Dopiero po tej ocenie
-STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013C **nie jest**
-akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
+GATE-3D-SHAPE-01 **po raz czwarty** (`RETEST_PENDING`) — OWNER porównuje
+model z rzutami, elewacjami, wizualizacjami ARCHON i własnym pakietem
+referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy rama
+z głębokością i skosem, opaska od połowy szczytu przez garaż, otwarty podcień,
+szklane balustrady i krawędź dachu czytają się bez objaśnień. Dopiero po tej
+ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013D **nie
+jest** akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
 w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, **analizatora
 projektów** (spisany jest tylko jego kontrakt), wycinania otworów w połaci dachu,
-grubości połaci i pasa podrynnowego, persystencji i danych rzeczywistych. Model
+grubości połaci, pickingu przez szkło, persystencji i danych rzeczywistych. Model
 Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory,
-schody i cechy rozpoznawcze elewacji z wykazów, rzutów i elewacji, ale nie ma
-komina, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
+schody, cechy rozpoznawcze elewacji, pas okapowy i kominy ponad dachem
+z wykazów, rzutów, elewacji i przekroju, ale nie ma trzonów kominowych,
+materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 
 ## OPEN
 

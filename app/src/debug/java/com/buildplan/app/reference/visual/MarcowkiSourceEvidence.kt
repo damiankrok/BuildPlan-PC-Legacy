@@ -54,6 +54,16 @@ object MarcowkiSourceEvidence {
      */
     const val ELEVATIONS_RETRIEVED_AT: String = "2026-09-08T00:13+02:00"
 
+    /**
+     * The third reading, for STAGE-013D: both plans, all four elevations and
+     * the section re-fetched from the URLs above and re-measured for the
+     * cheeks, the south balcony, the fascia and the stacks, beside the owner's
+     * own reference pack of the same page's renders and elevations — six
+     * screenshots kept outside the tracked tree, with the frame and the band
+     * marked in red as the traits the model has to be recognised by.
+     */
+    const val FIDELITY_AUDIT_RETRIEVED_AT: String = "2026-09-08T09:05+02:00"
+
     const val FRONT_ELEVATION_URL: String =
         "https://assets.archon.pl/images/products/m2fa281446a8ca/" +
             "elewacja-frontowa-projekt-dom-w-marcowkach-ge-" +
@@ -323,17 +333,68 @@ object MarcowkiSourceEvidence {
                 "top flight into the attic corridor.",
         ),
         FidelityRecord(
+            name = "Policzki podcieni",
+            value = "0.64 m (rzut poddasza 24-25 px; rzut parteru 18 px)",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "On the upper-floor plan the wall hatch in all four portal cheeks " +
+                "spans 24 to 25 px at 37.77 px/m while the eaves wall beside it spans " +
+                "17, so the cheek is 0.64 m against the wall's 0.44. The front and " +
+                "garden elevations read the frame leg at 15 to 16 px at 25.4 px/m, 0.59 " +
+                "to 0.63 m, in agreement. The ground plan hatches its cheeks at 18 px " +
+                "(0.48 m); the model uses the upper-plan figure on both storeys because " +
+                "both elevations draw each leg as one straight band from the ground to " +
+                "the mitre, and the disagreement is recorded here rather than drawn.",
+        ),
+        FidelityRecord(
             name = "Rama podcienia szczytowego",
-            value = "0.44 m (elewacje mierzą 0.66 m)",
+            value = "0.64 m, ze skosem w narożu",
             fidelity = SourceFidelity.SOURCE_TRACED,
             note = "The front and garden elevations frame each gable with one band of " +
                 "constant width: up both cheeks and along both slopes, with the facade a " +
-                "metre behind it. Measured at 16.9 px on the front elevation, which " +
-                "calibrates at 25.38 px/m against the printed 1205 across the whole " +
-                "building — 0.66 m, the wall with its render and insulation. The model " +
-                "carries the 0.44 m the plan hatch gives, because the frame is the cheek " +
-                "carried up over the roof and a frame drawn wider than the cheek it " +
-                "continues would put a step in a line the source draws straight.",
+                "metre behind it, and the leg meets the slope in a sharp mitre. The frame " +
+                "is the cheek carried up over the roof, so it takes the cheek's traced " +
+                "0.64 m; STAGE-013C carried the 0.44 m eaves wall here and read the " +
+                "elevation's wider band as render, which the upper plan's cheek hatch " +
+                "now shows it was not. The bar is drawn a metre deep — front, soffit and " +
+                "top — because the elevations show a frame and the renders show its depth.",
+        ),
+        FidelityRecord(
+            name = "Balkon południowy",
+            value = "od x = 3.39 m do policzka wschodniego",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "The upper-floor plan stipples the south portal floor only east of a " +
+                "line at 173.5 px — 3.35 m from the west face — that lies on the " +
+                "wardrobe-to-bedroom partition, and draws that west edge as a single " +
+                "line. The front elevation starts the dark band at 3.2 m and shows the " +
+                "gable open through both storeys west of it; the ground plan puts a " +
+                "planting bed in that open half. The balcony, its band and its guarding " +
+                "therefore start at the partition centreline, which is what the owner " +
+                "saw: the upper exterior zone on the garage side stops mid-house.",
+        ),
+        FidelityRecord(
+            name = "Pas okapowy",
+            value = "0.24 m",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "Both side elevations draw a 6 px dark band at 25.4 px/m between the " +
+                "tiles and the render, the full 14.6 m from portal face to portal face: " +
+                "the roof's own edge, seen end-on, on a roof the page calls eaveless. " +
+                "Drawn as a trim standing on the wall face rather than as a thickness " +
+                "given to the roof, so the facets that reconcile with the published " +
+                "150.57 m2 are untouched.",
+        ),
+        FidelityRecord(
+            name = "Kominy ponad dachem",
+            value = "2 x 0.60 x 0.60 m, x 5.45-6.05, z 4.40-5.00 i 8.90-9.50, góra +8.19",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "Three views agree. The garage-side elevation shows two stacks 15 px " +
+                "wide centred 5.7 m and 10.2 m south of the north portal face; the front " +
+                "and garden elevations each show exactly one — which is what two stacks " +
+                "on one x do — at 1.5 to 2.1 m east of the ridge; and the section draws " +
+                "the same stack 1.5 to 2.1 m east of its apex. The front elevation puts " +
+                "the top 6 px above the ridge. The fireplace the ground plan marks sits " +
+                "under the southern one; the boiler room under the northern one. " +
+                "STAGE-013 left the chimney out because no plan draws its shaft; the " +
+                "stacks are placed from the elevations, which do draw them.",
         ),
         FidelityRecord(
             name = "Opaska międzykondygnacyjna",
@@ -425,11 +486,38 @@ object MarcowkiSourceEvidence {
         ),
         FidelityRecord(
             name = "Balustrada balkonów",
-            value = "1.10 x 0.08 m",
+            value = "1.10 x 0.02 m, szkło",
             fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
             note = "The plan draws the balcony edge as a single line with no height " +
                 "against it. 1.10 m is the usual guarding height, and without something " +
-                "there the portal reads as a hole in the gable rather than a balcony.",
+                "there the portal reads as a hole in the gable rather than a balcony. " +
+                "Two centimetres is a sheet, not a wall; that the sheet is drawn as " +
+                "glass is a presentation role kept beside the model, not a fact in it.",
+        ),
+        FidelityRecord(
+            name = "Lico ramy przed policzkiem",
+            value = "0.005 m, góra ramy 0.01 m pod połacią",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The frame's mitre overlaps the top of the cheek's end face and its " +
+                "top bar lies in the roof plane; two surfaces in one plane flicker, so " +
+                "the front face stands five millimetres proud and the top a centimetre " +
+                "under the roof. Neither is visible at any viewing distance.",
+        ),
+        FidelityRecord(
+            name = "Wysunięcie pasa okapowego",
+            value = "0.04 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The elevations give the fascia's depth and nothing about how far it " +
+                "stands off the wall. A trim in the wall's own plane cannot be drawn " +
+                "beside the wall, so it stands off by four centimetres.",
+        ),
+        FidelityRecord(
+            name = "Zagłębienie komina w połaci",
+            value = "0.30 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The source shows each stack above the roof and nothing of its shaft. " +
+                "Each box is started a little under the roof plane at its lowest corner " +
+                "so it emerges from the slope rather than balancing on it.",
         ),
         FidelityRecord(
             name = "Podesty w podcieniach",
@@ -448,17 +536,6 @@ object MarcowkiSourceEvidence {
                 "building line and dimensions nothing above it. The flat roof is carried " +
                 "over that metre so the wall is a sheltered entrance rather than a " +
                 "free-standing fin.",
-        ),
-        FidelityRecord(
-            name = "Balkon południowy na pełnej szerokości",
-            value = "7.89 m zamiast 3.81 m",
-            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
-            note = "The upper plan stipples the south portal floor only east of x = 3.39, " +
-                "and the front elevation agrees within 0.11 m: its band starts at " +
-                "x = 3.28 and the entrance beside it is open two storeys. The model " +
-                "floors the whole width anyway, because the alternative leaves a 0.34 m " +
-                "slot in the portal cheeks where the storey slab would have closed them, " +
-                "and closing that slot needs a piece the source does not draw either.",
         ),
         FidelityRecord(
             name = "Liczba stopni",
@@ -488,25 +565,23 @@ object MarcowkiSourceEvidence {
      * and here is why" rather than a second review round discovering them.
      */
     val notModelled: List<String> = listOf(
-        "Komin. Both published renders show one on the ridge, but neither plan " +
-            "draws a shaft that can be told apart from the wardrobes hatched the " +
-            "same way, and the ground plan's fireplace does not fix where it comes " +
-            "out. A chimney placed from a render rather than a plan would be an " +
-            "invented coordinate wearing the same type as a measured one.",
+        "Trzony kominowe. The two stacks are drawn where the elevations show them, " +
+            "above the roof; neither plan draws a shaft that can be told apart from " +
+            "the wardrobes hatched the same way, so below the roof there is nothing.",
         "Elewacje materiałowe. The renders show vertical timber in the gables and " +
             "dark render on the garage; this is a technical model with one surface " +
-            "colour and no materials, so none of that is represented.",
+            "colour and no materials, so none of that is represented. Glass is the " +
+            "one exception, and only its transparency: a railing that cannot be seen " +
+            "through is a parapet.",
         "Drzwi wewnętrzne poza jednymi. The plans schedule no internal doors, and " +
             "only the garage-to-boiler-room opening is drawn clearly enough in the " +
             "wall hatch to trace.",
-        "Okapowy pas podrynnowy. Both side elevations show a 0.24 m dark band " +
-            "between the tiles and the render along the whole length of each long " +
-            "facade — the roof's own edge, seen end-on, on a roof the page calls " +
-            "eaveless. The model's roof facets have no thickness, so there is no " +
-            "edge for that band to be. Giving the roof a thickness is a change to " +
-            "the roof itself rather than a band laid beside it, and it would move " +
-            "the 150.4 m2 the facets currently reconcile with the published " +
-            "150.57 m2 — so it is left out rather than approximated.",
+        "Grubość połaci. The roof stays a plane and its edge is drawn beside it as " +
+            "the eaves fascia; the facets themselves keep the 150.4 m2 that " +
+            "reconciles with the published roof area.",
+        "Pochwyt balustrady, ramy okien i słupki. The renders show a thin top rail " +
+            "and window frames; the study draws sheets and holes, and a frame section " +
+            "it has not been told would be invented.",
     )
 
     /**

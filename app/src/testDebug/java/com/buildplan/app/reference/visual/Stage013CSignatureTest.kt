@@ -105,8 +105,11 @@ class Stage013CSignatureTest {
             )
 
             val faceZ = if (index == 0) Grid.Z_PORTAL_NORTH_FACE else Grid.Z_PORTAL_SOUTH_FACE
+            // The front face stands a hair proud of the portal face, so the
+            // mitre can overlap the cheek without sharing its plane (STAGE-013D).
+            val frontZ = if (index == 0) faceZ - Grid.GABLE_FRAME_PROUD else faceZ + Grid.GABLE_FRAME_PROUD
             val panels = geometry.primitivesFor(frameId).filterIsInstance<GablePanelGeometry>()
-            assertEquals("One raking piece per slope", 2, panels.size)
+            assertEquals("One raking front face per slope", 2, panels.size)
 
             panels.forEach { panel ->
                 // In the portal's own face plane, a metre in front of the gable
@@ -114,7 +117,7 @@ class Stage013CSignatureTest {
                 panel.vertices.forEach { vertex ->
                     assertEquals(
                         "${frameId.value} leaves the portal face plane",
-                        faceZ,
+                        frontZ,
                         vertex.z,
                         toleranceMeters,
                     )
@@ -191,20 +194,32 @@ class Stage013CSignatureTest {
                 if (run.start.z < 0.0) Grid.Z_PORTAL_NORTH_FACE else Grid.Z_PORTAL_SOUTH_FACE
             assertEquals("The band must be flush with the portal face", expected, outerZ, 1e-9)
 
-            // And it stops against the cheeks on both sides — the elevations
-            // draw the band between the frame, not through it, and running it
-            // through would put a second face in the plane the frame occupies.
-            assertEquals(Grid.EXTERIOR_WALL_THICKNESS, run.start.x, 1e-9)
-            assertEquals(Grid.HOUSE_WIDTH - Grid.EXTERIOR_WALL_THICKNESS, run.end.x, 1e-9)
+            // And it stops against the cheeks — the elevations draw the band
+            // between the frame, not through it, and running it through would
+            // put a second face in the plane the frame occupies. The north run
+            // fills its portal; the south run starts where its balcony starts
+            // (STAGE-013D) and ends where the garage roof takes the line over.
+            if (run.start.z < 0.0) {
+                assertEquals(Grid.PORTAL_CHEEK_THICKNESS, run.start.x, 1e-9)
+                assertEquals(Grid.HOUSE_WIDTH - Grid.PORTAL_CHEEK_THICKNESS, run.end.x, 1e-9)
+            } else {
+                assertEquals(Grid.X_SOUTH_BALCONY_WEST, run.start.x, 1e-9)
+                assertEquals(Grid.HOUSE_WIDTH - Grid.EXTERIOR_WALL_THICKNESS, run.end.x, 1e-9)
+            }
         }
 
-        // The balcony slab is taken back by exactly the band's thickness, so
-        // the two never share a plane.
+        // The balcony slab between the cheeks is taken back by exactly the
+        // band's thickness, so the two never share a plane. The pieces inside
+        // the cheeks do reach the portal face — that is their job — and they
+        // lie outside the band's run, so nothing is coplanar with it.
+        val betweenCheeks = Grid.PORTAL_CHEEK_THICKNESS..(Grid.HOUSE_WIDTH - Grid.PORTAL_CHEEK_THICKNESS)
         val balconyFronts = geometry.primitivesFor(BuildingElementId("marcowki-v1-strop-nad-parterem"))
             .filterIsInstance<SlabGeometry>()
+            .filter { slab -> slab.outline.all { it.x in betweenCheeks } }
             .flatMap { it.outline }
+        assertTrue(balconyFronts.isNotEmpty())
         assertTrue(
-            "No piece of storey slab may reach the portal face the band occupies",
+            "No piece of storey slab between the cheeks may reach the portal face the band occupies",
             balconyFronts.none { it.z < Grid.Z_PORTAL_NORTH_FACE + Grid.STOREY_BAND_THICKNESS - 1e-9 } &&
                 balconyFronts.none {
                     it.z > Grid.Z_PORTAL_SOUTH_FACE - Grid.STOREY_BAND_THICKNESS + 1e-9
@@ -306,10 +321,11 @@ class Stage013CSignatureTest {
             "poddasze-sciana-szczytowa-polnocna" to 2,
             "poddasze-sciana-szczytowa-poludniowa" to 1,
         ).forEach { (slug, expected) ->
-            val wall = geometry.primitives
+            val openings = geometry.primitives
                 .filterIsInstance<WallGeometry>()
-                .single { it.elementId == elementId(slug) }
-            assertEquals("$slug carries the wrong number of openings", expected, wall.openings.size)
+                .filter { it.elementId == elementId(slug) }
+                .sumOf { it.openings.size }
+            assertEquals("$slug carries the wrong number of openings", expected, openings)
         }
 
         // The panes still sit back inside their reveals rather than on a face:
@@ -556,7 +572,9 @@ class Stage013CSignatureTest {
         }
 
     private fun repositoryFiles(): List<File> {
-        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin")
+        // `references/` is the owner's local pack of third-party drawings: inspected,
+        // git-ignored, never committed — see C013D-11.
+        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin", "references")
         return repositoryRoot()
             .walkTopDown()
             .onEnter { it.name !in skipped }

@@ -17,8 +17,12 @@
     <string name="model_view_ground_top">Parter z góry</string>
     <string name="model_view_upper_top">Poddasze z góry</string>
     <string name="model_view_facade_openings">Elewacje — otwory</string>
-    <string name="model_view_signature_facade">Rama i opaska</string>
+    <string name="model_view_front_signature">Front — rama i opaska</string>
+    <string name="model_view_signature_facade">Ogród — rama i opaska</string>
     <string name="model_view_garage_relation">Dom i garaż</string>
+    <string name="model_view_full_rear_axon">Widok od ogrodu</string>
+    <string name="model_view_glass_railing">Balustrada szklana</string>
+    <string name="model_view_roof_fascia">Okap i rama</string>
     <string name="model_view_site_context">Model w siatce</string>
     <string name="model_view_stairs">Schody</string>
 

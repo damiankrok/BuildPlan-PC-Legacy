@@ -2,7 +2,6 @@ package com.buildplan.app.reference.visual
 
 import com.buildplan.app.geometry.PlanPoint
 import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.tan
 
 /**
@@ -299,6 +298,40 @@ object MarcowkiPlanGrid {
     const val Z_PORTAL_SOUTH_FACE: Double = BUILDING_DEPTH + PORTAL_DEPTH
 
     /**
+     * Thickness of the portal cheeks — the four wall ends that run past the
+     * gables — and therefore of the frame they continue into.
+     *
+     * Thicker than the eaves wall they extend, and the source says so twice.
+     * On the upper-floor plan the cheek hatch spans 24 to 25 px at 37.77 px/m
+     * in all four portals while the eaves wall beside it spans 17, so the
+     * cheek is 0.64 m against the wall's 0.44; and on the front and garden
+     * elevations the frame leg reads 15 to 16 px at 25.4 px/m, 0.59 to
+     * 0.63 m. The ground-floor plan draws its cheeks narrower, at 18 px, and
+     * the model does not follow it there: the elevations draw each leg as one
+     * straight band from the ground to the mitre, and a leg that stepped by
+     * 0.2 m at the storey line would be a jog the source does not have. The
+     * upper-plan reading is used for both storeys and the disagreement is
+     * recorded in [MarcowkiSourceEvidence.tracedFeatures].
+     */
+    const val PORTAL_CHEEK_THICKNESS: Double = 0.64
+
+    /**
+     * Where the south balcony, its band and its guarding begin.
+     *
+     * The upper-floor plan stipples the south portal floor only east of the
+     * line at 173.5 px, which is 3.35 m from the west outer face at the plan
+     * scale and lies on the partition between the wardrobe and the bedroom
+     * ([X_UF_WARDROBE_EAST]); the front elevation agrees, starting the dark
+     * band at 3.2 m. West of it the portal is open through both storeys: the
+     * ground plan puts a planting bed there, in front of the bedroom window,
+     * and the elevation shows the gable cladding running from the ground to
+     * the roof. STAGE-013C floored the whole width to avoid a slot in the
+     * cheek; the slot is now closed by the slab pieces inside the cheeks, so
+     * the balcony can stop where the source stops it.
+     */
+    const val X_SOUTH_BALCONY_WEST: Double = X_UF_WARDROBE_EAST
+
+    /**
      * Height of the balustrade across each portal at attic level.
      *
      * A display assumption. Both plans draw the balcony edge as a single line
@@ -308,8 +341,12 @@ object MarcowkiPlanGrid {
      */
     const val BALUSTRADE_HEIGHT: Double = 1.10
 
-    /** Thickness of that balustrade. Display only — glass has no traced section. */
-    const val BALUSTRADE_THICKNESS: Double = 0.08
+    /**
+     * Thickness of that balustrade. Display only — glass has no traced section,
+     * and 0.02 m is a sheet rather than a wall, which is what the renders show
+     * and what the transparent presentation needs to read as glass.
+     */
+    const val BALUSTRADE_THICKNESS: Double = 0.02
 
     // ---------------------------------------------------------------------
     // Facade bands — traced from the four current elevations
@@ -320,27 +357,121 @@ object MarcowkiPlanGrid {
      *
      * The trait the owner names first. On the front and garden elevations each
      * gable is a picture frame: a band of constant width up both cheeks and
-     * along both slopes, with the facade recessed a metre behind it. The model
-     * had the cheeks and the roof but nothing along the slopes, so the frame was
-     * open at the top and the portal read as a hole rather than as a frame.
-     *
-     * It is the wall's own thickness rather than a number of its own, because
-     * the frame *is* the cheek carried up over the roof — one continuous band in
-     * one plane. The elevations measure the visible band at 0.66 m at 25.4 px/m,
-     * which is the wall plus its render and insulation; the model carries the
-     * structural 0.44 m the plan hatch gives, and drawing the frame wider than
-     * the cheek it continues would put a step in a line the source draws
-     * straight.
+     * along both slopes, with the facade recessed a metre behind it. It is the
+     * cheek's own thickness rather than a number of its own, because the frame
+     * *is* the cheek carried up over the roof — one continuous band in one
+     * plane, mitred where the leg meets the slope. STAGE-013C carried the
+     * 0.44 m eaves wall here; the cheeks are traced at 0.64 m and the frame
+     * follows them — see [PORTAL_CHEEK_THICKNESS].
      */
-    const val GABLE_FRAME_WIDTH: Double = EXTERIOR_WALL_THICKNESS
+    const val GABLE_FRAME_WIDTH: Double = PORTAL_CHEEK_THICKNESS
 
     /** How far the frame's inner edge sits below the roof, measured vertically. */
     val GABLE_FRAME_VERTICAL_DROP: Double =
         GABLE_FRAME_WIDTH / cos(Math.toRadians(ROOF_PITCH_DEGREES))
 
-    /** How far along the plan the frame's inner edge comes down to the eaves line. */
-    val GABLE_FRAME_EAVES_RUN: Double =
-        GABLE_FRAME_WIDTH / sin(Math.toRadians(ROOF_PITCH_DEGREES))
+    /**
+     * Y of the inner mitre corner, where the frame's raking inner edge meets the
+     * leg's inner face at x = [GABLE_FRAME_WIDTH].
+     *
+     * Below the eaves, not at them: the inner edge runs parallel to the roof
+     * one frame width beneath it, and at the leg's inner face the roof is only
+     * 0.54 m above the eaves line while the frame is 0.84 m deep vertically.
+     * So the corner falls 0.30 m down the leg, which is where both elevations
+     * draw it — a sharp mitre, not a horizontal shelf at the eaves.
+     */
+    val GABLE_FRAME_INNER_CORNER_Y: Double =
+        EAVES_Y + GABLE_FRAME_WIDTH * tan(Math.toRadians(ROOF_PITCH_DEGREES)) -
+            GABLE_FRAME_VERTICAL_DROP
+
+    /**
+     * How far the frame's front face stands in front of the portal face.
+     *
+     * The frame's mitre overlaps the top corner of the cheek's end face, and
+     * two surfaces in one plane flicker against each other. Five millimetres
+     * is invisible at any distance the model is viewed from and enough for the
+     * depth test to settle it. A display value, not a trace.
+     */
+    const val GABLE_FRAME_PROUD: Double = 0.005
+
+    /**
+     * How far below the roof plane the frame bar's top face lies.
+     *
+     * The bar's top *is* the roof over the portal, and the roof facet already
+     * draws that plane; a second face in it would flicker. One centimetre
+     * lower it is hidden under the roof and appears only when the roof is
+     * taken off, which is when a bar with no top would read as a channel.
+     */
+    const val GABLE_FRAME_TOP_DROP: Double = 0.01
+
+    // ---------------------------------------------------------------------
+    // Eaves fascia — traced from both side elevations
+    // ---------------------------------------------------------------------
+
+    /**
+     * Depth of the dark band both side elevations draw between the tiles and
+     * the render along the whole length of each long facade.
+     *
+     * The roof's own edge seen end-on, on a roof the page calls eaveless: 6 px
+     * at 25.4 px/m on both elevations, running the full 14.6 m from portal
+     * face to portal face. It is the line that makes the roof read as a thin
+     * plate sitting on the walls rather than as a solid wedge, and it is drawn
+     * as a trim on the wall face rather than as a thickness given to the roof
+     * facets, so that the 150.4 m2 the facets reconcile with the published
+     * roof area stays exactly what it was.
+     */
+    const val FASCIA_DEPTH: Double = 0.24
+
+    /**
+     * How far the fascia stands proud of the wall face. Display only: a trim
+     * laid flat on the wall would share its plane, and a trim has to stand off
+     * it by something to be a trim at all.
+     */
+    const val FASCIA_PROUD: Double = 0.04
+
+    /** Underside of the fascia: its top is the eaves line. */
+    val FASCIA_BASE_Y: Double = EAVES_Y - FASCIA_DEPTH
+
+    // ---------------------------------------------------------------------
+    // Roof stacks — traced across three views
+    // ---------------------------------------------------------------------
+
+    /**
+     * The plan footprint of one stack above the roof, as a rectangle.
+     *
+     * Two of them, and each is placed by three views agreeing: the garage-side
+     * elevation shows both, 15 px wide at 25.4 px/m and centred 10.2 m and
+     * 5.7 m south of the north portal face; the front and garden elevations
+     * each show exactly one, which is what two stacks on one X do, at 1.5 to
+     * 2.1 m east of the ridge; and the section draws the same stack 1.5 to
+     * 2.1 m east of its apex. The one over the living room is the fireplace
+     * flue the ground plan marks at that spot; the one over the boiler room is
+     * the boiler's.
+     */
+    data class StackTrace(val minX: Double, val minZ: Double, val maxX: Double, val maxZ: Double)
+
+    /** Over the living room fireplace. */
+    val STACK_LIVING_ROOM: StackTrace = StackTrace(5.45, 4.40, 6.05, 5.00)
+
+    /** Over the boiler room. */
+    val STACK_BOILER_ROOM: StackTrace = StackTrace(5.45, 8.90, 6.05, 9.50)
+
+    val allStacks: List<StackTrace> = listOf(STACK_LIVING_ROOM, STACK_BOILER_ROOM)
+
+    /**
+     * Top of both stacks. The front elevation puts the visible stack 6 px above
+     * the ridge apex at 25.4 px/m; the section agrees to within a pixel.
+     */
+    const val STACK_TOP_ABOVE_RIDGE: Double = 0.24
+
+    val STACK_TOP_Y: Double = RIDGE_Y + STACK_TOP_ABOVE_RIDGE
+
+    /**
+     * How far below the roof plane a stack is started, so that it emerges from
+     * the slope instead of balancing on it. Display only: the source shows the
+     * stacks above the roof and nothing of their shafts.
+     */
+    const val STACK_BURIED_DEPTH: Double = 0.30
 
     /**
      * Top of the horizontal band that ties the house and the garage together.
@@ -618,14 +749,18 @@ object MarcowkiPlanGrid {
      * attic partition centrelines, the two traced thicknesses, the traced gable
      * overhang and the portal depth measured beside it, both edges of every
      * traced opening, all four edges of every rooflight, the seven lines that
-     * place the stair and its core, and the two lines the elevations add — the
-     * inner edge of the gable frame and the lower edge of the storey band.
+     * place the stair and its core, the two lines the elevations added in
+     * STAGE-013C — the inner edge of the gable frame and the lower edge of the
+     * storey band — and the four STAGE-013D added: the cheek thickness, the
+     * west edge of the south balcony, the underside of the eaves fascia and
+     * the top of the roof stacks, plus all four edges of each stack.
      */
     val TRACED_LINE_COUNT: Int =
         6 + 9 + 8 + 2 + 1 + 1 +
             2 * allOpenings.size +
             4 * allRooflights.size +
-            7 + 2
+            7 + 2 +
+            4 + 4 * allStacks.size
 
     /** An axis-aligned rectangle on the plan, walked from its north-west corner. */
     fun rectangle(minX: Double, minZ: Double, maxX: Double, maxZ: Double): List<PlanPoint> =

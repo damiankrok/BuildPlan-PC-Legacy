@@ -254,7 +254,8 @@ private fun ModelStage(model: DebugModel) {
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
                         SurfaceView(context).also { surfaceView ->
-                            val created = FilamentModelRenderer(surfaceView, meshes, grid)
+                            val created =
+                                FilamentModelRenderer(surfaceView, meshes, grid, model.surfaceRoles)
                             created.setVisibleElements(visibleElementIds, removedElementIds)
                             created.resume()
                             renderer = created

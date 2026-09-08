@@ -213,10 +213,13 @@ class Stage013BCorrectionTest {
             "poddasze-sciana-szczytowa-polnocna" to 2,
             "poddasze-sciana-szczytowa-poludniowa" to 1,
         ).forEach { (slug, expected) ->
-            val wall = geometry.primitives
+            // Summed over the element's prisms: an eaves wall is now three
+            // pieces where it runs past the gables to form the portal cheeks.
+            val openings = geometry.primitives
                 .filterIsInstance<WallGeometry>()
-                .single { it.elementId == elementId(slug) }
-            assertEquals("$slug carries the wrong number of openings", expected, wall.openings.size)
+                .filter { it.elementId == elementId(slug) }
+                .sumOf { it.openings.size }
+            assertEquals("$slug carries the wrong number of openings", expected, openings)
         }
 
         // Both gables are glazed above their eaves walls, which is the whole
@@ -395,7 +398,9 @@ class Stage013BCorrectionTest {
         }
 
     private fun repositoryFiles(): List<File> {
-        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin")
+        // `references/` is the owner's local pack of third-party drawings: inspected,
+        // git-ignored, never committed — see C013D-11.
+        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin", "references")
         return repositoryRoot()
             .walkTopDown()
             .onEnter { it.name !in skipped }

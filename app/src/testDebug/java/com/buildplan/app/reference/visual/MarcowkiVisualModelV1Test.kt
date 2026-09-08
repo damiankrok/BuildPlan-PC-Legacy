@@ -1,5 +1,6 @@
 package com.buildplan.app.reference.visual
 
+import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingElementKind
 import com.buildplan.app.domain.model.BuildingElementScope
 import com.buildplan.app.domain.model.BuildingVisibility
@@ -331,7 +332,13 @@ class MarcowkiVisualModelV1Test {
     @Test
     fun `M013-10 the roof belongs to the building and keeps the published pitch`() {
         val roofs = building.roofElements()
-        assertTrue("Expected the gable roof and the garage roof", roofs.size == 2)
+        // The gable roof, the garage roof, and the two stacks that rise out of
+        // the gable roof and go with it when it is taken off (STAGE-013D).
+        assertEquals(
+            "Expected the gable roof, the garage roof and the two roof stacks",
+            setOf(model.roofId, BuildingElementId("marcowki-v1-stropodach-garazu")) + model.stackIds,
+            roofs.mapTo(mutableSetOf()) { it.id },
+        )
         roofs.forEach { roof ->
             assertEquals(
                 "A roof belongs to no storey",
@@ -372,12 +379,21 @@ class MarcowkiVisualModelV1Test {
     fun `M013-11 the modelled height matches the published building height`() {
         val bounds = requireNotNull(geometry.bounds)
         assertEquals(Grid.TERRAIN_Y, bounds.min.y, 1e-9)
-        assertEquals(Grid.RIDGE_Y, bounds.max.y, 1e-9)
+        // The published height is terrain to ridge; stacks do not count towards
+        // it, so it is read off the roof element rather than off everything.
+        val ridge = geometry.primitivesFor(model.roofId).maxOf { it.bounds.max.y }
+        assertEquals(Grid.RIDGE_Y, ridge, 1e-9)
         assertEquals(
             "Ridge above terrain must be the published 8.27 m",
             Grid.BUILDING_HEIGHT,
-            bounds.sizeY,
+            ridge - bounds.min.y,
             0.01,
+        )
+        assertEquals(
+            "Only the two stacks may rise above the ridge, and only by their traced 0.24 m",
+            Grid.STACK_TOP_Y,
+            bounds.max.y,
+            1e-9,
         )
 
         // The published knee wall is kept as a fact even though the drawn eaves
@@ -401,21 +417,31 @@ class MarcowkiVisualModelV1Test {
         // Pinned so that a trace correction that quietly drops a wall, or adds a
         // second shape for one, shows up as a failure rather than as a model the
         // owner has to re-review from scratch.
-        assertEquals("Element count", 50, building.elements.size)
-        assertEquals("Primitive count", 95, geometry.primitives.size)
+        assertEquals("Element count", 53, building.elements.size)
+        assertEquals("Primitive count", 119, geometry.primitives.size)
         assertEquals(
-            "The 28 walls, the two balustrades across the portals, and the two runs " +
-                "of storey band along their fronts",
-            32,
+            "The 28 walls plus the eight portal cheeks split off five of them, the " +
+                "three sheets of the two balustrades, the two runs of storey band " +
+                "along the portal fronts, and the two runs of eaves fascia",
+            43,
             geometry.primitives.count { it is WallGeometry },
         )
         assertEquals(
-            "Four foundation plates, six pieces of storey slab, the garage roof, " +
-                "and seventeen stair treads",
-            28,
+            "Four foundation plates, nine pieces of storey slab, the garage roof, " +
+                "seventeen stair treads and two roof stacks",
+            33,
             geometry.primitives.count { it is SlabGeometry },
         )
-        assertEquals("A gable roof is two facets", 2, geometry.primitives.count { it is RoofFacetGeometry })
+        assertEquals(
+            "A gable roof is two facets; the four frame bars add a soffit and a top each",
+            2 + 8,
+            geometry.primitives.count { it is RoofFacetGeometry },
+        )
+        assertEquals(
+            "The roof element itself is still exactly two facets",
+            2,
+            geometry.primitivesFor(model.roofId).count { it is RoofFacetGeometry },
+        )
         assertEquals(
             "Six attic partitions across the slope, the five bands the north gable " +
                 "is cut into by its two glazings and the three the south gable is cut " +
@@ -469,13 +495,21 @@ class MarcowkiVisualModelV1Test {
         // the assembly would show up here as a value the grid does not contain.
         val allowedThicknesses = setOf(
             Grid.EXTERIOR_WALL_THICKNESS,
+            Grid.PORTAL_CHEEK_THICKNESS,
             Grid.PARTITION_THICKNESS,
             Grid.BALUSTRADE_THICKNESS,
+            Grid.FASCIA_PROUD,
         )
         // The storey band starts at neither storey level: it hangs off the
         // balcony edge from the garage's dimensioned ceiling up to the attic
-        // floor, and both of those are levels the section states.
-        val allowedBases = setOf(Grid.GROUND_FLOOR_Y, Grid.UPPER_FLOOR_Y, Grid.STOREY_BAND_BASE_Y)
+        // floor, and both of those are levels the section states. The fascia
+        // hangs from the eaves line by its traced depth.
+        val allowedBases = setOf(
+            Grid.GROUND_FLOOR_Y,
+            Grid.UPPER_FLOOR_Y,
+            Grid.STOREY_BAND_BASE_Y,
+            Grid.FASCIA_BASE_Y,
+        )
         // An attic wall may also stop early where the roof comes down to meet
         // it, which is a height the grid computes rather than one it lists.
         val allowedHeights = setOf(
@@ -484,6 +518,7 @@ class MarcowkiVisualModelV1Test {
             Grid.ATTIC_PERIMETER_WALL_HEIGHT,
             Grid.BALUSTRADE_HEIGHT,
             Grid.STOREY_BAND_DEPTH,
+            Grid.FASCIA_DEPTH,
         )
 
         geometry.primitives.filterIsInstance<WallGeometry>().forEach { wall ->
@@ -515,9 +550,11 @@ class MarcowkiVisualModelV1Test {
                 "Parapet okna kuchni",
                 "Nadproże drzwi garaż–kotłownia",
                 "Balustrada balkonów",
+                "Lico ramy przed policzkiem",
+                "Wysunięcie pasa okapowego",
+                "Zagłębienie komina w połaci",
                 "Podesty w podcieniach",
                 "Zadaszenie przed garażem",
-                "Balkon południowy na pełnej szerokości",
                 "Liczba stopni",
                 "Okna połaciowe rysowane na połaci",
             ),

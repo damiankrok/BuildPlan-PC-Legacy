@@ -8,6 +8,8 @@ import com.buildplan.app.geometry.BuildingGeometry
 import com.buildplan.app.geometry.LocalBounds
 import com.buildplan.app.geometry.demo.SyntheticDemoHouse
 import com.buildplan.app.reference.visual.MarcowkiVisualModelV1
+import com.buildplan.app.reference.visual.MarcowkiVisualPresentation
+import com.buildplan.app.reference.visual.VisualSurfaceRole
 
 /**
  * Which building the debug viewport is drawing.
@@ -27,14 +29,23 @@ internal enum class DebugModel(val labelRes: Int) {
         override val building: Building get() = MarcowkiVisualModelV1.building
         override val geometry: BuildingGeometry get() = MarcowkiVisualModelV1.geometry
         override val atticId: FloorId get() = MarcowkiVisualModelV1.atticId
-        override val stairId: BuildingElementId? get() = MarcowkiVisualModelV1.stairId
+        override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole>
+            get() = MarcowkiVisualPresentation.surfaceRoles
+
+        override fun focusElementId(focus: PresetFocus): BuildingElementId? = when (focus) {
+            PresetFocus.WHOLE_MODEL -> null
+            PresetFocus.STAIR -> MarcowkiVisualModelV1.stairId
+            PresetFocus.NORTH_BALUSTRADE -> MarcowkiVisualModelV1.balustradeIds.first()
+            PresetFocus.NORTH_FRAME -> MarcowkiVisualModelV1.gableFrameIds.first()
+        }
     },
 
     SYNTHETIC(R.string.model_debug_source_synthetic) {
         override val building: Building get() = SyntheticDemoHouse.building
         override val geometry: BuildingGeometry get() = SyntheticDemoHouse.geometry
         override val atticId: FloorId get() = SyntheticDemoHouse.atticId
-        override val stairId: BuildingElementId? get() = null
+        override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> get() = emptyMap()
+        override fun focusElementId(focus: PresetFocus): BuildingElementId? = null
     },
     ;
 
@@ -44,29 +55,41 @@ internal enum class DebugModel(val labelRes: Int) {
     /** The upper storey, which "hide the upper floor" names. */
     abstract val atticId: FloorId
 
-    /** The stair, when this model has one. The synthetic fixture does not. */
-    abstract val stairId: BuildingElementId?
+    /**
+     * The presentation roles of this model's elements, for the renderer. The
+     * synthetic fixture has none: it is invented, and has no glass to read as
+     * glass.
+     */
+    abstract val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole>
 
     /**
-     * The box a preset with [PresetFocus.STAIR] frames, or the whole model when
-     * this model has no stair to frame.
+     * The element a focused preset frames, or null when this model has nothing
+     * to frame for it. The synthetic fixture has no stair, no balcony and no
+     * frame, so every focus on it is the whole model.
+     */
+    abstract fun focusElementId(focus: PresetFocus): BuildingElementId?
+
+    /** The stair, when this model has one. The synthetic fixture does not. */
+    val stairId: BuildingElementId? get() = focusElementId(PresetFocus.STAIR)
+
+    /**
+     * The box a focused preset frames, or the whole model when this model has
+     * nothing for that focus.
      *
      * Falling back rather than refusing, because the preset list is one list for
      * both models: a stair view on a model without a stair should be the general
      * view, not a camera pointed at the origin.
      */
-    fun focusBounds(focus: PresetFocus, modelBounds: LocalBounds): LocalBounds = when (focus) {
-        PresetFocus.WHOLE_MODEL -> modelBounds
-        PresetFocus.STAIR -> stairId
+    fun focusBounds(focus: PresetFocus, modelBounds: LocalBounds): LocalBounds =
+        focusElementId(focus)
             ?.let { id -> geometry.primitivesFor(id) }
             ?.map { it.bounds }
             ?.reduceOrNull { total, next -> total.encompass(next) }
             ?: modelBounds
-    }
 }
 
 /** What a preset is a view *of*. */
-internal enum class PresetFocus { WHOLE_MODEL, STAIR }
+internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FRAME }
 
 /**
  * A named, reproducible view of the model: a visibility state and a camera.
@@ -161,6 +184,26 @@ internal enum class ModelViewPreset(
     ),
 
     /**
+     * The front — the south gable with the garage beside it — nearly level and
+     * a little off axis to the west.
+     *
+     * The view the owner's marked-up front elevation is of: the frame's left
+     * leg running to the ground, the gable open through two storeys west of
+     * the balcony, the band starting mid-gable and running out over the
+     * garage, and the garage's own cheek closing the composition on the right.
+     * Yawed to the west rather than the east so that the open half of the
+     * portal and the balcony's free end are in front of the camera instead of
+     * behind the garage.
+     */
+    FRONT_SIGNATURE(
+        labelRes = R.string.model_view_front_signature,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 335.0,
+        pitchDegrees = 6.0,
+        distanceMargin = 1.20,
+    ),
+
+    /**
      * The north gable, close in and nearly level: the frame, the band and the
      * balcony in one frame.
      *
@@ -197,6 +240,55 @@ internal enum class ModelViewPreset(
         yawDegrees = 48.0,
         pitchDegrees = 16.0,
         distanceMargin = 1.45,
+    ),
+
+    /**
+     * The garden side from above and a little to the east: the twin of
+     * [FULL_AXON] for the rear, with the garage's flat roof meeting the house
+     * on the left as the garden render shows it.
+     */
+    FULL_REAR_AXON(
+        labelRes = R.string.model_view_full_rear_axon,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 200.0,
+        pitchDegrees = 20.0,
+        distanceMargin = 1.15,
+    ),
+
+    /**
+     * The north balustrade, close enough to see through it.
+     *
+     * The one question this view answers is whether the guarding reads as
+     * glass — the balcony floor and the gable glazing behind it have to be
+     * visible through the sheet, with its edges still drawn. Framed on the
+     * balustrade's own box, from slightly above so the floor behind it is in
+     * the picture.
+     */
+    GLASS_RAILING_CLOSEUP(
+        labelRes = R.string.model_view_glass_railing,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 195.0,
+        pitchDegrees = 14.0,
+        distanceMargin = 1.25,
+        focus = PresetFocus.NORTH_BALUSTRADE,
+    ),
+
+    /**
+     * The north-west corner of the roof, where the frame's leg, its mitre and
+     * the eaves fascia meet.
+     *
+     * Framed on the north frame and seen from the west-north-west, so the
+     * frame's depth over the portal and the fascia running away along the
+     * west eaves are both in one picture — the relationship the flat-sheet
+     * roof edge of STAGE-013C could not show from anywhere.
+     */
+    ROOF_FASCIA_CLOSEUP(
+        labelRes = R.string.model_view_roof_fascia,
+        visibility = SpikeVisibility.EVERYTHING,
+        yawDegrees = 245.0,
+        pitchDegrees = 12.0,
+        distanceMargin = 1.10,
+        focus = PresetFocus.NORTH_FRAME,
     ),
 
     /**

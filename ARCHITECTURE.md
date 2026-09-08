@@ -12,7 +12,8 @@ kontrakt geometrii budynku (STAGE-011). Do tego dwa zbiory danych w źródłach
 demonstracyjny z geometrią (STAGE-011). Do tego **spike renderera na Google
 Filament** (STAGE-012) — wyłącznie w źródłach `debug`, jako dowód wykonalności
 i podstawa wyboru technologii, nie jako docelowy renderer produkcyjny. Na tym
-rendererze stoi **model wizualny „Dom w marcówkach (GE)" V1** (STAGE-013):
+rendererze stoi **model wizualny „Dom w marcówkach (GE)" V1** (STAGE-013,
+poprawiany w STAGE-013B/C/D):
 pierwsza geometria odrysowana z aktualnych rzutów ARCHON, z jawną klasyfikacją
 wiarygodności każdej liczby, również w źródłach `debug` i przeznaczona do
 wizualnej weryfikacji przez OWNER-a. Brak backendu, persystencji, autoryzacji
@@ -847,6 +848,136 @@ pierwszy znak etykiety na granicy przycięcia — to jest to, co na zrzutach OWN
 wyglądało jak ucięty tekst.
 
 
+## Wierność elewacji modelu wizualnego (STAGE-013D)
+
+Etap odpowiada na trzecią ocenę OWNER-a: model miał już cechy rozpoznawcze
+i nadal nie czytał się mocno jako *ten* projekt. Diagnoza z zestawienia
+z wizualizacjami i elewacjami (w tym z zaznaczonymi na czerwono ramą i opaską):
+rama była płaskim arkuszem bez głębokości, balkon południowy biegł na całą
+szerokość, której źródło mu nie daje, balustrady i przeszklenia były lite,
+a dach nie miał krawędzi. Etap przebiegł jako ograniczona pętla samoaudytu —
+AUDIT-0 → CORRECTION-1 → AUDIT-1 — i zatrzymał się po jednej rundzie korekt,
+bo warunek stopu (brak zer w B–H i K, suma ≥ 18/22) został spełniony. Pętla jest
+techniką walidacyjną tego etapu, nie zachowaniem runtime: w kodzie nie ma
+żadnego „audytora".
+
+### Granica: rozpoznawalność kontra precyzja
+
+Model pozostaje **stylizowanym, monochromatycznym modelem technicznym**, który
+ma się rozkładać na warstwy. Kryterium jest zdanie osoby znającej projekt
+z rzutów i wizualizacji: „to jest mój dom". Nie jest nim fotorealizm ani
+dokumentacja wykonawcza. Konsekwencje:
+
+- kolor jest jeden, a jedyny wyjątek to **przezroczystość szkła**, bo balustrada,
+  przez którą nie widać, jest attyką;
+- cechy rozpoznawcze mają bryłę i głębokość, nie kolor ani teksturę: rama jest
+  belką metrowej głębokości ze skosem w narożu, a nie konturem;
+- rozbieżności wymiarowe rzędu jednego piksela odrysu (4 cm na elewacji) nie są
+  celem korekt, dopóki nie zmieniają czytelności kompozycji.
+
+### Rama podcienia: grubość, skos, głębokość
+
+Policzki podcieni są odrysowane z rzutu poddasza na **0,64 m** (24–25 px przy
+37,77 px/m), a elewacje potwierdzają to na 0,59–0,63 m; rzut parteru kreskuje
+je węższe (0,48 m) i ta rozbieżność jest zapisana w `MarcowkiSourceEvidence`,
+a nie narysowana. Ściana okapowa jest więc elementem z trzema pryzmami: policzek
+północny, ściana 0,44 m, policzek południowy — `portalWall` w
+`MarcowkiVisualModelV1`. Rama ma tę samą szerokość, bo **jest** policzkiem
+wyprowadzonym ponad okap, i spotyka się z nim w skosie: narożnik wewnętrzny
+leży 0,30 m poniżej okapu na wewnętrznym licu policzka
+(`GABLE_FRAME_INNER_CORNER_Y`), tak jak rysują to obie elewacje.
+
+Każdy pas ramy to trzy ściany: lico (czworokąt wypukły ze skosem,
+`GablePanelGeometry`, 5 mm przed licem podcienia, żeby nie dzielić płaszczyzny
+z policzkiem), podniebienie i wierzch (płaskie, nachylone — `RoofFacetGeometry`
+należące do **elementu ramy**, nie do dachu; wierzch leży 1 cm pod połacią).
+Tył ramy to panele szczytu, boki to policzek i drugi pas. Dwie połacie dachu
+pozostają dokładnie tym, czym były.
+
+### Balkon południowy: zasięg ze źródła
+
+Rzut poddasza kropkuje podłogę podcienia południowego dopiero od linii
+x = 3,35 m (na ściance garderoba–pokój), elewacja frontowa zaczyna opaskę
+3,2 m od lica zachodniego, a rzut parteru w otwartej części rysuje rabatę.
+Płyta balkonu, opaska i balustrada zaczynają się więc na `X_SOUTH_BALCONY_WEST`
+= 3,39 m, a zachodnia część podcienia jest otwarta przez dwie kondygnacje.
+STAGE-013C zalało całą szerokość, żeby nie zostawić szczeliny w policzku; teraz
+szczelinę zamykają **kawałki stropu wewnątrz policzków** (trzy dodatkowe
+prostokąty elementu `strop-nad-parterem`, sięgające lica podcienia), więc płyta
+mogła stanąć tam, gdzie stawia ją źródło. Opaska południowa kończy się na
+zewnętrznym licu ściany działowej, gdzie tę samą linię na tym samym poziomie
+przejmuje stropodach garażu. Balustrada południowa skręca na wolnym końcu
+balkonu, bo rzut rysuje tę krawędź linią.
+
+### Szkło techniczne i rola prezentacji poza domeną
+
+Renderer dostał drugi materiał: `TechnicalMaterial.buildGlass` — `LIT`,
+`TRANSPARENT`, bez zapisu głębi, dwustronny, z alfą premnożoną w shaderze.
+Wartości (`GlassPresentation.ALPHA` = 0,38, barwa neutralna, lekko chłodna) są
+czystymi liczbami testowanymi na JVM. Szyby otworów są szkłem z **typu
+prymitywu** (`OpeningPanelGeometry` → `MeshStyle.GLAZING`) — ta reguła zostaje.
+Balustrada jest jednak `WallGeometry` grubości 2 cm i żaden fakt geometryczny
+nie odróżnia jej od cienkiej ścianki; dlatego istnieje
+`reference/visual/VisualSurfaceRole` (`OPAQUE_STUDY`, `GLASS_STUDY`)
+i `MarcowkiVisualPresentation.surfaceRoles` — mapa **po `BuildingElementId`**,
+trzymana obok modelu referencyjnego w `src/debug`. Renderer składa obie
+odpowiedzi w jednej czystej funkcji `surfaceRoleOf(mesh, roles)`. Domena
+i `geometry/` nie wiedzą o rolach (pilnuje `C013D-06`); `Building`
+i `BuildingGeometry` są bajt w bajt tym, czym byłyby bez mapy. Roli
+„cecha rozpoznawcza" celowo nie ma — trzeci kolor byłby złamaniem reguły
+z `CLAUDE.md`.
+
+Zaznaczenie zachowuje przezroczystość (`SELECTED_ALPHA` = 0,55). **Picking
+przechodzi przez szkło**: pass pickingu Filamenta renderuje tylko powierzchnie
+kryjące, co sprawdzono na urządzeniu z zapisem głębi wyłączonym i włączonym —
+dotknięcie balustrady odpowiada elementem za nią. To celowa lektura „szkła
+technicznego": patrzy się przez nie i dotyka przez nie. Osobny wybór szyb
+i balustrad wymaga innej ścieżki pickingu i należy do produkcjonizacji
+renderera.
+
+### Pas okapowy: osobna geometria, dach bez zmian
+
+Obie elewacje boczne rysują 0,24 m pas między dachówką a tynkiem na całej
+długości 14,6 m — krawędź dachu bez okapu. Reguła: **grubości nie dostaje
+połać**, bo dwie połacie są jedyną geometrią uzgodnioną z liczbą ze strony
+(150,4 m² wobec 150,57 m²). Krawędź rysuje osobny element `pas-okapowy`: dwa
+pryzmy `WallGeometry` 4 cm przed licem ścian okapowych i policzków, z górą na
+linii okapu. Ma zasięg `WholeBuilding` i rodzaj `OTHER`, jak rama — nie `ROOF`
+— bo niezmiennik ciągłości wymaga identycznego zasięgu rzutu w każdym stanie
+widoczności, a listwa wystająca 4 cm poza ściany i znikająca z dachem by go
+przesunęła. Po zdjęciu dachu czyta się jako zwieńczenie ściany, na której stoi.
+`C013D-08` sprawdza, że dach ma nadal dwie połacie o niezmienionej powierzchni
+i wierzchołkach.
+
+### Kominy ponad dachem
+
+Dwa słupy 0,60 × 0,60 m, oba na x = 5,45–6,05, na z = 4,40–5,00 (nad kominkiem
+salonu) i 8,90–9,50 (nad kotłownią), z górą 0,24 m nad kalenicą. Trzy widoki
+się zgadzają: elewacja od garażu pokazuje oba, front i ogród po jednym (dwa
+słupy na jednym x nakładają się), przekrój ten sam słup 1,5–2,1 m na wschód od
+kalenicy. STAGE-013 nie rysowało komina, bo rzut nie daje szybu; słupy są
+umieszczone z elewacji, które je rysują, a szyb pod dachem nadal nie istnieje.
+Rodzaj `ROOF`: znikają z dachem, z którego wyrastają, bo słup nad zdjętym
+dachem wisiałby w powietrzu. Wysokość budynku 8,27 m liczy się nadal do
+kalenicy, nie do komina.
+
+### Presety dowodowe
+
+Doszły `FRONT_SIGNATURE` (front z południowego zachodu, prawie z poziomu: lewa
+noga ramy do ziemi, podcień otwarty na dwie kondygnacje, opaska od połowy
+szczytu przez garaż), `FULL_REAR_AXON`, `GLASS_RAILING_CLOSEUP` (kadrowany na
+balustradzie północnej) i `ROOF_FASCIA_CLOSEUP` (kadrowany na ramie północnej,
+z zachodu: skos, podniebienie i pas okapowy w jednym ujęciu). `PresetFocus`
+wskazuje element przez `DebugModel.focusElementId`; fikstura syntetyczna
+odpowiada `null` i kadruje całość.
+
+### Czego świadomie nie zrobiono
+
+Trzonów kominowych pod dachem, grubości połaci, pochwytu balustrady, ram okien
+i słupków, materiałów elewacji. Wszystko w `MarcowkiSourceEvidence.notModelled`.
+Pas okapowy przy jednym kolorze czyta się z reliefu, nie z ciemnej barwy, więc
+jest subtelniejszy niż na elewacji — to świadoma granica monochromu.
+
 ## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
 
 Analizatora **nie ma** i ten etap go nie zaczyna. Ta sekcja zapisuje poprzeczkę,
@@ -907,13 +1038,27 @@ Każda odpowiedź użytkownika na takie pytanie wchodzi do modelu jako
 założenia odrysu ręcznego. Nierozstrzygnięta niepewność zostaje
 `TRACE_UNCERTAIN` i ma być widoczna, a nie zasypana wartością.
 
+### Lekcja STAGE-013D dla analizatora
+
+Rozpoznawalność nie wynika z samej geometrii rzutu. Trzy korekty tego etapu —
+głębokość i skos ramy, zasięg balkonu, krawędź dachu — pochodzą z elewacji
+i wizualizacji, a rzut żadnej z nich nie pokazuje. Elewacje i wizualizacje są
+więc pełnoprawnym źródłem **kompozycji elewacji** (co jest przed czym, gdzie
+kończy się pas, jak gruby jest policzek), nigdy wymiarów. Jeżeli cechy
+rozpoznawczej — ramy, opaski, zasięgu balkonu, pasa okapowego — nie da się
+ustalić z dostępnych widoków, analizator ma **zapytać użytkownika**, a nie
+podstawić generyczny domyślny kształt: dom bez tej cechy jest innym domem.
+Prezentacja (co jest szkłem, co jest przygaszone) pozostaje metadaną obok
+modelu, po identyfikatorze, i nigdy nie wchodzi do domeny.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
 odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
-rozpoznawcze — nie produkcjonizację hosta), izolacja pomieszczenia w UI,
-analizator rzutów (kontrakt spisany wyżej, implementacji nie ma), wycinanie
-otworów w połaci dachu, grubość połaci i pas podrynnowy, docelowy
+rozpoznawcze, STAGE-013D poprawiło wierność elewacji — nie produkcjonizację
+hosta), izolacja pomieszczenia w UI, analizator rzutów (kontrakt spisany wyżej,
+implementacji nie ma), wycinanie otworów w połaci dachu, grubość połaci,
+picking przez szkło, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
 kosztów.

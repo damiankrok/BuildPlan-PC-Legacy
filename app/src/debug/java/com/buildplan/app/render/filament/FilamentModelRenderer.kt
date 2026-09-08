@@ -6,6 +6,7 @@ import android.view.Choreographer
 import android.view.Surface
 import android.view.SurfaceView
 import com.buildplan.app.domain.model.BuildingElementId
+import com.buildplan.app.reference.visual.VisualSurfaceRole
 import com.google.android.filament.Box
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
@@ -66,6 +67,16 @@ internal class FilamentModelRenderer(
      * it never hides, never tints and never answers a pick.
      */
     grid: PresentationGrid? = null,
+    /**
+     * Which elements read as glass beyond what their shape already says.
+     *
+     * Reference presentation metadata, keyed by element id and owned by the
+     * model being drawn — see
+     * [com.buildplan.app.reference.visual.MarcowkiVisualPresentation]. The
+     * renderer consults it once, at upload, and never infers a material from
+     * the element's kind.
+     */
+    private val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> = emptyMap(),
 ) : Choreographer.FrameCallback {
 
     init {
@@ -84,6 +95,7 @@ internal class FilamentModelRenderer(
     private val camera: Camera = engine.createCamera(cameraEntity)
 
     private val material: Material = TechnicalMaterial.build(engine)
+    private val glassMaterial: Material = TechnicalMaterial.buildGlass(engine)
     private val lineMaterial: Material = TechnicalMaterial.buildLine(engine, depthTested = true)
     private val ghostLineMaterial: Material =
         TechnicalMaterial.buildLine(engine, depthTested = false)
@@ -104,11 +116,13 @@ internal class FilamentModelRenderer(
     private val instanceByEntity = HashMap<Int, MaterialInstance>()
 
     /**
-     * The colour each mesh returns to when it stops being selected.
+     * The colour each mesh returns to when it stops being selected, as linear
+     * RGBA.
      *
-     * Stored rather than recomputed as "the neutral one", because glazing is not
-     * neutral: a pane that came back the colour of a wall after being tapped
-     * would quietly turn every window back into masonry.
+     * Stored rather than recomputed as "the neutral one", because glass is not
+     * neutral and not opaque: a pane that came back the colour of a wall after
+     * being tapped would quietly turn every window back into masonry, and one
+     * that came back opaque would turn it into a parapet.
      */
     private val baseColorByEntity = HashMap<Int, FloatArray>()
 
@@ -241,17 +255,23 @@ internal class FilamentModelRenderer(
             .build(engine)
         indexBuffer.setBuffer(engine, mesh.indices.toDirectBuffer())
 
-        val baseColor = when (mesh.style) {
-            MeshStyle.SOLID -> NEUTRAL
-            MeshStyle.GLAZING -> GLAZING
+        // Glass or fabric is decided once, here, from the primitive type and
+        // the reference presentation — never from the element's kind.
+        val role = surfaceRoleOf(mesh, surfaceRoles)
+        val baseColor = when (role) {
+            VisualSurfaceRole.OPAQUE_STUDY -> NEUTRAL
+            VisualSurfaceRole.GLASS_STUDY -> GLASS
         }
-        val instance = material.createInstance()
+        val instance = when (role) {
+            VisualSurfaceRole.OPAQUE_STUDY -> material
+            VisualSurfaceRole.GLASS_STUDY -> glassMaterial
+        }.createInstance()
         instance.setParameter(
             TechnicalMaterial.BASE_COLOR_PARAMETER,
             baseColor[0],
             baseColor[1],
             baseColor[2],
-            1.0f,
+            baseColor[3],
         )
         // Pushes the surface away from the camera by a hair, so that the edge
         // drawn along it wins the depth test instead of tying with it. Without
@@ -473,23 +493,32 @@ internal class FilamentModelRenderer(
         }
     }
 
-    /** Tints every mesh of [elementId], and returns every other mesh to neutral. */
+    /**
+     * Tints every mesh of [elementId], and returns every other mesh to its own
+     * base colour.
+     *
+     * A selected pane keeps being a pane: it takes the selection hue at a
+     * somewhat higher opacity, not full opacity, because a balustrade that went
+     * solid when tapped would answer "what is this" with the wrong picture.
+     */
     fun setSelectedElement(elementId: BuildingElementId?) {
         if (destroyed || elementId == selectedElementId) return
         selectedElementId = elementId
         renderableEntities.forEach { entity ->
             val instance = instanceByEntity[entity] ?: return@forEach
+            val base = baseColorByEntity[entity] ?: NEUTRAL
             val color = if (elementIdByEntity[entity] == elementId) {
-                SELECTED
+                val alpha = if (base[3] < 1.0f) GlassPresentation.SELECTED_ALPHA else 1.0f
+                floatArrayOf(SELECTED[0], SELECTED[1], SELECTED[2], alpha)
             } else {
-                baseColorByEntity[entity] ?: NEUTRAL
+                base
             }
             instance.setParameter(
                 TechnicalMaterial.BASE_COLOR_PARAMETER,
                 color[0],
                 color[1],
                 color[2],
-                1.0f,
+                color[3],
             )
         }
     }
@@ -564,6 +593,7 @@ internal class FilamentModelRenderer(
         indexBuffers.clear()
 
         engine.destroyMaterial(material)
+        engine.destroyMaterial(glassMaterial)
         engine.destroyMaterial(lineMaterial)
         engine.destroyMaterial(ghostLineMaterial)
 
@@ -653,19 +683,24 @@ internal class FilamentModelRenderer(
          * it; the surfaces are a light neutral grey with no hue of their own.
          */
         val BACKGROUND = floatArrayOf(0.010f, 0.011f, 0.013f)
-        val NEUTRAL = floatArrayOf(0.55f, 0.57f, 0.60f)
+        val NEUTRAL = floatArrayOf(0.55f, 0.57f, 0.60f, 1.0f)
         val SELECTED = floatArrayOf(0.13f, 0.46f, 0.74f)
 
         /**
-         * Glazing: much darker than the fabric around it, and cooler.
+         * Glass: a light, faintly cool sheet at the opacity [GlassPresentation]
+         * fixes, blended over whatever stands behind it.
          *
-         * A window drawn the colour of a wall is a window nobody can see. Dark
-         * is the right direction rather than bright, because that is what glass
-         * does in daylight from outside — it reads as a hole — and because the
-         * reveal the bake produces around the pane then has something to cast
-         * its edge against.
+         * STAGE-013B drew glazing as an opaque dark panel, which read as a hole
+         * from outside and as a wall from the balcony. Transparency is the
+         * one exception the study makes to a single opaque colour, and it is
+         * made because a railing that cannot be seen through is a parapet.
          */
-        val GLAZING = floatArrayOf(0.10f, 0.13f, 0.17f)
+        val GLASS = floatArrayOf(
+            GlassPresentation.COLOR[0],
+            GlassPresentation.COLOR[1],
+            GlassPresentation.COLOR[2],
+            GlassPresentation.ALPHA,
+        )
 
         /**
          * The edge overlay, as premultiplied linear RGBA.

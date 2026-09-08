@@ -109,8 +109,12 @@ class Stage013GuardrailTest {
                 ModelViewPreset.GROUND_TOP,
                 ModelViewPreset.UPPER_TOP,
                 ModelViewPreset.FACADE_OPENINGS,
+                ModelViewPreset.FRONT_SIGNATURE,
                 ModelViewPreset.SIGNATURE_FACADE,
                 ModelViewPreset.GARAGE_RELATION,
+                ModelViewPreset.FULL_REAR_AXON,
+                ModelViewPreset.GLASS_RAILING_CLOSEUP,
+                ModelViewPreset.ROOF_FASCIA_CLOSEUP,
                 ModelViewPreset.SITE_CONTEXT,
                 ModelViewPreset.STAIRS_VIEW,
             ),
@@ -209,7 +213,9 @@ class Stage013GuardrailTest {
 
     /** Every file the repository owns, skipping tooling and build output. */
     private fun repositoryFiles(): List<File> {
-        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin")
+        // `references/` is the owner's local pack of third-party drawings: inspected,
+        // git-ignored, never committed — see C013D-11.
+        val skipped = setOf(".git", ".gradle", ".idea", "build", ".kotlin", "references")
         return repositoryRoot()
             .walkTopDown()
             .onEnter { it.name !in skipped }

@@ -118,6 +118,23 @@ kompilować, nie linkować i nie pakować.
   „To jest cienkie płaskie wypełnienie otworu" jest faktem o geometrii; „to jest
   element charakterystyczny elewacji" jest faktem o domenie. Cechę rozpoznawczą
   pokazuj bryłą i konturem, nie trzecim kolorem.
+- **Metadane prezentacji żyją poza kanoniczną domeną.** Co jest szkłem, co jest
+  przygaszone i jaką ma alfę, mówi `reference/visual/VisualSurfaceRole`
+  i mapa po `BuildingElementId` obok modelu referencyjnego — nigdy pole encji,
+  nigdy `BuildingElementKind`. Renderer składa typ prymitywu i tę mapę w jednej
+  czystej funkcji. Domena i `geometry/` nie znają ról (`C013D-06`). Szkło jest
+  jedynym wyjątkiem od jednego koloru i wyjątkiem jest wyłącznie
+  przezroczystość: bez refrakcji, tekstur ani biblioteki materiałów.
+- **Rozpoznawalności nie kupuj kosztem rozkładalności.** Podobieństwo do
+  wizualizacji ma wynikać z osobnych, nazwanych elementów w jednym kanonicznym
+  modelu — nigdy ze scalonej siatki, wariantu geometrii dla jednego widoku ani
+  z cechy, której nie da się osobno ukryć, wybrać i nazwać. Dach, kondygnacje,
+  garaż, ściany, otwory, schody, ramy, opaska, balustrady i pas okapowy mają
+  zostać rozdzielne.
+- **Krawędź dachu to osobna geometria, nie grubość połaci.** Połacie są jedyną
+  geometrią uzgodnioną z liczbą ze źródła (powierzchnia dachu); pas okapowy
+  rysuj obok nich jako własny element. Nie pogrubiaj połaci, żeby udawać
+  okap.
 
 ## Model odrysowany ze źródła (debug)
 
@@ -162,8 +179,12 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
   wyglądają zupełnie inaczej — różnicę robią cechy rozpoznawcze. Dlatego
   **cecha rozpoznawcza jest osobnym elementem budynku**, z własną nazwą
   i własnym identyfikatorem, a nie skutkiem ubocznym innej bryły. Dziś są to
-  rama podcienia szczytowego i opaska międzykondygnacyjna na +3,06; nie usuwaj
-  ich i nie zamieniaj na kolor.
+  rama podcienia szczytowego (z głębokością i skosem), opaska
+  międzykondygnacyjna na +3,06, pas okapowy i kominy ponad dachem; nie usuwaj
+  ich i nie zamieniaj na kolor. Zasięg cechy bierz ze źródła, nie z wygody
+  modelowania: balkon kończy się tam, gdzie kończy go rzut, a lukę, którą to
+  odsłania, zamykaj geometrią, która naprawdę tam jest, nie przywracaniem
+  błędnej płyty.
 - **Cech rozpoznawczych szukaj na elewacjach.** Rzut mówi, gdzie stoi ściana;
   co jest na tej ścianie, mówi elewacja. Pasy, ramy i uskoki nie mają na rzucie
   śladu i nie da się ich stamtąd wyprowadzić.
@@ -242,7 +263,10 @@ Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych, parsera
 rzutów, **analizatora projektów** i **produkcyjnego** renderera 3D.
 
 Analizator — automatyczne czytanie cudzych rzutów i budowanie z nich modelu — to
-przyjęty pomysł na później, a nie zadanie tego etapu. Dopóki OWNER nie zleci go
+przyjęty pomysł na później, a nie zadanie tego etapu. Pozostaje osobnym etapem
+także po STAGE-013D: praca nad wiernością Marcówek tylko doprecyzowuje jego
+kontrakt (elewacje i wizualizacje jako źródło kompozycji; brak cechy
+rozpoznawczej kończy się pytaniem do użytkownika), nie zaczyna implementacji. Dopóki OWNER nie zleci go
 wprost, nie zaczynaj OCR, wizji komputerowej ani obsługi wielu domów: model
 Marcówek ma najpierw ustalić poprzeczkę jakości, którą taki analizator musiałby
 osiągać. Jego kontrakt — wymagane wejścia, cechy do odzyskania i sytuacje,

@@ -1,6 +1,8 @@
 # Gradle
 .gradle/
 build/
+# Kotlin compiler session data
+.kotlin/
 !gradle/wrapper/gradle-wrapper.jar
 
 # Local configuration (contains machine-specific SDK path)
@@ -28,3 +30,6 @@ release/
 *.jks
 *.keystore
 .env
+
+# OWNER local reference pack (third-party drawings and renders): inspected, never committed
+references/
