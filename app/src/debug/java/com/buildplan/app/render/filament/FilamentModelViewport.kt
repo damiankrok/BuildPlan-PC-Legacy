@@ -43,8 +43,6 @@ import com.buildplan.app.R
 import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.domain.model.BuildingVisibility
 import com.buildplan.app.domain.model.FloorId
-import com.buildplan.app.domain.model.visibleElements
-import com.buildplan.app.geometry.primitivesOf
 import com.buildplan.app.reference.visual.MarcowkiRoomTrace
 import com.buildplan.app.reference.visual.MarcowkiSourceEvidence
 import com.buildplan.app.reference.visual.SourceFidelity
@@ -142,30 +140,25 @@ private fun ModelStage(model: DebugModel) {
 
     var preset by remember { mutableStateOf(ModelViewPreset.FULL_AXON) }
     var visibility by remember { mutableStateOf(ModelViewPreset.FULL_AXON.visibility) }
+    var style by remember { mutableStateOf(RenderStyle.DEFAULT) }
     var selected by remember { mutableStateOf<BuildingElementId?>(null) }
     var renderer by remember { mutableStateOf<FilamentModelRenderer?>(null) }
 
     // The single decision path: the domain says which elements survive, the
-    // geometry layer's one bridge says which shapes draw them, and their element
-    // ids are what the renderer shows.
+    // model's presentation profile narrows that to what the view is meant to
+    // expose, the geometry layer's one bridge says which shapes draw them, and
+    // their element ids are what the renderer shows. What is left out is not
+    // drawn at all — see FilamentModelRenderer.setVisibleElements.
     val visibleElementIds = remember(model, visibility) {
-        model.geometry
-            .primitivesOf(model.building.visibleElements(visibility.toBuildingVisibility(model.atticId)))
-            .mapTo(LinkedHashSet()) { it.elementId }
-    }
-
-    // What the same answer left out, drawn as a wireframe so that hiding a layer
-    // reads as this house with a layer removed rather than as a different, lower
-    // building. It is a *complement*, computed from the domain's own answer —
-    // not a second rule about roofs and storeys, which would be the one thing
-    // the renderer must never own.
-    val removedElementIds = remember(model, visibleElementIds) {
-        model.geometry.elementIds.filterNotTo(LinkedHashSet()) { it in visibleElementIds }
+        model.visibleElementIds(visibility.toBuildingVisibility(model.atticId))
     }
 
     val currentRenderer = renderer
     LaunchedEffect(currentRenderer, visibleElementIds) {
-        currentRenderer?.setVisibleElements(visibleElementIds, removedElementIds)
+        currentRenderer?.setVisibleElements(visibleElementIds)
+    }
+    LaunchedEffect(currentRenderer, style) {
+        currentRenderer?.setStyle(style)
     }
     // Outside composition on purpose: reading the camera during composition
     // would subscribe this composable to every frame of every drag.
@@ -255,8 +248,8 @@ private fun ModelStage(model: DebugModel) {
                     factory = { context ->
                         SurfaceView(context).also { surfaceView ->
                             val created =
-                                FilamentModelRenderer(surfaceView, meshes, grid, model.surfaceRoles)
-                            created.setVisibleElements(visibleElementIds, removedElementIds)
+                                FilamentModelRenderer(surfaceView, meshes, grid, model.surfaceRoles, style)
+                            created.setVisibleElements(visibleElementIds)
                             created.resume()
                             renderer = created
                         }
@@ -293,6 +286,17 @@ private fun ModelStage(model: DebugModel) {
                 FilterChip(
                     selected = option == visibility,
                     onClick = { visibility = option },
+                    label = { ChipLabel(stringResource(option.labelRes)) },
+                )
+            }
+        }
+        // Two presentations of one model: the chip changes how the same
+        // entities are lit and inked, never which entities exist.
+        ChipRow {
+            RenderStyle.entries.forEach { option ->
+                FilterChip(
+                    selected = option == style,
+                    onClick = { style = option },
                     label = { ChipLabel(stringResource(option.labelRes)) },
                 )
             }

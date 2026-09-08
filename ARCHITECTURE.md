@@ -978,6 +978,83 @@ i słupków, materiałów elewacji. Wszystko w `MarcowkiSourceEvidence.notModell
 Pas okapowy przy jednym kolorze czyta się z reliefu, nie z ciemnej barwy, więc
 jest subtelniejszy niż na elewacji — to świadoma granica monochromu.
 
+## Dekompozycja, krawędzie i prezentacja studyjna (STAGE-013E)
+
+Etap odpowiada na czwartą ocenę OWNER-a (`RETEST_PENDING` po 013D): schody nie
+odtwarzały rzutu, pełna bryła była pocięta liniami, „Bez dachu" nadal pokazywało
+dach, a żaden pokój nie miał drzwi. Przebiegł jako trzy ograniczone fazy
+audyt→poprawka (A: techniczna, B: rubryka I1–I12 z eksperymentem
+renderowania, C: ruch i czytelność) i zatrzymał się po fazie C. Samoaudyt nie
+jest akceptacją OWNER-a.
+
+### Dekompozycja a własność semantyczna
+
+Własność (`BuildingElementScope`) i przynależność wizualna nie zawsze się
+pokrywają: rama szczytowa i pas okapowy są elementami całego budynku, a przy
+zdjętym dachu rysują jego obrys w powietrzu. Rozstrzyga to
+`presentation/DecompositionProfile` — źródłowo neutralna mapa
+`BuildingElementId → DecompositionGroup` (dziś jedna grupa: `ROOF_ENVELOPE`)
+trzymana obok modelu referencyjnego w `MarcowkiVisualPresentation`, tak jak role
+szkła. Kontrakt: profil nakłada się **po** `BuildingElementSelection.kt`
+i może tylko zawężać odpowiedź domeny; stan „wszystko" jest odpowiedzią domeny
+co do joty; własność, pokoje i picking pozostają nietknięte. Renderer dostaje
+gotowy zbiór identyfikatorów przez `DebugModel.visibleElementIds` i nie zna
+żadnej reguły. Syntetyczny dom deklaruje `DecompositionProfile.NONE`.
+
+### Warstwa zdjęta znika
+
+Widmowa siatka warstwy usuniętej (013B) została wycofana: OWNER widział w niej
+dach, który miał zniknąć. Został jeden materiał liniowy z testem głębi;
+`setVisibleElements` przyjmuje jeden zbiór i dla elementu spoza niego nie rysuje
+nic. Ciągłość modelu pilnują testy podzbioru (C013E-01), nie obraz.
+
+### Krawędzie cech, nie szwy
+
+Kontur jest liczony w `BuildingRenderMesh` z upieczonych wielokątów: każda
+krawędź jest dzielona w wierzchołkach leżących na niej (pełnowysoki narożnik
+filara i krótki narożnik nadproża to ta sama linia ściany o różnych końcach),
+a kawałek, którego dwie sąsiednie ściany mają wspólną normalną, jest szwem
+jednej powierzchni i nie jest rysowany. Zostają załamania, brzegi otwarte
+i ościeża otworów; przekątne triangulacji nigdy nie były krawędziami.
+Deterministyczne, w obrębie jednej siatki, bez Filamenta — testowalne na JVM
+(C013E-04).
+
+### Schody i drzwi wewnętrzne
+
+Schody: trzy proste biegi na pełną szerokość pasma klatki (4 + 5 + 4 stopnie)
+i dwa zabiegi w każdym narożu (kwadrat cięty po przekątnej od naroża rdzenia),
+zamiast równych kroków wzdłuż linii środkowej. Pierwszy bieg wychodzi z holu
+przez przerwę w ściance wschodniej holu (rdzeń → kotłownia), ostatni wchodzi do
+korytarza przez przerwę w jego ściance wschodniej (garderoba → rdzeń); obie
+przerwy są odrysowane, obie ścianki to jeden element w dwóch pryzmach.
+Drzwi wewnętrzne: dwanaście, odczytane z łuków otwierania na obu rzutach —
+pozycje `SOURCE_TRACED`, wymiary (0,80/0,90 × 2,00) `DISPLAY_ASSUMPTION`.
+Każde to `WallOpening` w ściance plus element `DOOR` z dwoma pokojami tej
+samej kondygnacji i własną taflą (tak jak drzwi zewnętrzne). Ścianka
+korytarz–pokój 3 (z = 3,70, x 3,93–5,20), której 013B nie miał, została
+dorysowana. Ścianki poddasza w poprzek połaci są cięte tam, gdzie dach mija
+wysokość 2,66: pośrodku stoją do stropu, przy okapach do połaci — dlatego drzwi
+mieszczą się na pełną wysokość.
+
+### Prezentacja studyjna
+
+`RenderStyle` ma dwóch kandydatów na tej samej geometrii: **CLAY** (jasne
+tło, matowe ciepło-neutralne powierzchnie, słońce z cieniami, SSAO, ciemne
+krawędzie cech, delikatna siatka) i **LINE_STUDY** (dotychczasowe ciemne tło,
+te same krawędzie, bez cieni). Po porównaniu na urządzeniu domyślny jest CLAY;
+LINE_STUDY zostaje jako wariant zapasowy. Styl zmienia kolory instancji
+materiałów, skybox i przebiegi widoku — nigdy siatki, bufory ani zbiór encji
+(C013E-09). Szkło jest neutralnie szare (bez błękitu), półprzezroczyste, bez
+refrakcji; na jasnym tle czyta się jako ciemniejsza tafla. MSAA 4× i FXAA
+wygładzają linie. Kamera nie schodzi pod płaszczyznę siatki (minimalny pitch
++2°), żeby siatka nie czytała się jako unosząca się płachta.
+
+### Czego świadomie nie zrobiono
+
+Kierunku otwierania skrzydeł, poręczy i balustrady wewnętrznej przy pustce
+klatki, ściany rdzenia od strony holu (rzut nie rozstrzyga), wycinania otworów
+w połaci, materiałów. Analizatora nadal nie ma.
+
 ## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
 
 Analizatora **nie ma** i ten etap go nie zaczyna. Ta sekcja zapisuje poprzeczkę,

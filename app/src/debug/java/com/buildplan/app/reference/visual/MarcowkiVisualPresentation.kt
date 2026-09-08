@@ -1,6 +1,8 @@
 package com.buildplan.app.reference.visual
 
 import com.buildplan.app.domain.model.BuildingElementId
+import com.buildplan.app.presentation.DecompositionGroup
+import com.buildplan.app.presentation.DecompositionProfile
 
 /**
  * How a reference element's surfaces should read in the technical study, when
@@ -53,4 +55,21 @@ object MarcowkiVisualPresentation {
 
     val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> =
         MarcowkiVisualModelV1.balustradeIds.associateWith { VisualSurfaceRole.GLASS_STUDY }
+
+    /**
+     * Which building-scoped trim is *seen* as the roof and goes away with it.
+     *
+     * The gable frames and the eaves fascia are whole-building elements, and
+     * remain so: they span both storeys, and nothing about their ownership
+     * changes here. But with the roof off they are the roof's outline standing
+     * in the air over the attic — the raking bars trace the two slopes, the
+     * fascia the two eaves — and the owner's verdict on STAGE-013D was that
+     * "without the roof" still showed a roof. So the roof-off view removes
+     * them too, through this map and nowhere else. The cheeks are walls and
+     * stay; the stacks are `ROOF` and already go with the domain's answer.
+     */
+    val decomposition: DecompositionProfile = DecompositionProfile(
+        (MarcowkiVisualModelV1.gableFrameIds + MarcowkiVisualModelV1.fasciaId)
+            .associateWith { DecompositionGroup.ROOF_ENVELOPE },
+    )
 }

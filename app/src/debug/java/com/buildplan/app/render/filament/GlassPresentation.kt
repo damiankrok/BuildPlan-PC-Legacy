@@ -23,11 +23,12 @@ internal object GlassPresentation {
     const val ALPHA: Float = 0.38f
 
     /**
-     * Linear, unpremultiplied RGB of a pane: a light neutral with a slight
-     * coolness so it separates from the warmer grey of the fabric. Monochrome
-     * to the eye — there is no hue here anyone would call a colour.
+     * Linear, unpremultiplied RGB of a pane: a dark neutral, so that over the
+     * off-white fabric and the light backdrop of the study a sheet reads as a
+     * shaded pane rather than as more wall. No blue: the study is monochrome,
+     * and a tint would be a material the source never stated.
      */
-    val COLOR: FloatArray = floatArrayOf(0.62f, 0.70f, 0.80f)
+    val COLOR: FloatArray = floatArrayOf(0.20f, 0.21f, 0.23f)
 
     /** The opacity a glass pane keeps while it is selected. Selection tints; it does not solidify. */
     const val SELECTED_ALPHA: Float = 0.55f

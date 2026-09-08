@@ -417,13 +417,15 @@ class MarcowkiVisualModelV1Test {
         // Pinned so that a trace correction that quietly drops a wall, or adds a
         // second shape for one, shows up as a failure rather than as a model the
         // owner has to re-review from scratch.
-        assertEquals("Element count", 53, building.elements.size)
-        assertEquals("Primitive count", 119, geometry.primitives.size)
+        assertEquals("Element count", 65, building.elements.size)
+        assertEquals("Primitive count", 139, geometry.primitives.size)
         assertEquals(
             "The 28 walls plus the eight portal cheeks split off five of them, the " +
-                "three sheets of the two balustrades, the two runs of storey band " +
-                "along the portal fronts, and the two runs of eaves fascia",
-            43,
+                "two partitions split around the stair, the six attic partitions across " +
+                "the slope cut where the roof meets the ceiling, the three sheets of " +
+                "the two balustrades, the two runs of storey band along the portal " +
+                "fronts, and the two runs of eaves fascia",
+            51,
             geometry.primitives.count { it is WallGeometry },
         )
         assertEquals(
@@ -450,8 +452,8 @@ class MarcowkiVisualModelV1Test {
             geometry.primitives.count { it is GablePanelGeometry },
         )
         assertEquals(
-            "One pane per traced opening, plus the three rooflights",
-            15,
+            "One pane per traced opening, one leaf per internal door, plus the three rooflights",
+            27,
             geometry.primitives.count { it is OpeningPanelGeometry },
         )
     }
@@ -557,6 +559,7 @@ class MarcowkiVisualModelV1Test {
                 "Zadaszenie przed garażem",
                 "Liczba stopni",
                 "Okna połaciowe rysowane na połaci",
+                "Wymiary drzwi wewnętrznych",
             ),
             assumptionNames,
         )

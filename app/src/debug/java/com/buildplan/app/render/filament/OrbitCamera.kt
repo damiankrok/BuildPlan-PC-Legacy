@@ -198,10 +198,13 @@ internal class OrbitCameraState(
          * reference plane across the whole screen and the building behind it —
          * a state that is easy to reach with one careless drag and not obviously
          * recoverable, because nothing on screen says which way is up any more.
-         * A few degrees below level is enough to look up at a soffit, which is
-         * the only reason to be down there at all.
+         * STAGE-013B allowed a few degrees below level for looking up at a
+         * soffit; on the light study backdrop that put the grid across the
+         * screen as a floating sheet the moment a drag overshot, so the camera
+         * now stays just above the ground plane and a soffit is read from the
+         * close-up presets instead.
          */
-        private val MIN_PITCH = (-12.0 * PI / 180.0).toFloat()
+        private val MIN_PITCH = (2.0 * PI / 180.0).toFloat()
         private val MAX_PITCH = (80.0 * PI / 180.0).toFloat()
 
         private const val MIN_DISTANCE_FACTOR = 0.55

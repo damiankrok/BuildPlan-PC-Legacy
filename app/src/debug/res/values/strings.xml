@@ -26,6 +26,9 @@
     <string name="model_view_site_context">Model w siatce</string>
     <string name="model_view_stairs">Schody</string>
 
+    <string name="model_style_clay">Model studyjny</string>
+    <string name="model_style_lines">Studium liniowe</string>
+
     <string name="model_spike_visibility_all">Wszystko</string>
     <string name="model_spike_visibility_no_roof">Bez dachu</string>
     <string name="model_spike_visibility_no_upper_floor">Bez poddasza</string>

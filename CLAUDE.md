@@ -100,9 +100,24 @@ kompilować, nie linkować i nie pakować.
   podzbiorem jednego kanonicznego modelu; bryła się nie zmienia, zmienia się
   tylko to, ile z niej jest lite. Nie utrzymuj uproszczonych wariantów geometrii
   dla poszczególnych trybów — dwa warianty rozjeżdżają się przy pierwszej
-  korekcie i OWNER widzi wtedy dwa różne domy. Warstwę zdjętą rysuj dalej jako
-  przygaszoną siatkę. Zbiór usunięty licz jako dopełnienie odpowiedzi domeny,
-  nigdy jako drugą regułę o dachu czy kondygnacji.
+  korekcie i OWNER widzi wtedy dwa różne domy. Warstwy zdjętej **nie rysuj
+  wcale** — żadnej widmowej siatki, żadnego konturu przez lite ściany; ciągłość
+  gwarantują testy podzbioru, nie duch dachu nad odsłoniętym poddaszem.
+  W podstawowym trybie „Bez dachu" po obwiedni dachu nie zostaje nic: ani
+  połacie, ani pas okapowy, ani ramy szczytowe.
+- **Dekompozycja to nie własność.** Element może być semantycznie
+  `WholeBuilding` (rama szczytowa, pas okapowy) i wizualnie należeć do obwiedni
+  dachu. Rozstrzyga to `presentation/DecompositionProfile` — mapa po
+  `BuildingElementId` obok modelu referencyjnego, neutralna wobec źródła, która
+  może **tylko zawężać** odpowiedź domeny. Nie zmieniaj przez nią
+  `BuildingElementScope` ani `roomIds` i nie dopisuj w rendererze `if`-a
+  o ramie.
+- **Pełna bryła nie przecieka liniami.** Kontur to krawędzie cech: załamania,
+  brzegi otwarte i ościeża otworów. Szew między dwiema współpłaszczyznowymi
+  ścianami jednej bryły, przekątne triangulacji i linie zasłonięte litą
+  powierzchnią nie są rysowane (`BuildingRenderMesh.featureEdges`, jeden
+  materiał liniowy z testem głębi). Styl (`RenderStyle`) zmienia światło,
+  barwy i przebiegi — nigdy geometrię ani zbiór encji.
 - **Jeden właściciel silnika na jeden `SurfaceView`.** Bez globalnego singletona
   renderera. Zasoby zwalniaj przy wyjściu z kompozycji; po odtworzeniu Activity
   ma istnieć dokładnie jeden żywy silnik.
@@ -189,8 +204,20 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
   co jest na tej ścianie, mówi elewacja. Pasy, ramy i uskoki nie mają na rzucie
   śladu i nie da się ich stamtąd wyprowadzić.
 - **Ciągłości modelu nie wolno cofnąć.** Każdy stan widoczności jest podzbiorem
-  jednego kanonicznego modelu, a zdjęta warstwa zostaje przygaszoną siatką.
+  jednego kanonicznego modelu; zdjęta warstwa znika, a nie zostaje widmem.
   Rzut, otwory, garaż i relacje elewacyjne mają być stabilne między stanami.
+- **Drzwi wewnętrzne to element obiegu, nie dekoracja.** Każde źródłowe
+  drzwi w ściance działowej to dziura w `WallGeometry` plus własny element
+  `DOOR` z parą pomieszczeń tej samej kondygnacji. Ścianka, która szczelnie
+  zamyka pokój, jest błędem rzutu, nie uproszczeniem. Klapy, klamki i ościeżnice
+  nie istnieją.
+- **Schody odrysowuj z rzutu, nie z centralnej linii.** Biegi to pełne pasma
+  klatki, zakręty to zabiegi cięte po przekątnej naroża, a pierwszy i ostatni
+  stopień muszą wychodzić z pomieszczenia przez przerwę w ściance, nie przez
+  ściankę. Liczba stopni pozostaje `DISPLAY_ASSUMPTION`.
+- **Samoaudyt jest ograniczony i nie zastępuje akceptacji.** Etap korekcyjny
+  ma najwyżej trzy fazy audyt→poprawka z limitem poprawek na fazę; po ostatniej
+  wynik wraca do OWNER-a. Zieleń techniczna nigdy nie oznacza „to jest mój dom".
 
 ## Urządzenia i emulatory
 

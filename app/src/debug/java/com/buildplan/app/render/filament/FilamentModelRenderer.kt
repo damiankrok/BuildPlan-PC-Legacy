@@ -47,13 +47,16 @@ import kotlin.math.sqrt
  * ## What it does not decide
  *
  * It does not decide what is visible. [setVisibleElements] is told which element
- * ids survive, having been worked out by the domain's own selection queries and
- * looked up through the geometry layer's `primitivesOf` bridge. The renderer's
- * whole contribution is to add and remove the matching entities — no second rule
- * about roofs or storeys lives here.
+ * ids survive, having been worked out by the domain's own selection queries,
+ * narrowed by the model's presentation profile and looked up through the
+ * geometry layer's `primitivesOf` bridge. The renderer's whole contribution is
+ * to add and remove the matching entities — no second rule about roofs, frames
+ * or storeys lives here, and nothing is drawn for an element that is not in
+ * the set: a removed layer is absent, not ghosted.
  *
  * Nor does it decide where the camera is: it draws whatever [pose] it was handed
- * this frame.
+ * this frame. Nor what the model looks like beyond a [RenderStyle], which is
+ * colours, light and passes over geometry that was uploaded once.
  */
 internal class FilamentModelRenderer(
     private val surfaceView: SurfaceView,
@@ -77,6 +80,7 @@ internal class FilamentModelRenderer(
      * the element's kind.
      */
     private val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> = emptyMap(),
+    initialStyle: RenderStyle = RenderStyle.DEFAULT,
 ) : Choreographer.FrameCallback {
 
     init {
@@ -96,9 +100,7 @@ internal class FilamentModelRenderer(
 
     private val material: Material = TechnicalMaterial.build(engine)
     private val glassMaterial: Material = TechnicalMaterial.buildGlass(engine)
-    private val lineMaterial: Material = TechnicalMaterial.buildLine(engine, depthTested = true)
-    private val ghostLineMaterial: Material =
-        TechnicalMaterial.buildLine(engine, depthTested = false)
+    private val lineMaterial: Material = TechnicalMaterial.buildLine(engine)
     private val materialInstances = ArrayList<MaterialInstance>()
     private val vertexBuffers = ArrayList<VertexBuffer>()
     private val indexBuffers = ArrayList<IndexBuffer>()
@@ -115,16 +117,8 @@ internal class FilamentModelRenderer(
     /** The material instance of each mesh, so one element can be tinted when selected. */
     private val instanceByEntity = HashMap<Int, MaterialInstance>()
 
-    /**
-     * The colour each mesh returns to when it stops being selected, as linear
-     * RGBA.
-     *
-     * Stored rather than recomputed as "the neutral one", because glass is not
-     * neutral and not opaque: a pane that came back the colour of a wall after
-     * being tapped would quietly turn every window back into masonry, and one
-     * that came back opaque would turn it into a parapet.
-     */
-    private val baseColorByEntity = HashMap<Int, FloatArray>()
+    /** Which surface entities are glass, whose colour no style changes. */
+    private val glassEntities = HashSet<Int>()
 
     /**
      * The edge overlay of every mesh, keyed the same way as the surfaces.
@@ -142,18 +136,14 @@ internal class FilamentModelRenderer(
     /** The reference plane's entities, if one was built. Never in any id map. */
     private val gridEntities = ArrayList<Int>()
 
-    /** One mesh's edges, and the two ways they can be drawn. */
-    private class Outline(
-        val entity: Int,
-        /** Depth-tested and bright: the element is here. */
-        val present: MaterialInstance,
-        /** Drawn through everything and faint: the element has been taken away. */
-        val removed: MaterialInstance,
-    ) {
-        var showingRemoved: Boolean = false
-    }
+    /** The fine and the emphasised grid lines' instances, recoloured per style. */
+    private var gridMinorInstance: MaterialInstance? = null
+    private var gridMajorInstance: MaterialInstance? = null
 
-    private val skybox: Skybox
+    /** One mesh's edges: depth-tested, so the far side of a wall stays hidden. */
+    private class Outline(val entity: Int, val instance: MaterialInstance)
+
+    private var skybox: Skybox
     private val indirectLight: IndirectLight
     private val sunEntity: Int
 
@@ -171,12 +161,14 @@ internal class FilamentModelRenderer(
 
     private var selectedElementId: BuildingElementId? = null
 
+    /** The presentation currently applied. See [setStyle]. */
+    var style: RenderStyle = initialStyle
+        private set
+
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
 
     init {
-        skybox = Skybox.Builder()
-            .color(BACKGROUND[0], BACKGROUND[1], BACKGROUND[2], 1.0f)
-            .build(engine)
+        skybox = buildSkybox(style)
         scene.skybox = skybox
 
         // A constant ambient term given directly as the single band-0 spherical
@@ -191,17 +183,27 @@ internal class FilamentModelRenderer(
         // changing the sun does nothing, because the sun is eight orders of
         // magnitude below the ambient.
         indirectLight = IndirectLight.Builder()
-            .irradiance(1, floatArrayOf(1.0f, 1.0f, 1.06f))
+            .irradiance(1, floatArrayOf(1.0f, 1.0f, 1.02f))
             .intensity(AMBIENT_LUX)
             .build(engine)
         scene.indirectLight = indirectLight
 
+        // The key light casts shadows; whether they are rendered is the
+        // style's decision, made per frame through the view.
         sunEntity = entityManager.create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
-            .color(1.0f, 0.98f, 0.95f)
+            .color(1.0f, 0.99f, 0.97f)
             .intensity(SUN_LUX)
             .direction(-0.45f, -0.82f, -0.36f)
-            .castShadows(false)
+            .castShadows(true)
+            .shadowOptions(
+                LightManager.ShadowOptions().apply {
+                    mapSize = SHADOW_MAP_SIZE
+                    // The whole house is a dozen metres across: one cascade at
+                    // this map size resolves a stair tread.
+                    shadowCascades = 1
+                },
+            )
             .build(engine, sunEntity)
         scene.addEntity(sunEntity)
 
@@ -212,6 +214,14 @@ internal class FilamentModelRenderer(
 
         view.scene = scene
         view.camera = camera
+        // Edges are one pixel wide, and the difference between a drawing and a
+        // pile of stairsteps is whether those pixels are resolved.
+        view.antiAliasing = View.AntiAliasing.FXAA
+        view.multiSampleAntiAliasingOptions = View.MultiSampleAntiAliasingOptions().apply {
+            enabled = true
+            sampleCount = MSAA_SAMPLES
+        }
+        applyStyle(style)
 
         uiHelper.renderCallback = SurfaceCallback()
         uiHelper.attachTo(surfaceView)
@@ -258,21 +268,9 @@ internal class FilamentModelRenderer(
         // Glass or fabric is decided once, here, from the primitive type and
         // the reference presentation — never from the element's kind.
         val role = surfaceRoleOf(mesh, surfaceRoles)
-        val baseColor = when (role) {
-            VisualSurfaceRole.OPAQUE_STUDY -> NEUTRAL
-            VisualSurfaceRole.GLASS_STUDY -> GLASS
-        }
-        val instance = when (role) {
-            VisualSurfaceRole.OPAQUE_STUDY -> material
-            VisualSurfaceRole.GLASS_STUDY -> glassMaterial
-        }.createInstance()
-        instance.setParameter(
-            TechnicalMaterial.BASE_COLOR_PARAMETER,
-            baseColor[0],
-            baseColor[1],
-            baseColor[2],
-            baseColor[3],
-        )
+        val glass = role == VisualSurfaceRole.GLASS_STUDY
+        val instance = (if (glass) glassMaterial else material).createInstance()
+        instance.setColor(if (glass) GLASS else style.surface)
         // Pushes the surface away from the camera by a hair, so that the edge
         // drawn along it wins the depth test instead of tying with it. Without
         // this the two are at exactly the same depth and the outline breaks into
@@ -291,8 +289,10 @@ internal class FilamentModelRenderer(
                 mesh.indices.size,
             )
             .material(0, instance)
-            .castShadows(false)
-            .receiveShadows(false)
+            // A pane neither throws a shadow nor takes one: a sheet that
+            // shadowed the room behind it would read as a wall again.
+            .castShadows(!glass)
+            .receiveShadows(!glass)
             .culling(true)
             .build(engine, entity)
 
@@ -303,7 +303,7 @@ internal class FilamentModelRenderer(
         elementIdByEntity[entity] = mesh.elementId
         entitiesByElementId.getOrPut(mesh.elementId) { ArrayList() } += entity
         instanceByEntity[entity] = instance
-        baseColorByEntity[entity] = baseColor
+        if (glass) glassEntities += entity
 
         uploadOutline(mesh, vertexBuffer)
     }
@@ -327,16 +327,8 @@ internal class FilamentModelRenderer(
             .build(engine)
         edgeBuffer.setBuffer(engine, mesh.edgeIndices.toDirectBuffer())
 
-        val present = lineMaterial.createInstance()
-        present.setParameter(
-            TechnicalMaterial.BASE_COLOR_PARAMETER,
-            EDGE[0], EDGE[1], EDGE[2], EDGE[3],
-        )
-        val removed = ghostLineMaterial.createInstance()
-        removed.setParameter(
-            TechnicalMaterial.BASE_COLOR_PARAMETER,
-            GHOST_EDGE[0], GHOST_EDGE[1], GHOST_EDGE[2], GHOST_EDGE[3],
-        )
+        val instance = lineMaterial.createInstance()
+        instance.setColor(style.edge)
 
         val entity = entityManager.create()
         RenderableManager.Builder(1)
@@ -349,16 +341,15 @@ internal class FilamentModelRenderer(
                 0,
                 mesh.edgeIndices.size,
             )
-            .material(0, present)
+            .material(0, instance)
             .castShadows(false)
             .receiveShadows(false)
             .culling(true)
             .build(engine, entity)
 
         indexBuffers += edgeBuffer
-        materialInstances += present
-        materialInstances += removed
-        val outline = Outline(entity = entity, present = present, removed = removed)
+        materialInstances += instance
+        val outline = Outline(entity = entity, instance = instance)
         outlines += outline
         outlinesByElementId.getOrPut(mesh.elementId) { ArrayList() } += outline
     }
@@ -390,9 +381,9 @@ internal class FilamentModelRenderer(
         vertexBuffers += vertexBuffer
 
         listOf(
-            grid.minorIndices to GRID_MINOR,
-            grid.majorIndices to GRID_MAJOR,
-        ).forEach { (lineIndices, color) ->
+            Triple(grid.minorIndices, style.gridMinor, true),
+            Triple(grid.majorIndices, style.gridMajor, false),
+        ).forEach { (lineIndices, color, minor) ->
             if (lineIndices.isEmpty()) return@forEach
 
             val indexBuffer = IndexBuffer.Builder()
@@ -403,11 +394,9 @@ internal class FilamentModelRenderer(
             indexBuffers += indexBuffer
 
             val instance = lineMaterial.createInstance()
-            instance.setParameter(
-                TechnicalMaterial.BASE_COLOR_PARAMETER,
-                color[0], color[1], color[2], color[3],
-            )
+            instance.setColor(color)
             materialInstances += instance
+            if (minor) gridMinorInstance = instance else gridMajorInstance = instance
 
             val entity = entityManager.create()
             RenderableManager.Builder(1)
@@ -434,53 +423,39 @@ internal class FilamentModelRenderer(
     // --- Visibility ----------------------------------------------------------
 
     /**
-     * Draws the elements in [visibleElementIds] as solid, and the elements in
-     * [removedElementIds] as their outline alone.
+     * Draws exactly the elements in [visibleElementIds]: their surfaces and
+     * their feature edges, and nothing for any other element.
      *
-     * ## Why a removed element is still drawn
+     * ## Why nothing is drawn for a removed layer
      *
-     * Because taking the roof off has to leave the same house standing. Drawing
-     * nothing where a layer used to be gives the owner two pictures with no
-     * visible relationship between them, and the honest question that follows is
-     * whether the second one is even the same model. Keeping the removed layer
-     * as a wireframe answers it in the picture itself: the roof is still there,
-     * over the same footprint, at the same pitch — it has been made transparent,
-     * not swapped out.
+     * STAGE-013B kept a removed layer as a wireframe drawn through everything,
+     * to say "same house, layer lifted". The owner's verdict was that without
+     * the roof there was still a roof: a house-shaped cage over the attic that
+     * was supposed to be exposed. Continuity is held where it belongs — every
+     * state is a subset of one canonical model, which the tests prove — and
+     * not by drawing the thing that was asked to go away.
      *
-     * It is not a second opinion about what is visible. Both sets are handed in,
-     * both come from the one selection the domain made, and this method's whole
-     * contribution is which of two ways to draw each id.
+     * It is not a second opinion about what is visible. The set is handed in,
+     * it comes from the one selection the domain and the presentation profile
+     * made, and this method's whole contribution is adding and removing
+     * entities.
      *
      * ## Why nothing is rebuilt
      *
      * The meshes were uploaded once and stay on the GPU. Toggling the roof adds
-     * and removes entities and swaps a material instance; no geometry is
-     * regenerated, so the shape an owner reviewed cannot change as a side effect
-     * of looking at it from a different state.
+     * and removes entities; no geometry is regenerated, so the shape an owner
+     * reviewed cannot change as a side effect of looking at it from a different
+     * state.
      */
-    fun setVisibleElements(
-        visibleElementIds: Set<BuildingElementId>,
-        removedElementIds: Set<BuildingElementId> = emptySet(),
-    ) {
+    fun setVisibleElements(visibleElementIds: Set<BuildingElementId>) {
         if (destroyed) return
         entitiesByElementId.forEach { (elementId, entities) ->
             val shouldShow = elementId in visibleElementIds
             entities.forEach { entity -> setInScene(entity, shouldShow) }
         }
         outlinesByElementId.forEach { (elementId, elementOutlines) ->
-            val present = elementId in visibleElementIds
-            val removed = !present && elementId in removedElementIds
-            elementOutlines.forEach { outline ->
-                if (outline.showingRemoved != removed) {
-                    outline.showingRemoved = removed
-                    renderableManager.setMaterialInstanceAt(
-                        renderableManager.getInstance(outline.entity),
-                        0,
-                        if (removed) outline.removed else outline.present,
-                    )
-                }
-                setInScene(outline.entity, present || removed)
-            }
+            val shouldShow = elementId in visibleElementIds
+            elementOutlines.forEach { outline -> setInScene(outline.entity, shouldShow) }
         }
     }
 
@@ -492,6 +467,52 @@ internal class FilamentModelRenderer(
             scene.removeEntity(entity)
         }
     }
+
+    // --- Style ---------------------------------------------------------------
+
+    /**
+     * Switches the presentation: backdrop, surface and line colours, shadows
+     * and ambient occlusion. Every entity, buffer and id map is untouched — a
+     * style is how the one model is lit and inked, never which model.
+     */
+    fun setStyle(newStyle: RenderStyle) {
+        if (destroyed || newStyle == style) return
+        style = newStyle
+        applyStyle(newStyle)
+    }
+
+    private fun applyStyle(applied: RenderStyle) {
+        val previous = skybox
+        skybox = buildSkybox(applied)
+        scene.skybox = skybox
+        engine.destroySkybox(previous)
+
+        renderableEntities.forEach { entity ->
+            if (entity in glassEntities) return@forEach
+            val tinted = elementIdByEntity[entity] == selectedElementId
+            instanceByEntity[entity]?.setColor(if (tinted) SELECTED else applied.surface)
+        }
+        outlines.forEach { it.instance.setColor(applied.edge) }
+        gridMinorInstance?.setColor(applied.gridMinor)
+        gridMajorInstance?.setColor(applied.gridMajor)
+
+        view.setShadowingEnabled(applied.shadows)
+        view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
+            enabled = applied.ambientOcclusion
+            // A room-scale radius: the occlusion is the corner where a wall
+            // meets a floor, not the whole facade darkening.
+            radius = AO_RADIUS_METERS
+            intensity = AO_INTENSITY
+            power = AO_POWER
+            quality = View.QualityLevel.HIGH
+            lowPassFilter = View.QualityLevel.HIGH
+            upsampling = View.QualityLevel.HIGH
+        }
+    }
+
+    private fun buildSkybox(applied: RenderStyle): Skybox = Skybox.Builder()
+        .color(applied.background[0], applied.background[1], applied.background[2], 1.0f)
+        .build(engine)
 
     /**
      * Tints every mesh of [elementId], and returns every other mesh to its own
@@ -506,20 +527,13 @@ internal class FilamentModelRenderer(
         selectedElementId = elementId
         renderableEntities.forEach { entity ->
             val instance = instanceByEntity[entity] ?: return@forEach
-            val base = baseColorByEntity[entity] ?: NEUTRAL
-            val color = if (elementIdByEntity[entity] == elementId) {
-                val alpha = if (base[3] < 1.0f) GlassPresentation.SELECTED_ALPHA else 1.0f
-                floatArrayOf(SELECTED[0], SELECTED[1], SELECTED[2], alpha)
-            } else {
-                base
+            val glass = entity in glassEntities
+            val color = when {
+                elementIdByEntity[entity] != elementId -> if (glass) GLASS else style.surface
+                glass -> floatArrayOf(SELECTED[0], SELECTED[1], SELECTED[2], GlassPresentation.SELECTED_ALPHA)
+                else -> SELECTED
             }
-            instance.setParameter(
-                TechnicalMaterial.BASE_COLOR_PARAMETER,
-                color[0],
-                color[1],
-                color[2],
-                color[3],
-            )
+            instance.setColor(color)
         }
     }
 
@@ -584,6 +598,9 @@ internal class FilamentModelRenderer(
         elementIdByEntity.clear()
         entitiesByElementId.clear()
         instanceByEntity.clear()
+        glassEntities.clear()
+        gridMinorInstance = null
+        gridMajorInstance = null
 
         materialInstances.forEach(engine::destroyMaterialInstance)
         materialInstances.clear()
@@ -595,7 +612,6 @@ internal class FilamentModelRenderer(
         engine.destroyMaterial(material)
         engine.destroyMaterial(glassMaterial)
         engine.destroyMaterial(lineMaterial)
-        engine.destroyMaterial(ghostLineMaterial)
 
         scene.removeEntity(sunEntity)
         engine.destroyEntity(sunEntity)
@@ -676,19 +692,12 @@ internal class FilamentModelRenderer(
 
     private companion object {
 
-        /**
-         * Filament works in linear light, so these are linear values, not the
-         * sRGB numbers from the app theme. The background is a very dark
-         * neutral rather than black, so an unlit silhouette still separates from
-         * it; the surfaces are a light neutral grey with no hue of their own.
-         */
-        val BACKGROUND = floatArrayOf(0.010f, 0.011f, 0.013f)
-        val NEUTRAL = floatArrayOf(0.55f, 0.57f, 0.60f, 1.0f)
-        val SELECTED = floatArrayOf(0.13f, 0.46f, 0.74f)
+        /** The selection tint, linear RGB; the one hue the study has. */
+        val SELECTED = floatArrayOf(0.13f, 0.46f, 0.74f, 1.0f)
 
         /**
-         * Glass: a light, faintly cool sheet at the opacity [GlassPresentation]
-         * fixes, blended over whatever stands behind it.
+         * Glass: a neutral sheet at the opacity [GlassPresentation] fixes,
+         * blended over whatever stands behind it, in every style.
          *
          * STAGE-013B drew glazing as an opaque dark panel, which read as a hole
          * from outside and as a wall from the balcony. Transparency is the
@@ -703,31 +712,6 @@ internal class FilamentModelRenderer(
         )
 
         /**
-         * The edge overlay, as premultiplied linear RGBA.
-         *
-         * Brighter than any surface can be lit, so an outline always separates
-         * from the face it bounds rather than disappearing into whichever wall
-         * happens to be catching the sun. The removed-layer lines are the same
-         * hue at about a third of the strength — clearly readable against both
-         * the background and a lit wall, because the whole job of a removed
-         * layer is to still be seen, but far enough below the present lines that
-         * no reviewer could mistake one for the other.
-         */
-        val EDGE = floatArrayOf(0.86f, 0.90f, 0.96f, 0.90f)
-        val GHOST_EDGE = floatArrayOf(0.34f, 0.39f, 0.48f, 0.55f)
-
-        /**
-         * The reference plane, well below every line the model draws.
-         *
-         * Quieter than the faintest removed-layer line on purpose: the grid has
-         * to be readable as a ruled plane and must never be mistaken for part of
-         * the building. The emphasised lines are roughly twice the fine ones,
-         * which is enough to count by and not enough to notice on its own.
-         */
-        val GRID_MINOR = floatArrayOf(0.10f, 0.12f, 0.15f, 0.42f)
-        val GRID_MAJOR = floatArrayOf(0.19f, 0.22f, 0.28f, 0.60f)
-
-        /**
          * How far behind itself a lit surface is pushed so its own outline wins
          * the depth test. Positive is away from the camera in Filament's
          * convention, and one unit of each term is the smallest offset that is
@@ -737,25 +721,39 @@ internal class FilamentModelRenderer(
 
         /**
          * Lighting in Filament's physical units, balanced against the camera
-         * exposure below.
+         * exposure below so that a lit off-white face lands just under white
+         * and a face in shadow stays a readable mid-grey.
          *
-         * These are far below real daylight on purpose. A technical model wants
-         * a legible mid-grey with a visible difference between a lit and an
-         * unlit face; exposing it like an actual sunlit building clips every
-         * surface to white and throws away exactly the shading that makes one
-         * wall read as separate from the next. The ambient term is a fifth of
-         * the key, which is enough to keep north-facing walls off black.
+         * Far below real daylight on purpose. A study model wants a visible
+         * difference between a lit, an unlit and a shadowed face; exposing it
+         * like a sunlit building clips every surface to white and throws away
+         * exactly the shading that makes one wall read as separate from the
+         * next. The ambient is about a third of the key, which is what keeps
+         * the shadow side legible without flattening the sun.
          */
-        const val SUN_LUX = 45_000.0f
-        const val AMBIENT_LUX = 6_000.0f
+        const val SUN_LUX = 90_000.0f
+        const val AMBIENT_LUX = 28_000.0f
 
         const val APERTURE = 16.0f
         const val SHUTTER_SPEED = 1.0f / 125.0f
         const val SENSITIVITY = 100.0f
 
+        /** Shadow map resolution: enough to resolve one stair tread on a house-sized model. */
+        const val SHADOW_MAP_SIZE = 2048
+
+        const val MSAA_SAMPLES = 4
+
+        const val AO_RADIUS_METERS = 0.45f
+        const val AO_INTENSITY = 0.9f
+        const val AO_POWER = 1.2f
+
         const val POSITION_STRIDE_BYTES = 12
         const val TANGENT_STRIDE_BYTES = 16
     }
+}
+
+private fun MaterialInstance.setColor(color: FloatArray) {
+    setParameter(TechnicalMaterial.BASE_COLOR_PARAMETER, color[0], color[1], color[2], color[3])
 }
 
 /**

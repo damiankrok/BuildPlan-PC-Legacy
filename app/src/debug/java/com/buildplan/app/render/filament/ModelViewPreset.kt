@@ -3,10 +3,13 @@ package com.buildplan.app.render.filament
 import com.buildplan.app.R
 import com.buildplan.app.domain.model.Building
 import com.buildplan.app.domain.model.BuildingElementId
+import com.buildplan.app.domain.model.BuildingVisibility
 import com.buildplan.app.domain.model.FloorId
 import com.buildplan.app.geometry.BuildingGeometry
 import com.buildplan.app.geometry.LocalBounds
+import com.buildplan.app.geometry.primitivesOf
 import com.buildplan.app.geometry.demo.SyntheticDemoHouse
+import com.buildplan.app.presentation.DecompositionProfile
 import com.buildplan.app.reference.visual.MarcowkiVisualModelV1
 import com.buildplan.app.reference.visual.MarcowkiVisualPresentation
 import com.buildplan.app.reference.visual.VisualSurfaceRole
@@ -31,6 +34,8 @@ internal enum class DebugModel(val labelRes: Int) {
         override val atticId: FloorId get() = MarcowkiVisualModelV1.atticId
         override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole>
             get() = MarcowkiVisualPresentation.surfaceRoles
+        override val decomposition: DecompositionProfile
+            get() = MarcowkiVisualPresentation.decomposition
 
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = when (focus) {
             PresetFocus.WHOLE_MODEL -> null
@@ -45,6 +50,7 @@ internal enum class DebugModel(val labelRes: Int) {
         override val geometry: BuildingGeometry get() = SyntheticDemoHouse.geometry
         override val atticId: FloorId get() = SyntheticDemoHouse.atticId
         override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> get() = emptyMap()
+        override val decomposition: DecompositionProfile get() = DecompositionProfile.NONE
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = null
     },
     ;
@@ -61,6 +67,24 @@ internal enum class DebugModel(val labelRes: Int) {
      * glass.
      */
     abstract val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole>
+
+    /**
+     * What this model's presentation takes away beyond the domain's answer
+     * when a layer is removed. The synthetic fixture has nothing to add: its
+     * roof is its roof and nothing else is seen as part of it.
+     */
+    abstract val decomposition: DecompositionProfile
+
+    /**
+     * The one decision path for what is on screen: the domain says which
+     * elements survive [visibility], the presentation profile narrows that to
+     * what the view is meant to expose, and the geometry's single bridge says
+     * which shapes draw them. The renderer receives the ids and nothing else.
+     */
+    fun visibleElementIds(visibility: BuildingVisibility): Set<BuildingElementId> =
+        geometry
+            .primitivesOf(decomposition.visibleElements(building, visibility))
+            .mapTo(LinkedHashSet()) { it.elementId }
 
     /**
      * The element a focused preset frames, or null when this model has nothing

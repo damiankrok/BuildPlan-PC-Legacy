@@ -51,20 +51,20 @@ class BuildingRenderMesh internal constructor(
     val normals: FloatArray,
     val indices: IntArray,
     /**
-     * The same shape as a line list: every boundary of every baked face, each
-     * one once.
+     * The shape's feature edges as a line list: its creases, its open
+     * boundaries and the reveals round its holes — never the seam between two
+     * coplanar faces, and never a triangulation diagonal.
      *
      * It is what turns a solid block into a technical drawing. A lit surface
      * alone tells the eye where a face is but not where it ends — two walls
      * meeting at a shallow angle, or a window head against the wall above it,
      * differ by a few percent of grey and vanish at most viewing angles. Drawing
-     * the boundaries on top restores the line every architectural drawing has,
-     * and it is also what makes a layer that has been *removed* still readable
-     * as the same house: the renderer keeps drawing these and stops drawing the
-     * triangles.
+     * the boundaries on top restores the line every architectural drawing has.
      *
      * Shared edges are deduplicated by position, so the seam where two faces of
-     * one prism meet is one line rather than two coincident ones.
+     * one prism meet is one line rather than two coincident ones; and where two
+     * faces meet in one plane there is no line at all, because the owner sees
+     * one surface there. How that is decided is in `MeshAccumulator`.
      */
     val edgeIndices: IntArray,
     /** How this mesh should read: as building fabric, or as the glass in a hole. */
@@ -150,8 +150,17 @@ private class MeshAccumulator {
     /** The first vertex index seen at each distinct position, for edge dedup. */
     private val vertexAtPosition = HashMap<Long, Int>()
 
-    /** Undirected edges, packed as the lower index in the high word. */
-    private val edges = LinkedHashSet<Long>()
+    /** The position each canonical vertex index stands at. */
+    private val canonicalPoints = HashMap<Int, ModelPoint>()
+
+    /**
+     * Every undirected polygon boundary, packed as the lower index in the high
+     * word, with the normal of each face that has it on its boundary.
+     *
+     * Faces are recorded rather than the edge alone because which edges are
+     * *drawn* is decided at build time from them — see [featureEdges].
+     */
+    private val edgeFaces = LinkedHashMap<Long, MutableList<FloatArray>>()
 
     /**
      * A wall, split around its openings.
@@ -281,16 +290,15 @@ private class MeshAccumulator {
             indices += base + corner + 1
         }
 
-        // The face's own boundary, added once per distinct pair of positions so
-        // the seam two faces share is one line. Coincident lines are not a
-        // performance problem — they are a visual one: two of them at the same
-        // depth flicker against each other as the camera moves.
+        // The face's own boundary, keyed by distinct pair of positions so the
+        // seam two faces share is one entry, and tagged with this face's
+        // normal so the build can tell a crease from a seam.
         ordered.indices.forEach { corner ->
             val from = canonicalVertex(ordered[corner], base + corner)
             val next = (corner + 1) % ordered.size
             val to = canonicalVertex(ordered[next], base + next)
             if (from != to) {
-                edges += (minOf(from, to).toLong() shl Int.SIZE_BITS) or maxOf(from, to).toLong()
+                edgeFaces.getOrPut(edgeKey(from, to)) { ArrayList(2) } += normal
             }
         }
     }
@@ -305,7 +313,58 @@ private class MeshAccumulator {
      * one already drawn.
      */
     private fun canonicalVertex(point: ModelPoint, index: Int): Int =
-        vertexAtPosition.getOrPut(point.positionKey()) { index }
+        vertexAtPosition.getOrPut(point.positionKey()) {
+            canonicalPoints[index] = point
+            index
+        }
+
+    /**
+     * The edges worth drawing: creases, boundaries and opening reveals — and
+     * never the seam between two coplanar faces of one shape.
+     *
+     * A wall with a window is baked as four boxes, and an eaves wall that runs
+     * past the gables as three; their outer faces lie in one plane, and the
+     * lines where the boxes meet are not lines on the building. Drawn, they
+     * were the clutter the owner saw on every facade: a jamb carried up to the
+     * wall head and down to the floor, a seam across the wall where the cheek
+     * begins, a seam across every floor slab.
+     *
+     * Two steps. First every edge is split wherever another vertex of the
+     * mesh lies on it, because a pier's full-height corner and the head
+     * box's short corner above the opening are the same line of the wall
+     * with different endpoints, and only their common piece is a seam. Then a
+     * piece is dropped if two of the faces it borders share a normal: they
+     * are one surface, and a surface has no line across itself. Everything
+     * else — the ridge, the box corners, the reveal round a hole, the free
+     * edge of a roof plane — has a crease or an open side and is kept.
+     *
+     * Deterministic and bounded: a mesh's own vertices against its own edges,
+     * and nothing across meshes, so two elements that abut still each keep
+     * their outline.
+     */
+    private fun featureEdges(): IntArray {
+        val pieces = LinkedHashMap<Long, MutableList<FloatArray>>()
+        edgeFaces.forEach { (key, faces) ->
+            val from = (key ushr Int.SIZE_BITS).toInt()
+            val to = key.toInt()
+            val start = canonicalPoints.getValue(from)
+            val end = canonicalPoints.getValue(to)
+            val along = canonicalPoints.entries
+                .filter { (index, point) -> index != from && index != to && point.liesStrictlyBetween(start, end) }
+                .sortedBy { (_, point) -> point.parameterAlong(start, end) }
+                .map { it.key }
+            (listOf(from) + along + listOf(to)).zipWithNext { a, b ->
+                pieces.getOrPut(edgeKey(a, b)) { ArrayList(2) } += faces
+            }
+        }
+        val kept = pieces.filterValues { faces -> !faces.hasCoplanarPair() }.keys
+        return IntArray(kept.size * 2).also { packed ->
+            kept.forEachIndexed { edge, key ->
+                packed[edge * 2] = (key ushr Int.SIZE_BITS).toInt()
+                packed[edge * 2 + 1] = key.toInt()
+            }
+        }
+    }
 
     fun build(
         elementId: BuildingElementId,
@@ -318,12 +377,7 @@ private class MeshAccumulator {
             positions = positions.toFloatArray(),
             normals = normals.toFloatArray(),
             indices = indices.toIntArray(),
-            edgeIndices = IntArray(edges.size * 2).also { packed ->
-                edges.forEachIndexed { edge, key ->
-                    packed[edge * 2] = (key ushr Int.SIZE_BITS).toInt()
-                    packed[edge * 2 + 1] = key.toInt()
-                }
-            },
+            edgeIndices = featureEdges(),
             boundsCenter = floatArrayOf(
                 bounds.center.x.toFloat(),
                 bounds.center.y.toFloat(),
@@ -444,3 +498,52 @@ private fun List<ModelPoint>.withoutRepeatedVertices(): List<ModelPoint> {
     val kept = filterIndexed { index, point -> index == 0 || !point.coincidesWith(this[index - 1]) }
     return if (kept.size > 1 && kept.first().coincidesWith(kept.last())) kept.dropLast(1) else kept
 }
+
+/** An undirected edge between two vertex indices, the lower one in the high word. */
+private fun edgeKey(a: Int, b: Int): Long =
+    (minOf(a, b).toLong() shl Int.SIZE_BITS) or maxOf(a, b).toLong()
+
+/** Whether two of these normals agree closely enough to be one plane. */
+private fun List<FloatArray>.hasCoplanarPair(): Boolean {
+    for (first in indices) {
+        for (second in first + 1 until size) {
+            val a = this[first]
+            val b = this[second]
+            if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2] > COPLANAR_DOT) return true
+        }
+    }
+    return false
+}
+
+/** Where this point falls along [start] to [end], as a fraction of that length. */
+private fun ModelPoint.parameterAlong(start: ModelPoint, end: ModelPoint): Double {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val dz = end.z - start.z
+    val lengthSquared = dx * dx + dy * dy + dz * dz
+    if (lengthSquared <= 0.0) return 0.0
+    return ((x - start.x) * dx + (y - start.y) * dy + (z - start.z) * dz) / lengthSquared
+}
+
+/**
+ * Whether this point lies on the open segment [start] to [end]: on its line
+ * within [COLLINEAR_TOLERANCE_METERS], and strictly inside its ends.
+ */
+private fun ModelPoint.liesStrictlyBetween(start: ModelPoint, end: ModelPoint): Boolean {
+    val t = parameterAlong(start, end)
+    if (t <= 0.0 || t >= 1.0) return false
+    val px = start.x + (end.x - start.x) * t
+    val py = start.y + (end.y - start.y) * t
+    val pz = start.z + (end.z - start.z) * t
+    val offX = x - px
+    val offY = y - py
+    val offZ = z - pz
+    return offX * offX + offY * offY + offZ * offZ <=
+        COLLINEAR_TOLERANCE_METERS * COLLINEAR_TOLERANCE_METERS
+}
+
+/** Cosine above which two face normals are the same plane: about a quarter of a degree. */
+private const val COPLANAR_DOT = 0.99999f
+
+/** How far off a line a vertex may sit and still split the edge through it. */
+private const val COLLINEAR_TOLERANCE_METERS = 1e-4

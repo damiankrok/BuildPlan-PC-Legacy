@@ -641,8 +641,8 @@ object MarcowkiPlanGrid {
         label = "270/320",
     )
 
-    /** Every traced opening, for the fidelity ledger and its tests. */
-    val allOpenings: List<OpeningTrace> = listOf(
+    /** Every opening the plans schedule, on the facades and the party wall. */
+    val scheduledOpenings: List<OpeningTrace> = listOf(
         GF_LIVING_NORTH_DOOR,
         GF_LIVING_EAST_DOOR,
         GF_LIVING_WEST_WINDOW,
@@ -656,6 +656,92 @@ object MarcowkiPlanGrid {
         UF_NORTH_GABLE_EAST_DOOR,
         UF_SOUTH_GABLE_DOOR,
     )
+
+    // ---------------------------------------------------------------------
+    // Internal doors — traced from the swing arcs on both plans
+    // ---------------------------------------------------------------------
+
+    /**
+     * Height of every internal door.
+     *
+     * The plans schedule no internal door, so the height is a display
+     * assumption — see [MarcowkiSourceEvidence.displayAssumptions]. The
+     * *positions* are not: each door below is a swing arc both plans draw
+     * against a partition, read at the calibrated scale, and each width is
+     * the chord of that arc rounded to the nearer of the two leaf sizes the
+     * arcs fall into. A door is a fact about circulation, not a decoration:
+     * without it the hall is walled from the bathroom and the corridor from
+     * every bedroom, which is a plan that does not exist.
+     */
+    const val INTERNAL_DOOR_HEIGHT: Double = 2.00
+
+    /** Hall to vestibule, in the wall at [Z_GF_HALL_VESTIBULE]; the arc swings north. */
+    val GF_DOOR_HALL_VESTIBULE: OpeningTrace = internalDoor(nearEdge = 4.40, width = 0.90, sill = GROUND_FLOOR_Y)
+
+    /** Hall to bathroom, in the wall at [X_GF_HALL_WEST]; the arc swings east into the hall. */
+    val GF_DOOR_HALL_BATHROOM: OpeningTrace = internalDoor(nearEdge = 7.45, width = 0.90, sill = GROUND_FLOOR_Y)
+
+    /** Hall to bedroom, in the wall at [X_GF_HALL_WEST]; the arc swings west into the room. */
+    val GF_DOOR_HALL_BEDROOM: OpeningTrace = internalDoor(nearEdge = 8.95, width = 0.90, sill = GROUND_FLOOR_Y)
+
+    /** Hall to pantry, in the wall at [X_GF_HALL_EAST]; the arc swings east into the closet. */
+    val GF_DOOR_HALL_PANTRY: OpeningTrace = internalDoor(nearEdge = 5.30, width = 0.80, sill = GROUND_FLOOR_Y)
+
+    /** Vestibule to boiler room, in the wall at [X_GF_HALL_EAST]; the arc swings east. */
+    val GF_DOOR_VESTIBULE_BOILER: OpeningTrace = internalDoor(nearEdge = 10.40, width = 0.90, sill = GROUND_FLOOR_Y)
+
+    /** Corridor to the north-east bedroom, in the wall at [Z_UF_BEDROOM_WARDROBE]; swings north. */
+    val UF_DOOR_CORRIDOR_BEDROOM_NE: OpeningTrace = internalDoor(nearEdge = 4.10, width = 0.90, sill = UPPER_FLOOR_Y)
+
+    /** North-east bedroom to its walk-in, in the same wall; swings south into the closet. */
+    val UF_DOOR_BEDROOM_NE_WARDROBE: OpeningTrace = internalDoor(nearEdge = 5.30, width = 0.80, sill = UPPER_FLOOR_Y)
+
+    /**
+     * Corridor to the north-west bedroom, in the wall at [X_UF_CORRIDOR_WEST].
+     * The two rooms share only 1.17 m of wall, so the arc's position is fixed
+     * within a few centimetres by the wall itself.
+     */
+    val UF_DOOR_CORRIDOR_BEDROOM_NW: OpeningTrace = internalDoor(nearEdge = 3.90, width = 0.90, sill = UPPER_FLOOR_Y)
+
+    /** Corridor to laundry, in the wall at [X_UF_CORRIDOR_WEST]; swings west. */
+    val UF_DOOR_CORRIDOR_LAUNDRY: OpeningTrace = internalDoor(nearEdge = 5.15, width = 0.80, sill = UPPER_FLOOR_Y)
+
+    /** Corridor to bathroom, in the wall at [X_UF_CORRIDOR_WEST]; swings west. */
+    val UF_DOOR_CORRIDOR_BATHROOM: OpeningTrace = internalDoor(nearEdge = 7.75, width = 0.80, sill = UPPER_FLOOR_Y)
+
+    /** Corridor to the south-east bedroom, in the wall at [Z_UF_CORRIDOR_SOUTH]; swings south. */
+    val UF_DOOR_CORRIDOR_BEDROOM_SE: OpeningTrace = internalDoor(nearEdge = 4.10, width = 0.90, sill = UPPER_FLOOR_Y)
+
+    /** South-east bedroom to its wardrobe, in the wall at [X_UF_WARDROBE_EAST]; swings west. */
+    val UF_DOOR_BEDROOM_SE_WARDROBE: OpeningTrace = internalDoor(nearEdge = 9.90, width = 0.80, sill = UPPER_FLOOR_Y)
+
+    /** Every internal door, ground floor first. */
+    val allInternalDoors: List<OpeningTrace> = listOf(
+        GF_DOOR_HALL_VESTIBULE,
+        GF_DOOR_HALL_BATHROOM,
+        GF_DOOR_HALL_BEDROOM,
+        GF_DOOR_HALL_PANTRY,
+        GF_DOOR_VESTIBULE_BOILER,
+        UF_DOOR_CORRIDOR_BEDROOM_NE,
+        UF_DOOR_BEDROOM_NE_WARDROBE,
+        UF_DOOR_CORRIDOR_BEDROOM_NW,
+        UF_DOOR_CORRIDOR_LAUNDRY,
+        UF_DOOR_CORRIDOR_BATHROOM,
+        UF_DOOR_CORRIDOR_BEDROOM_SE,
+        UF_DOOR_BEDROOM_SE_WARDROBE,
+    )
+
+    /** Every traced opening — scheduled and internal — for the fidelity ledger and its tests. */
+    val allOpenings: List<OpeningTrace> = scheduledOpenings + allInternalDoors
+
+    private fun internalDoor(nearEdge: Double, width: Double, sill: Double): OpeningTrace =
+        OpeningTrace(
+            nearEdge = nearEdge,
+            width = width,
+            sill = sill,
+            height = INTERNAL_DOOR_HEIGHT,
+            label = "—",
+        )
 
     // ---------------------------------------------------------------------
     // Rooflights
@@ -710,21 +796,32 @@ object MarcowkiPlanGrid {
     const val STAIR_CORE_SOUTH_Z: Double = 7.77
 
     /**
-     * Width of a flight, taken as the narrowest of the three traced bands so
-     * that no step is drawn outside the stairwell the plans give it.
+     * How the seventeen risers are shared between the three straight runs.
+     *
+     * South run, east run, north run — in climbing order. The plans draw the
+     * treads, and at the calibrated scale the south and north runs carry four
+     * each and the east run five, at a going of about 0.28 m; the watermark
+     * crosses the middle of the east run, so its count is the one read from
+     * the two runs beside it and the length that is left. Together with the
+     * two winders at each turn that is seventeen, which is what 3.06 m of rise
+     * at a climbable 0.18 m needs — the two readings agree, which is why the
+     * count is listed as a display subdivision and not as a guess.
      */
-    const val STAIR_FLIGHT_WIDTH: Double = 1.01
+    val STAIR_RUN_RISERS: List<Int> = listOf(4, 5, 4)
 
     /**
-     * How many risers carry the flight from 0.00 to +3.06.
+     * How many winders turn each corner.
      *
-     * A display subdivision, not a schedule: the plans draw the treads but the
-     * watermark crosses them, so the count is derived from the two exact levels
-     * instead. Seventeen risers put each at exactly 0.18 m, which is a stair a
-     * person could climb; the alternative of drawing a ramp and calling it a
-     * stair would tell the owner nothing about the circulation.
+     * Both plans draw the corner squares of the stairwell cut by a diagonal
+     * rather than left as landings: the stair turns on winders, not on
+     * quarter landings, and a model with flat landings there would teach the
+     * wrong turning logic. Two per corner — the square split on its diagonal
+     * — is the simplest shape that says so.
      */
-    const val STAIR_RISER_COUNT: Int = 17
+    const val STAIR_WINDERS_PER_TURN: Int = 2
+
+    /** Every riser from 0.00 to +3.06: three runs and two turns. */
+    val STAIR_RISER_COUNT: Int = STAIR_RUN_RISERS.sum() + 2 * STAIR_WINDERS_PER_TURN
 
     /** Rise of one step, from the two levels the section states. */
     val STAIR_RISER_HEIGHT: Double = (UPPER_FLOOR_Y - GROUND_FLOOR_Y) / STAIR_RISER_COUNT
@@ -753,7 +850,9 @@ object MarcowkiPlanGrid {
      * STAGE-013C — the inner edge of the gable frame and the lower edge of the
      * storey band — and the four STAGE-013D added: the cheek thickness, the
      * west edge of the south balcony, the underside of the eaves fascia and
-     * the top of the roof stacks, plus all four edges of each stack.
+     * the top of the roof stacks, plus all four edges of each stack. The
+     * internal doors STAGE-013E traced are counted with the openings, two
+     * edges each.
      */
     val TRACED_LINE_COUNT: Int =
         6 + 9 + 8 + 2 + 1 + 1 +

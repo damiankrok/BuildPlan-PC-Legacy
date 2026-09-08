@@ -109,7 +109,9 @@ class Stage013DFidelityTest {
         listOf(roofOff, atticOff, both).forEach { assertTrue(everything.containsAll(it)) }
 
         // The stacks go with the roof they rise out of; the fascia and the
-        // frames stay, as the whole building's signature trim.
+        // frames stay in the *domain's* answer, as whole-building elements —
+        // the presentation profile (C013E-02) takes them off the screen with
+        // the roof, without touching this ownership.
         model.stackIds.forEach { assertTrue(it !in roofOff) }
         assertTrue(model.fasciaId in roofOff && model.fasciaId in atticOff && model.fasciaId in both)
         model.gableFrameIds.forEach { assertTrue(it in both) }

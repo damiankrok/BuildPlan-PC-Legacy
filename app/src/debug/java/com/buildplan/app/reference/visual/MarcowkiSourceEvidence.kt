@@ -324,13 +324,34 @@ object MarcowkiSourceEvidence {
         ),
         FidelityRecord(
             name = "Klatka schodowa",
-            value = "5.35-7.47 x 5.18-8.80 m, rdzeń 5.35-6.46 x 6.18-7.77 m",
+            value = "5.35-7.47 x 5.18-8.80 m, rdzeń 5.35-6.46 x 6.18-7.77 m, zabiegi w narożach",
             fidelity = SourceFidelity.SOURCE_TRACED,
-            note = "Three flights turning twice around a rectangular core, traced from " +
+            note = "Three straight runs turning twice around a rectangular core, traced from " +
                 "both plans: the flight the ground plan draws across the south of the " +
                 "stairwell lands within 5 cm of the one the upper plan draws there. The " +
                 "direction is fixed by the upper plan's arrow, which points west off the " +
-                "top flight into the attic corridor.",
+                "top flight into the attic corridor. Both plans cut each corner square of " +
+                "the well on its diagonal, so the turns are winders rather than landings; " +
+                "the bottom flight leaves the hall through a gap in the hall's east " +
+                "partition between the core and the boiler room, and the top flight " +
+                "arrives in the corridor through a gap in its east partition between the " +
+                "walk-in and the core — both drawn as open on the plans, and STAGE-013B " +
+                "had walled both.",
+        ),
+        FidelityRecord(
+            name = "Drzwi wewnętrzne",
+            value = "12 drzwi: 5 na parterze, 7 na poddaszu",
+            fidelity = SourceFidelity.SOURCE_TRACED,
+            note = "Neither plan schedules an internal door, but both draw a swing arc " +
+                "against every partition a room is entered through. Each arc was read " +
+                "at the calibrated scale for the wall it stands on and where along it " +
+                "the leaf hangs: hall to vestibule, bathroom, bedroom and pantry and " +
+                "vestibule to boiler room on the ground floor; corridor to both north " +
+                "bedrooms, the laundry, the bathroom and the south-east bedroom, and " +
+                "each bedroom to its walk-in on the attic. The north-east bedroom's " +
+                "wall to the corridor, which STAGE-013B left out, is drawn on the plan " +
+                "and carries the first of those doors. Positions are traced to about " +
+                "±0.10 m; leaf sizes and heights are assumptions, listed below.",
         ),
         FidelityRecord(
             name = "Policzki podcieni",
@@ -539,12 +560,25 @@ object MarcowkiSourceEvidence {
         ),
         FidelityRecord(
             name = "Liczba stopni",
-            value = "17 stopni po 0.18 m",
+            value = "17 stopni po 0.18 m: 4 + 2 zabiegowe + 5 + 2 zabiegowe + 4",
             fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
-            note = "The plans draw the treads but the watermark crosses them, so the count " +
-                "is derived from the two exact levels the section gives instead: 3.06 m of " +
-                "rise divided into seventeen puts each riser at 0.18 m. The three flights " +
-                "and their direction are traced; only the subdivision is chosen.",
+            note = "The plans draw the treads but the watermark crosses the east run, so " +
+                "the count is settled two ways that agree: the south and north runs read " +
+                "four treads each at about 0.28 m going and the east run's length holds " +
+                "five, which with two winders per turn is seventeen; and 3.06 m of rise " +
+                "divided into seventeen puts each riser at a climbable 0.18 m. The runs, " +
+                "the turns and the direction are traced; the subdivision is chosen.",
+        ),
+        FidelityRecord(
+            name = "Wymiary drzwi wewnętrznych",
+            value = "0.80 lub 0.90 x 2.00 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The plans schedule no internal door. Each leaf width is the chord of " +
+                "its swing arc rounded to the nearer of the two sizes the arcs fall into, " +
+                "and every head is 2.00 m because a door needs some head and the plan " +
+                "prints none; where the roof comes lower than that over an attic " +
+                "partition the hole stops at the roof. Its own line is drawn for the " +
+                "leaf: a pane, like every other opening fill in the study.",
         ),
         FidelityRecord(
             name = "Okna połaciowe rysowane na połaci",
@@ -573,9 +607,9 @@ object MarcowkiSourceEvidence {
             "colour and no materials, so none of that is represented. Glass is the " +
             "one exception, and only its transparency: a railing that cannot be seen " +
             "through is a parapet.",
-        "Drzwi wewnętrzne poza jednymi. The plans schedule no internal doors, and " +
-            "only the garage-to-boiler-room opening is drawn clearly enough in the " +
-            "wall hatch to trace.",
+        "Skrzydła drzwi i kierunek otwierania. The twelve internal doors are holes " +
+            "with a pane in each; which way a leaf swings is read only to place the " +
+            "hole and is not drawn.",
         "Grubość połaci. The roof stays a plane and its edge is drawn beside it as " +
             "the eaves fascia; the facets themselves keep the 150.4 m2 that " +
             "reconciles with the published roof area.",

@@ -207,13 +207,37 @@
   16 KB ze STAGE-012 nie było powtarzane, sprawdzono tylko inwentarz `.so`
   w APK.
 
+- STAGE-013E marcowki decomposition, structural fidelity & technical render —
+  **korekta zakończona, brama wizualna OWNER-a nadal otwarta.** Odpowiedź na
+  czwarty przegląd (schody nie z rzutu, dziwne linie w pełnej bryle, „Bez
+  dachu" z obwiednią dachu, brak drzwi wewnętrznych, prezentacja zbyt surowa).
+  Trzy ograniczone fazy audyt→poprawka: **A** (8 poprawek: profil dekompozycji
+  `presentation/DecompositionProfile` z grupą `ROOF_ENVELOPE` dla ram i pasa
+  okapowego; wycofanie widmowej siatki i drugiego materiału liniowego;
+  krawędzie cech zamiast szwów w `BuildingRenderMesh`; schody 4+2+5+2+4
+  z zabiegami; przerwy na wejście i wyjście schodów w dwóch ściankach; ścianka
+  korytarz–pokój 3; dwanaście drzwi wewnętrznych z łuków na rzutach; ścianki
+  poddasza cięte na linii stropu 2,66), **B** (rubryka I1–I12: przed 9/24, po
+  22/24; eksperyment CLAY vs LINE_STUDY na urządzeniu, wybrany CLAY; jedna
+  poprawka: odszumienie SSAO), **C** (ruch: jedna poprawka — kamera nie schodzi
+  pod siatkę). Wynik techniczny:
+  `PASS_STAGE_013E_READY_FOR_OWNER_REVIEW` — nie jest akceptacją OWNER-a.
+  65 elementów, 139 prymitywów (51 ścian, 33 płyty, 10 połaci, 18 paneli,
+  27 tafli). Wiarygodność: `SOURCE_EXACT` 22, `SOURCE_TRACED` 12 nazwanych
+  cech + 109 linii siatki, `DISPLAY_ASSUMPTION` 14. Guardraile
+  `Stage013EDecompositionTest` C013E-01…14; C013D-02 i M013-12 świadomie
+  zaktualizowane (profil prezentacji, liczności). Filament nadal 1.75.1,
+  `debugImplementation`, bez zmian natywnych. Dowody na `emulator-5570`
+  poza repozytorium. Czas etapu przekroczył politykę 30 min (ok. 60 min
+  łącznie z dowodami) — odnotowane, bez dodatkowej pętli.
+
 ## Następny krok
 
-GATE-3D-SHAPE-01 **po raz czwarty** (`RETEST_PENDING`) — OWNER porównuje
+GATE-3D-SHAPE-01 **po raz piąty** (`RETEST_PENDING`) — OWNER porównuje
 model z rzutami, elewacjami, wizualizacjami ARCHON i własnym pakietem
-referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy rama
-z głębokością i skosem, opaska od połowy szczytu przez garaż, otwarty podcień,
-szklane balustrady i krawędź dachu czytają się bez objaśnień. Dopiero po tej
+referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy schody z zabiegami, drzwi wewnętrzne, czyste „Bez dachu"
+i prezentacja studyjna (cienie, SSAO, krawędzie cech) czytają się jako ten dom
+bez objaśnień. Dopiero po tej
 ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013D **nie
 jest** akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
 w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.

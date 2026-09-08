@@ -440,8 +440,32 @@ object MarcowkiVisualModelV1 {
                 to = PlanPoint(Grid.X_GF_HALL_WEST, Grid.Z_SOUTH_WALL),
                 base = base,
                 height = height,
+                openings = listOf(
+                    opening(
+                        trace = Grid.GF_DOOR_HALL_BATHROOM,
+                        slug = "parter-drzwi-hol-lazienka",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z holu do łazienki",
+                        scope = scope,
+                        rooms = setOf(ground("hol"), ground("lazienka")),
+                    ),
+                    opening(
+                        trace = Grid.GF_DOOR_HALL_BEDROOM,
+                        slug = "parter-drzwi-hol-pokoj",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z holu do pokoju",
+                        scope = scope,
+                        rooms = setOf(ground("hol"), ground("pokoj")),
+                    ),
+                ),
             )
-            partition(
+            // One element, two prisms: the wall stops where the stair leaves
+            // the hall. Both plans draw the bottom flight starting from the
+            // hall, and a partition drawn straight through it — as STAGE-013B
+            // did — walls the stair off from the only room it can be entered
+            // from. The gap runs from the core's south face to the boiler
+            // room's north wall, which is the band the bottom flight occupies.
+            splitPartition(
                 slug = "parter-scianka-holu-wschod",
                 name = "Ścianka holu — wschód",
                 scope = scope,
@@ -451,10 +475,38 @@ object MarcowkiVisualModelV1 {
                     ground("wiatrolap"),
                     ground("kotlownia"),
                 ),
-                from = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_GF_LIVING_SOUTH),
-                to = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_SOUTH_WALL),
                 base = base,
                 height = height,
+                runs = listOf(
+                    PartitionRun(
+                        from = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_GF_LIVING_SOUTH),
+                        to = PlanPoint(Grid.X_GF_HALL_EAST, Grid.STAIR_CORE_SOUTH_Z),
+                        openings = listOf(
+                            opening(
+                                trace = Grid.GF_DOOR_HALL_PANTRY,
+                                slug = "parter-drzwi-hol-spizarnia",
+                                kind = BuildingElementKind.DOOR,
+                                name = "Drzwi z holu do spiżarni",
+                                scope = scope,
+                                rooms = setOf(ground("hol"), ground("spizarnia")),
+                            ),
+                        ),
+                    ),
+                    PartitionRun(
+                        from = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_GF_BOILER_NORTH),
+                        to = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_SOUTH_WALL),
+                        openings = listOf(
+                            opening(
+                                trace = Grid.GF_DOOR_VESTIBULE_BOILER,
+                                slug = "parter-drzwi-wiatrolap-kotlownia",
+                                kind = BuildingElementKind.DOOR,
+                                name = "Drzwi z wiatrołapu do kotłowni",
+                                scope = scope,
+                                rooms = setOf(ground("wiatrolap"), ground("kotlownia")),
+                            ),
+                        ),
+                    ),
+                ),
             )
             partition(
                 slug = "parter-scianka-hol-wiatrolap",
@@ -465,6 +517,16 @@ object MarcowkiVisualModelV1 {
                 to = PlanPoint(Grid.X_GF_HALL_EAST, Grid.Z_GF_HALL_VESTIBULE),
                 base = base,
                 height = height,
+                openings = listOf(
+                    opening(
+                        trace = Grid.GF_DOOR_HALL_VESTIBULE,
+                        slug = "parter-drzwi-wiatrolap-hol",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z wiatrołapu do holu",
+                        scope = scope,
+                        rooms = setOf(ground("hol"), ground("wiatrolap")),
+                    ),
+                ),
             )
             partition(
                 slug = "parter-scianka-kotlowni-polnoc",
@@ -547,6 +609,15 @@ object MarcowkiVisualModelV1 {
          * above, which is the one view — the ground-floor plan — where the owner
          * most needs to see that this is a stair.
          *
+         * The turns are winders, not landings. STAGE-013B walked equal steps
+         * along a centreline and dropped an axis-aligned box at each, which
+         * jammed the boxes into one another at every corner and taught a
+         * turning pattern no plan draws; both plans cut each corner square on
+         * its diagonal, and so does this — see
+         * [MarcowkiPlanGrid.STAIR_WINDERS_PER_TURN]. The bottom flight leaves
+         * the hall and the top flight arrives in the attic corridor through
+         * gaps in the partitions, not through them.
+         *
          * It belongs to the ground floor because that is where the flight
          * starts, and it links no room: the source names a "Schody" room on the
          * attic and none down here, and inventing a ground-floor room for the
@@ -560,29 +631,66 @@ object MarcowkiVisualModelV1 {
                 scope = BuildingElementScope.OnFloor(groundFloorId),
             )
 
-            val halfWidth = Grid.STAIR_FLIGHT_WIDTH / 2.0
-            val southRun = (Grid.STAIR_CORE_SOUTH_Z + Grid.STAIR_SOUTH_Z) / 2.0
-            val eastRun = (Grid.STAIR_CORE_EAST_X + Grid.STAIR_EAST_X) / 2.0
-            val northRun = (Grid.STAIR_NORTH_Z + Grid.STAIR_CORE_NORTH_Z) / 2.0
+            // The stairwell as both plans draw it: three straight runs, each
+            // the full width of the band it occupies, and a corner square at
+            // each turn cut on its diagonal into two winders. Nothing is walked
+            // along a centreline: every tread is the piece of stairwell floor
+            // the plan draws it on, so a step can neither jam into the one
+            // before it at a corner nor float outside its band.
+            val (southRisers, eastRisers, northRisers) = Grid.STAIR_RUN_RISERS
+            val treads = mutableListOf<List<PlanPoint>>()
 
-            val path = listOf(
-                PlanPoint(Grid.STAIR_WEST_X, southRun),
-                PlanPoint(eastRun, southRun),
-                PlanPoint(eastRun, northRun),
-                PlanPoint(Grid.STAIR_WEST_X, northRun),
-            )
-            val legLengths = path.zipWithNext { from, to -> from.distanceTo(to) }
-            val going = legLengths.sum() / Grid.STAIR_RISER_COUNT
-
-            repeat(Grid.STAIR_RISER_COUNT) { step ->
-                val centre = path.walk(legLengths, (step + 0.5) * going)
-                val runsEastWest = centre.alongX
-                val outline = Grid.rectangle(
-                    minX = centre.point.x - if (runsEastWest) going / 2.0 else halfWidth,
-                    minZ = centre.point.z - if (runsEastWest) halfWidth else going / 2.0,
-                    maxX = centre.point.x + if (runsEastWest) going / 2.0 else halfWidth,
-                    maxZ = centre.point.z + if (runsEastWest) halfWidth else going / 2.0,
+            // South run: from the hall eastwards, between the core and the
+            // south wall of the well.
+            val southGoing = (Grid.STAIR_CORE_EAST_X - Grid.STAIR_WEST_X) / southRisers
+            repeat(southRisers) { step ->
+                treads += Grid.rectangle(
+                    minX = Grid.STAIR_WEST_X + step * southGoing,
+                    minZ = Grid.STAIR_CORE_SOUTH_Z,
+                    maxX = Grid.STAIR_WEST_X + (step + 1) * southGoing,
+                    maxZ = Grid.STAIR_SOUTH_Z,
                 )
+            }
+            // South-east turn, on the corner square east of the core.
+            treads += winders(
+                inner = PlanPoint(Grid.STAIR_CORE_EAST_X, Grid.STAIR_CORE_SOUTH_Z),
+                arriving = PlanPoint(Grid.STAIR_CORE_EAST_X, Grid.STAIR_SOUTH_Z),
+                outer = PlanPoint(Grid.STAIR_EAST_X, Grid.STAIR_SOUTH_Z),
+                leaving = PlanPoint(Grid.STAIR_EAST_X, Grid.STAIR_CORE_SOUTH_Z),
+            )
+            // East run: northwards along the east wall of the well.
+            val eastGoing = (Grid.STAIR_CORE_SOUTH_Z - Grid.STAIR_CORE_NORTH_Z) / eastRisers
+            repeat(eastRisers) { step ->
+                treads += Grid.rectangle(
+                    minX = Grid.STAIR_CORE_EAST_X,
+                    minZ = Grid.STAIR_CORE_SOUTH_Z - (step + 1) * eastGoing,
+                    maxX = Grid.STAIR_EAST_X,
+                    maxZ = Grid.STAIR_CORE_SOUTH_Z - step * eastGoing,
+                )
+            }
+            // North-east turn.
+            treads += winders(
+                inner = PlanPoint(Grid.STAIR_CORE_EAST_X, Grid.STAIR_CORE_NORTH_Z),
+                arriving = PlanPoint(Grid.STAIR_EAST_X, Grid.STAIR_CORE_NORTH_Z),
+                outer = PlanPoint(Grid.STAIR_EAST_X, Grid.STAIR_NORTH_Z),
+                leaving = PlanPoint(Grid.STAIR_CORE_EAST_X, Grid.STAIR_NORTH_Z),
+            )
+            // North run: westwards over the pantry, arriving in the attic
+            // corridor where the upper plan's arrow points.
+            val northGoing = (Grid.STAIR_CORE_EAST_X - Grid.STAIR_WEST_X) / northRisers
+            repeat(northRisers) { step ->
+                treads += Grid.rectangle(
+                    minX = Grid.STAIR_CORE_EAST_X - (step + 1) * northGoing,
+                    minZ = Grid.STAIR_NORTH_Z,
+                    maxX = Grid.STAIR_CORE_EAST_X - step * northGoing,
+                    maxZ = Grid.STAIR_CORE_NORTH_Z,
+                )
+            }
+
+            check(treads.size == Grid.STAIR_RISER_COUNT) {
+                "The stair has ${treads.size} treads for ${Grid.STAIR_RISER_COUNT} risers"
+            }
+            treads.forEachIndexed { step, outline ->
                 primitives += SlabGeometry(
                     elementId = id,
                     outline = outline,
@@ -591,6 +699,25 @@ object MarcowkiVisualModelV1 {
                 )
             }
         }
+
+        /**
+         * The two winders of one turn: the corner square split on the
+         * diagonal from its [inner] corner — the core's — to its [outer] one.
+         *
+         * The first winder is the triangle against the run that [arriving]s
+         * into the corner, the second the one against the run that leaves it,
+         * so the climb turns the corner in order. Each is a real tread of the
+         * canonical model, one riser high like every other.
+         */
+        private fun winders(
+            inner: PlanPoint,
+            arriving: PlanPoint,
+            outer: PlanPoint,
+            leaving: PlanPoint,
+        ): List<List<PlanPoint>> = listOf(
+            listOf(inner, arriving, outer),
+            listOf(inner, outer, leaving),
+        )
 
         fun addAtticFloor() {
             val scope = BuildingElementScope.OnFloor(atticId)
@@ -814,22 +941,81 @@ object MarcowkiVisualModelV1 {
                 ),
                 from = PlanPoint(Grid.X_UF_CORRIDOR_WEST, Grid.Z_NORTH_WALL),
                 to = PlanPoint(Grid.X_UF_CORRIDOR_WEST, Grid.Z_UF_CORRIDOR_SOUTH),
+                openings = listOf(
+                    opening(
+                        trace = Grid.UF_DOOR_CORRIDOR_BEDROOM_NW,
+                        slug = "poddasze-drzwi-korytarz-pokoj-2",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z korytarza do pokoju 2",
+                        scope = scope,
+                        rooms = setOf(attic("korytarz"), attic("pokoj-2")),
+                    ),
+                    opening(
+                        trace = Grid.UF_DOOR_CORRIDOR_LAUNDRY,
+                        slug = "poddasze-drzwi-korytarz-pralnia",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z korytarza do pralni",
+                        scope = scope,
+                        rooms = setOf(attic("korytarz"), attic("pralnia")),
+                    ),
+                    opening(
+                        trace = Grid.UF_DOOR_CORRIDOR_BATHROOM,
+                        slug = "poddasze-drzwi-korytarz-lazienka",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z korytarza do łazienki",
+                        scope = scope,
+                        rooms = setOf(attic("korytarz"), attic("lazienka")),
+                    ),
+                ),
             )
-            atticPartition(
+            // Two prisms of one wall, with the stair's arrival between them:
+            // the upper plan's arrow crosses this line off the top flight, and
+            // a partition drawn through it — as STAGE-013B did — had the stair
+            // arriving in a wall. The gap is the north run's own band, from the
+            // walk-in's south wall to the core's north face; south of the core
+            // the wall stands again, guarding the corridor from the void.
+            atticSplitPartition(
                 slug = "poddasze-scianka-korytarza-wschod",
                 name = "Ścianka korytarza poddasza — wschód",
                 scope = scope,
                 rooms = setOf(attic("korytarz"), attic("garderoba-2"), attic("schody")),
-                from = PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_BEDROOM_WARDROBE),
-                to = PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_CORRIDOR_SOUTH),
+                runs = listOf(
+                    PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_BEDROOM_WARDROBE) to
+                        PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_BEDROOM_LAUNDRY),
+                    PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.STAIR_CORE_NORTH_Z) to
+                        PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_CORRIDOR_SOUTH),
+                ),
             )
+            // Runs the full width from the corridor's west wall to the eaves
+            // wall, as the upper plan draws it — STAGE-013B started it at the
+            // corridor's east wall, which left the north-east bedroom open to
+            // the corridor with no door, and the corridor "walled on all four
+            // sides" only in its room trace.
             atticPartition(
                 slug = "poddasze-scianka-pokoj-garderoba",
                 name = "Ścianka między pokojem a garderobą",
                 scope = scope,
-                rooms = setOf(attic("pokoj-3"), attic("garderoba-2")),
-                from = PlanPoint(Grid.X_UF_CORRIDOR_EAST, Grid.Z_UF_BEDROOM_WARDROBE),
+                rooms = setOf(attic("pokoj-3"), attic("garderoba-2"), attic("korytarz")),
+                from = PlanPoint(Grid.X_UF_CORRIDOR_WEST, Grid.Z_UF_BEDROOM_WARDROBE),
                 to = PlanPoint(Grid.X_HOUSE_EAST_WALL, Grid.Z_UF_BEDROOM_WARDROBE),
+                openings = listOf(
+                    opening(
+                        trace = Grid.UF_DOOR_CORRIDOR_BEDROOM_NE,
+                        slug = "poddasze-drzwi-korytarz-pokoj-3",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z korytarza do pokoju 3",
+                        scope = scope,
+                        rooms = setOf(attic("korytarz"), attic("pokoj-3")),
+                    ),
+                    opening(
+                        trace = Grid.UF_DOOR_BEDROOM_NE_WARDROBE,
+                        slug = "poddasze-drzwi-pokoj-3-garderoba-2",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z pokoju 3 do garderoby 2",
+                        scope = scope,
+                        rooms = setOf(attic("pokoj-3"), attic("garderoba-2")),
+                    ),
+                ),
             )
             atticPartition(
                 slug = "poddasze-scianka-pokoj-pralnia",
@@ -867,6 +1053,16 @@ object MarcowkiVisualModelV1 {
                 ),
                 from = PlanPoint(Grid.X_UF_WARDROBE_EAST, Grid.Z_UF_CORRIDOR_SOUTH),
                 to = PlanPoint(Grid.X_HOUSE_EAST_WALL, Grid.Z_UF_CORRIDOR_SOUTH),
+                openings = listOf(
+                    opening(
+                        trace = Grid.UF_DOOR_CORRIDOR_BEDROOM_SE,
+                        slug = "poddasze-drzwi-korytarz-pokoj-1",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z korytarza do pokoju 1",
+                        scope = scope,
+                        rooms = setOf(attic("korytarz"), attic("pokoj-1")),
+                    ),
+                ),
             )
             atticPartition(
                 slug = "poddasze-scianka-lazienka-garderoba",
@@ -883,6 +1079,16 @@ object MarcowkiVisualModelV1 {
                 rooms = setOf(attic("garderoba-1"), attic("pokoj-1")),
                 from = PlanPoint(Grid.X_UF_WARDROBE_EAST, Grid.Z_UF_CORRIDOR_SOUTH),
                 to = PlanPoint(Grid.X_UF_WARDROBE_EAST, Grid.Z_SOUTH_WALL),
+                openings = listOf(
+                    opening(
+                        trace = Grid.UF_DOOR_BEDROOM_SE_WARDROBE,
+                        slug = "poddasze-drzwi-pokoj-1-garderoba-1",
+                        kind = BuildingElementKind.DOOR,
+                        name = "Drzwi z pokoju 1 do garderoby 1",
+                        scope = scope,
+                        rooms = setOf(attic("pokoj-1"), attic("garderoba-1")),
+                    ),
+                ),
             )
         }
 
@@ -1239,10 +1445,62 @@ object MarcowkiVisualModelV1 {
             to: PlanPoint,
             base: Double,
             height: Double,
+            openings: List<PlannedOpening> = emptyList(),
         ): BuildingElementId = wall(
             slug, name, scope, rooms, from, to, base, height,
-            Grid.PARTITION_THICKNESS,
+            Grid.PARTITION_THICKNESS, openings,
         )
+
+        /** One straight piece of a partition that stands in more than one piece. */
+        class PartitionRun(
+            val from: PlanPoint,
+            val to: PlanPoint,
+            val openings: List<PlannedOpening> = emptyList(),
+        )
+
+        /**
+         * A partition the plan draws as one line with a gap in it — where a
+         * stair leaves or arrives — as one element and several prisms.
+         *
+         * One element because it is one wall on the plan and one thing to
+         * name, pick and cost; several prisms because the gap is not a door
+         * with a head over it but an absence the full height of the storey,
+         * and a hole cannot be cut through the top of a wall.
+         */
+        private fun splitPartition(
+            slug: String,
+            name: String,
+            scope: BuildingElementScope,
+            rooms: Set<RoomId>,
+            base: Double,
+            height: Double,
+            runs: List<PartitionRun>,
+        ): BuildingElementId {
+            val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
+            runs.forEach { run ->
+                wallPrism(id, run.from, run.to, base, height, Grid.PARTITION_THICKNESS, run.openings)
+            }
+            return id
+        }
+
+        /** [splitPartition] on the attic, each run stopped under the roof like [atticPartition]. */
+        private fun atticSplitPartition(
+            slug: String,
+            name: String,
+            scope: BuildingElementScope,
+            rooms: Set<RoomId>,
+            runs: List<Pair<PlanPoint, PlanPoint>>,
+        ) {
+            val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
+            runs.forEach { (from, to) -> atticRun(id, from, to) }
+        }
+
+        /** Where an attic wall's box stops: the storey's clear height, or the roof if that is lower. */
+        private fun atticBoxTop(from: PlanPoint, to: PlanPoint): Double {
+            val clearTop = Grid.UPPER_FLOOR_Y + Grid.ATTIC_CLEAR_HEIGHT
+            val lowestRoof = minOf(Grid.roofUndersideAt(from.x), Grid.roofUndersideAt(to.x))
+            return minOf(clearTop, lowestRoof)
+        }
 
         /**
          * A gable wall: the perimeter wall of the storey plus the panels that
@@ -1502,24 +1760,84 @@ object MarcowkiVisualModelV1 {
             rooms: Set<RoomId>,
             from: PlanPoint,
             to: PlanPoint,
+            openings: List<PlannedOpening> = emptyList(),
+        ) {
+            val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
+            atticRun(id, from, to, openings)
+        }
+
+        /**
+         * One straight run of an attic partition, in as many pieces as the
+         * roof makes of it.
+         *
+         * A run along the slope sees one roof height end to end and is one
+         * box. A run across the slope is cut where the roof passes the clear
+         * height: between those cuts it stands its full 2.66 m under the flat
+         * ceiling the section dimensions, and outside them it stops at the
+         * roof and is closed with a sloped panel. STAGE-013B built the whole
+         * run to the *lowest* roof over it and panelled the rest up to the
+         * ridge, which would have put a 1.76 m door in a wall whose middle has
+         * 2.66 m of room, and stood a partition up into the roof space above
+         * the ceiling.
+         */
+        private fun atticRun(
+            id: BuildingElementId,
+            from: PlanPoint,
+            to: PlanPoint,
+            openings: List<PlannedOpening> = emptyList(),
         ) {
             val clearTop = Grid.UPPER_FLOOR_Y + Grid.ATTIC_CLEAR_HEIGHT
-            val lowestRoof = minOf(Grid.roofUndersideAt(from.x), Grid.roofUndersideAt(to.x))
-            val boxTop = minOf(clearTop, lowestRoof)
+            if (from.x == to.x) {
+                atticPiece(id, from, to, openings)
+                return
+            }
+            val startX = minOf(from.x, to.x)
+            val endX = maxOf(from.x, to.x)
+            val cuts = buildList {
+                add(startX)
+                Grid.roofAbove(clearTop)?.let { above ->
+                    if (above.start > startX && above.start < endX) add(above.start)
+                    if (above.endInclusive > startX && above.endInclusive < endX) add(above.endInclusive)
+                }
+                add(endX)
+            }.sorted()
+            var placed = 0
+            cuts.zipWithNext { x0, x1 ->
+                val here = openings.filter {
+                    it.trace.nearEdge >= x0 - GAP_TOLERANCE && it.trace.farEdge <= x1 + GAP_TOLERANCE
+                }
+                placed += here.size
+                atticPiece(id, PlanPoint(x0, from.z), PlanPoint(x1, from.z), here)
+            }
+            check(placed == openings.size) {
+                "A door on ${id.value} straddles the line where the roof meets the ceiling"
+            }
+        }
 
-            val id = partition(
-                slug = slug,
-                name = name,
-                scope = scope,
-                rooms = rooms,
-                from = from,
-                to = to,
-                base = Grid.UPPER_FLOOR_Y,
-                height = boxTop - Grid.UPPER_FLOOR_Y,
+        /**
+         * One box of an attic wall, stopped at the roof or the ceiling, with
+         * its doors cut in it and — only where the roof stopped it — the
+         * sloped panel that closes it to the roof above.
+         *
+         * A door's head is brought down to the box top where the roof comes
+         * lower than a door; the pane is clipped with the hole so the two
+         * never overlap.
+         */
+        private fun atticPiece(
+            id: BuildingElementId,
+            from: PlanPoint,
+            to: PlanPoint,
+            openings: List<PlannedOpening>,
+        ) {
+            val clearTop = Grid.UPPER_FLOOR_Y + Grid.ATTIC_CLEAR_HEIGHT
+            val boxTop = atticBoxTop(from, to)
+            wallPrism(
+                id, from, to, Grid.UPPER_FLOOR_Y, boxTop - Grid.UPPER_FLOOR_Y, Grid.PARTITION_THICKNESS,
+                openings.map { it.clippedTo(Grid.UPPER_FLOOR_Y, boxTop) },
             )
-
-            // A wall that runs along the slope rather than across it sees the
-            // same roof height at both ends, and needs nothing above its box.
+            // Under the flat ceiling there is nothing to close; along the
+            // slope the roof is one height end to end and there is no gap.
+            if (boxTop >= clearTop - GAP_TOLERANCE) return
             if (Grid.roofUndersideAt(from.x) == Grid.roofUndersideAt(to.x)) return
             slopedTopOf(id, from, to, boxTop)
         }
@@ -1573,6 +1891,21 @@ object MarcowkiVisualModelV1 {
             panes: Boolean = true,
         ): BuildingElementId {
             val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
+            wallPrism(id, from, to, base, height, thickness, openings, panes)
+            return id
+        }
+
+        /** One prism of a wall element, with its holes cut and, if asked, their panes. */
+        private fun wallPrism(
+            id: BuildingElementId,
+            from: PlanPoint,
+            to: PlanPoint,
+            base: Double,
+            height: Double,
+            thickness: Double,
+            openings: List<PlannedOpening> = emptyList(),
+            panes: Boolean = true,
+        ) {
             val runsEastWest = abs(to.x - from.x) >= abs(to.z - from.z)
             val wallOrigin = if (runsEastWest) from.x else from.z
 
@@ -1590,7 +1923,6 @@ object MarcowkiVisualModelV1 {
             if (panes) {
                 openings.forEach { planned -> rectangularPane(planned, from, to, runsEastWest) }
             }
-            return id
         }
 
         /**
@@ -1691,37 +2023,6 @@ object MarcowkiVisualModelV1 {
             ),
             elementId = elementId,
         )
-    }
-
-    /** Where a walk along a polyline has got to, and which way that leg runs. */
-    private class PathPosition(val point: PlanPoint, val alongX: Boolean)
-
-    /**
-     * The point [distance] along this polyline, with the direction of the leg it
-     * landed on.
-     *
-     * The direction comes back with the point because a stair step is a box
-     * across the flight, and which way "across" is depends entirely on which of
-     * the three flights the step belongs to.
-     */
-    private fun List<PlanPoint>.walk(legLengths: List<Double>, distance: Double): PathPosition {
-        var remaining = distance
-        legLengths.forEachIndexed { leg, legLength ->
-            if (remaining <= legLength || leg == legLengths.lastIndex) {
-                val from = this[leg]
-                val to = this[leg + 1]
-                val fraction = (remaining / legLength).coerceIn(0.0, 1.0)
-                return PathPosition(
-                    point = PlanPoint(
-                        x = from.x + (to.x - from.x) * fraction,
-                        z = from.z + (to.z - from.z) * fraction,
-                    ),
-                    alongX = abs(to.x - from.x) >= abs(to.z - from.z),
-                )
-            }
-            remaining -= legLength
-        }
-        error("Cannot walk $distance m along a path with no legs")
     }
 
     // -----------------------------------------------------------------

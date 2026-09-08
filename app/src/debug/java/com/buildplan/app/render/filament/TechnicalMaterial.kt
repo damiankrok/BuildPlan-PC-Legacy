@@ -37,7 +37,6 @@ internal object TechnicalMaterial {
     private const val NAME = "buildplanTechnical"
     private const val GLASS_NAME = "buildplanTechnicalGlass"
     private const val LINE_NAME = "buildplanTechnicalLine"
-    private const val GHOST_LINE_NAME = "buildplanGhostLine"
 
     private val SHADER = """
         void material(inout MaterialInputs material) {
@@ -129,23 +128,20 @@ internal object TechnicalMaterial {
      * The material the edge overlay is drawn with: unlit, so a line is the
      * colour it was given rather than a colour the sun happened to leave on it.
      *
-     * [depthTested] is the whole difference between the two kinds of line this
-     * renderer draws, and it is not a tuning knob. Edges of geometry that is
-     * *present* are depth tested, so the far side of a wall is hidden by the
-     * near side and the model reads as solid. Edges of a layer that has been
-     * *removed* are not, so the roof that was just taken off keeps hanging over
-     * the house as a wireframe instead of disappearing and leaving the owner to
-     * wonder whether this is even the same building.
+     * Always depth tested. The far side of a wall is hidden by the near side
+     * and the model reads as solid; no line is ever drawn through an opaque
+     * surface. STAGE-013B had a second, untested line material for ghosting a
+     * removed layer, and the owner's verdict on it was that a removed roof was
+     * still a roof — so there is one line material and it obeys depth.
      *
-     * Both blend, so a removed layer can be drawn faint enough to stay behind
-     * the layer being looked at.
+     * Blended, so the ink can sit at a chosen weight over the surface.
      */
-    fun buildLine(engine: Engine, depthTested: Boolean): Material =
-        compile(engine, if (depthTested) LINE_NAME else GHOST_LINE_NAME) { builder ->
+    fun buildLine(engine: Engine): Material =
+        compile(engine, LINE_NAME) { builder ->
             builder
                 .shading(MaterialBuilder.Shading.UNLIT)
                 .blending(MaterialBuilder.BlendingMode.TRANSPARENT)
-                .depthCulling(depthTested)
+                .depthCulling(true)
                 // Lines never occlude anything: they are drawn over the model,
                 // not part of it, and a line that wrote depth would punch a
                 // one-pixel hole in whatever was drawn after it.
