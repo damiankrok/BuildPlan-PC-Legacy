@@ -10,11 +10,8 @@
     <string name="nav_group_resources">Zasoby</string>
 
     <!-- Sekcje aplikacji -->
-    <string name="section_dashboard">Start</string>
-    <string name="section_dashboard_summary">Przegląd całej budowy w jednym miejscu: model budynku, oś czasu i koszty.</string>
-
-    <string name="section_model">Model 3D</string>
-    <string name="section_model_summary">Uproszczony techniczny model budynku powiązany z kosztami, etapami i pomieszczeniami.</string>
+    <string name="section_home">Dom</string>
+    <string name="section_home_summary">Model budynku, oś czasu i stan pieniędzy w jednym miejscu.</string>
 
     <string name="section_timeline">Oś czasu</string>
     <string name="section_timeline_summary">Planowanie i śledzenie kolejnych etapów budowy w czasie.</string>
@@ -37,28 +34,38 @@
     <string name="section_settings">Ustawienia</string>
     <string name="section_settings_summary">Konfiguracja aplikacji i preferencje projektu.</string>
 
-    <!-- Start -->
-    <string name="dashboard_project_title">Budowa domu</string>
-    <string name="dashboard_project_status">Brak aktywnego etapu</string>
-    <string name="dashboard_open_model">Otwórz model</string>
+    <!-- Przestrzeń robocza -->
+    <string name="project_title">Budowa domu</string>
 
-    <string name="dashboard_timeline_title">Oś czasu</string>
-    <string name="dashboard_timeline_empty">Etapy budowy pojawią się tutaj po ich zaplanowaniu.</string>
-    <string name="dashboard_timeline_open">Planuj</string>
+    <string name="timeline_title">Oś czasu</string>
+    <string name="timeline_no_stages">Brak zaplanowanych etapów</string>
+    <string name="timeline_expand">Rozwiń oś czasu</string>
+    <string name="timeline_collapse">Zwiń oś czasu</string>
+    <string name="timeline_empty">Etapy budowy pojawią się na osi po ich zaplanowaniu.</string>
+    <string name="timeline_plan">Planuj etapy</string>
 
-    <string name="dashboard_summary_spent">Wydano</string>
-    <string name="dashboard_summary_budget">Budżet</string>
-    <string name="dashboard_summary_costs">Kosztów</string>
-    <string name="dashboard_summary_empty">Brak zarejestrowanych kosztów i budżetu.</string>
-    <string name="dashboard_summary_open_costs">Dodaj koszt</string>
+    <string name="ledger_empty">Brak zarejestrowanych kosztów i budżetu.</string>
+    <string name="ledger_add_cost">Dodaj koszt</string>
 
-    <string name="placeholder_value">—</string>
-    <string name="placeholder_count_zero">0</string>
+    <string name="panel_close">Zamknij panel</string>
+    <string name="tool_state_open">otwarte</string>
+    <string name="tool_state_closed">zamknięte</string>
 
-    <!-- Model 3D -->
-    <string name="model_panel_title">Model 3D budynku</string>
-    <string name="model_panel_description">Renderer modelu domu zostanie dodany w osobnym etapie.</string>
-    <string name="model_screen_panel_description">Renderer modelu domu zostanie dodany w osobnym etapie. Ten obszar jest zarezerwowany dla technicznego modelu budynku powiązanego z kosztami i etapami.</string>
+    <!-- Inspektor wybranego elementu -->
+    <string name="inspector_scope_whole_building">Cały budynek</string>
+    <string name="inspector_kind_place">%1$s, %2$s</string>
+    <string name="inspector_rooms">Pomieszczenia: %1$s</string>
+    <string name="inspector_no_rooms">Bez przypisanego pomieszczenia</string>
+
+    <string name="element_kind_wall">Ściana</string>
+    <string name="element_kind_slab">Strop</string>
+    <string name="element_kind_roof">Dach</string>
+    <string name="element_kind_door">Drzwi</string>
+    <string name="element_kind_window">Okno</string>
+    <string name="element_kind_stairs">Schody</string>
+    <string name="element_kind_foundation">Fundament</string>
+    <string name="element_kind_facade">Elewacja</string>
+    <string name="element_kind_other">Element</string>
 
     <!-- Ekrany w przygotowaniu -->
     <string name="placeholder_module_title">Moduł w przygotowaniu</string>

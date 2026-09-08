@@ -18,6 +18,10 @@ pierwsza geometria odrysowana z aktualnych rzutów ARCHON, z jawną klasyfikacj�
 wiarygodności każdej liczby, również w źródłach `debug` i przeznaczona do
 wizualnej weryfikacji przez OWNER-a. Nad nim modułowe pokrycie dachu
 (STAGE-013F) — prezentacja generowana z połaci, bez zmiany kanonicznego dachu.
+Powłoka aplikacji jest od STAGE-013H **immersyjną przestrzenią roboczą**:
+dom rysowany od krawędzi do krawędzi jako kanwa ekranu startowego, a chrom
+(szklana pigułka, szyna narzędzi, oś czasu, inspektor) przy krawędziach
+i na żądanie.
 Brak backendu, persystencji, autoryzacji i parsera rzutów.
 
 ## Decyzje
@@ -1291,7 +1295,8 @@ Dwie konsekwencje techniczne pełnoekranowego viewportu:
   stylu i zdejmuje okładkę z zanikiem. Zabezpieczenie: okładka zdejmuje się
   sama po 15 s, gdyby sterownik nigdy nie odpowiedział.
 
-Dwa viewporty (start i model) to dwa silniki żyjące w dwóch `SurfaceView`,
+Dwa viewporty (start i model) były w tym etapie dwoma silnikami żyjącymi w dwóch `SurfaceView`
+(STAGE-013H scalił oba ekrany w jedną przestrzeń z jednym silnikiem),
 każdy dokładnie tak długo, jak jego kompozycja — bez singletona, zgodnie
 z regułą STAGE-012; kosztem jest ponowna kompilacja programów przy zmianie
 ekranu.
@@ -1316,6 +1321,214 @@ z ramą bez skrzydeł), wspólnego silnika między ekranami, ikon w szufladzie
 (zestaw `material-icons-core` nie ma pasujących ikon, a rozszerzony to
 zależność bez potrzeby), danych na osi czasu i w pasku pieniędzy
 (pozostają puste stany, bo danych nie ma).
+
+## Immersyjna przestrzeń robocza (STAGE-013H)
+
+Etap zlecony przez OWNER-a po odrzuceniu powłoki ze STAGE-013G: model nadal
+mieszkał w zaokrąglonej karcie, a ekran był tablicą prostokątnych bloków
+informacji ułożonych wokół modelu. Ten etap nie poprawia kart — usuwa je.
+Dom jest ekranem; wszystko, co nie jest domem, jest chromem przy krawędziach,
+które otwiera się na żądanie i zamyka gestem wstecz. Przebieg: pierwsza
+implementacja → AUDIT-1 (Impeccable, niezależny agent) → poprawki → AUDIT-2
+(Emil Kowalski, motion, niezależny agent) → poprawki → dowody na
+`emulator-5570`. Samoaudyt nie jest akceptacją OWNER-a.
+
+### Jedna przestrzeń zamiast startu, karty i ekranu modelu
+
+Sekcje `Dashboard` i `Model` zostały scalone w jedną: `AppSection.Home`
+(trasa `home`, etykieta „Dom") jest ekranem startowym **i** ekranem modelu.
+Nie ma już drogi „start → karta → Model 3D": `WorkspaceScreen`
+(`ui/screens`) składa cztery warstwy w jednym `Box`:
+
+1. **Kanwa** — wariantowa `WorkspaceModel` (`internal`, osobno w `src/debug`
+   i `src/release`): w debugu `FilamentCanvas` na całym ekranie, bez kształtu,
+   obramowania i marginesów, pod paskami systemowymi włącznie; w release
+   zarezerwowana rycina na tle motywu. Nad kanwą oba warianty rysują ten sam
+   `WorkspaceScrims` — jeden górny gradient, który osadza jasne ikony paska
+   statusu na jasnym tle studyjnym.
+2. **Górna krawędź** — `WorkspaceTopChrome`: jedna szklana pigułka
+   z przyciskiem szuflady i nazwą projektu. Bez `TopAppBar`, bez statusu
+   (stan budowy mówi raz oś czasu, która go posiada).
+3. **Prawa krawędź** (tylko debug) — `ToolDock`: pionowa szklana szyna
+   z pięcioma glifami (Warstwy, Ujęcia, Styl, Wyśrodkuj kamerę, Źródło
+   modelu). Panel narzędzia rozwija się **obok** szyny, z jej górnego-lewego
+   narożnika, a nie jako arkusz nad domem; dom pozostaje widoczny po lewej.
+4. **Dolna krawędź** — `TimelineRail`: szkło od krawędzi do krawędzi, zwinięte
+   do jednego wiersza (nazwa, stan „Brak zaplanowanych etapów", tor, szewron),
+   rozwijane dotknięciem albo przeciągnięciem w górę do dwóch zdań z akcjami
+   (Planuj etapy → sekcja Oś czasu, Dodaj koszt → sekcja Koszty).
+
+Do tego kontekstowy **inspektor** (`ContextPanel`, lewy dolny róg, tylko
+debug): nazwa wybranego elementu, rodzaj i kondygnacja z domeny, pomieszczenia
+z `roomIds`. Pojawia się tylko, gdy coś jest wybrane, i znika z wyborem.
+Pozostałe sekcje mają własny `SectionTopBar`; `BuildPlanApp` nie ma już
+paska aplikacji nad wszystkim, bo pasek nad domem znów robiłby z domu treść
+w ramie.
+
+Konsekwencja techniczna: **jeden silnik Filamenta na całą przestrzeń**
+zamiast dwóch (start i model) ze STAGE-013G — kompilacja programów przy
+przejściu między ekranami zniknęła, bo zniknął drugi ekran. Silnik nadal
+żyje dokładnie tak długo, jak kompozycja kanwy (bez singletona); po zmianie
+konfiguracji jest odtwarzany pod okładką, a kamera wraca z `rememberSaveable`.
+
+### Jeden otwarty element chromu i jeden przebieg gestu wstecz
+
+`ui/workspace/WorkspaceChromeState` trzyma jedną wartość
+`WorkspaceSurface` (`None` / `Timeline` / `Tool(key)`) z `Saver`-em na
+odtworzenie. Otwarcie osi czasu zamyka panel narzędzia i odwrotnie — dwie
+rzeczy otwarte naraz zakryłyby większość modelu i walczyłyby o ten sam kciuk.
+Gest wstecz w `WorkspaceScreen` najpierw zamyka otwarty element; gdy nic nie
+jest otwarte, `WorkspaceModel` zwalnia wybór elementu; dopiero potem wstecz
+opuszcza ekran. Otwarta szuflada ma własny `BackHandler` w `AppShell`
+(skomponowany w treści szuflady, więc nad handlerami sekcji): Material 3
+`ModalNavigationDrawer` w tej wersji nie zamykał się gestem wstecz i aplikacja
+wychodziła z otwartą szufladą — sprawdzone na urządzeniu w obu trybach ruchu.
+Reguły stanu chromu są w `WorkspaceChromeStateTest`.
+
+### Szkło: tint i obwódka, świadomie bez rozmycia
+
+`ui/components/Glass.kt` — `GlassSurface` to jedyny materiał chromu:
+przyciemniony tint `#0F1113` o alfie 0,84 i włoskowa obwódka jaśniejsza
+u góry (`GlassRimHigh` → `GlassRimLow`). **Nie rozmywa tła.** Filament
+rysuje na własnym `SurfaceView`, którego okno nie może próbkować, więc
+rozmycie byłoby albo udawane, albo kosztowałoby drugi render sceny;
+czysty tint nad ruchomym modelem jest uczciwszy i tańszy. Alfa jest ustawiona
+pod tekst, nie pod efekt: nad jasnym tłem studyjnym szkło składa się do
+ok. `#2E2F31`, na którym przygaszony atrament trzyma ponad 4,5:1 (cieńsze
+szkło z pierwszej implementacji, 0,68, wyglądało bardziej jak szkło i gasiło
+każdą niewybraną etykietę — AUDIT-1). Tafla jest też **lita dla palca**:
+Compose przepuszcza dotyk przez każdy obszar bez własnej obsługi wskaźnika,
+a pod każdą taflą jest kanwa, która obróciłaby kamerę albo wybrała ścianę
+spod tytułu panelu; `GlassSurface` bierze więc udział w hit-teście na całej
+powierzchni, niczego nie konsumując, więc jej przyciski, listy i uchwyt
+przeciągania działają, a model za nią zostaje w spokoju. Żadnej zależności
+na „liquid glass" nie dodano.
+
+Glify szyny (`WorkspaceGlyphs`) są rysowane ręcznie jako `ImageVector`
+(kreska 1,6, zaokrąglone złączenia) — zestaw `material-icons-extended` to
+kilka megabajtów dla czterech symboli, a glif warstw zbudowany z tej samej
+aksonometrii, w której widać dom, należy do tego produktu.
+
+### Ruch: jedna polityka, jeden zegar
+
+`ui/workspace/MotionPolicy.kt` jest jedynym miejscem, które nazywa czasy
+i krzywe: wejście 220 ms (M3 emphasized-decelerate), wyjście 150 ms
+(emphasized-accelerate), osadzenie stanu 180 ms, podróż kamery 300 ms.
+Każde przejście powłoki pyta politykę o spec zamiast podawać własną liczbę.
+`rememberSystemMotionPolicy()` czyta `ANIMATOR_DURATION_SCALE` i obserwuje
+jego zmiany: Compose animuje własnym zegarem i **ignoruje** systemową skalę
+animacji, więc dostępnościowe „Usuń animacje" trzeba honorować samemu —
+każdy spec staje się wtedy `snap()`, a każde `EnterTransition`/`ExitTransition`
+staje się `None`. Skala 10× (developerska) nadal animuje, bo prosi
+o zobaczenie ruchu, nie o jego utratę. Reguły są w `MotionPolicyTest`.
+
+Ruchy, które istnieją, i po co:
+
+- **Panel z szyny** — `AnimatedContent` z `scaleIn/Out` 0,92→1 i fade,
+  `TransformOrigin(1f, 0f)` (prawy-górny narożnik przy szynie), więc panel
+  rośnie z przycisku, który go otworzył; zmiana narzędzia podmienia treść
+  w miejscu z `SizeTransform`.
+- **Oś czasu** — tor zostaje na miejscu, szczegół rozwija się pod nim
+  (`expandVertically` z góry); szewron obraca się o 180°.
+- **Inspektor** — rośnie z lewego-dolnego narożnika, skąd jest zakotwiczony.
+- **Podróż kamery** — `ModelScene.applyPreset` nie przeskakuje już do
+  ujęcia: `OrbitCameraState.between(from, to, t)` interpoluje framing
+  (yaw krótszą drogą, reszta liniowo) przez `Animatable` w 300 ms; stan
+  końcowy to dokładnie framing presetu, więc ujęcia zostają odtwarzalne;
+  palec na kanwie przerywa podróż (`interruptCamera`) i przejmuje kamerę.
+- **Okładka pierwszej klatki** — po 600 ms bez klatki mówi „Wczytywanie
+  modelu" z paskiem postępu; zanika przez `motion.exit()`.
+
+Czego nie ma: pętli dekoracyjnych, sprężyn z odbiciem na chromie
+funkcjonalnym, przejścia współdzielonego przez granicę `AndroidView`
+(model stoi, chrom się porusza).
+
+### Ujęcia: grupy zamiast ściany opcji
+
+`ModelViewPreset` dostał `group: PresetGroup` (Bryła / Wnętrze / Elewacje /
+Detale) — fakt o liście, nie o kamerze. Panel Ujęć ma cztery krótkie grupy
+z nagłówkami i liniami, przewija się w granicy 60 % wolnej wysokości,
+a ostatnie wiersze pod fałdą są przyciemniane (`fadeBelowFold`), żeby lista
+kończąca się równo z krawędzią nigdy nie wyglądała na kompletną. `preset`
+jest teraz `null`-owalny: zmiana warstwy z panelu Warstw czyści znacznik
+ujęcia, bo ujęcie to kamera **i** widoczność, a znacznik na nazwie, której
+obraz już nie odpowiada, kłamałby. Preset „Bez dachu" nazywa się „Odkryte
+poddasze", żeby jedno słowo nie znaczyło dwóch rzeczy w dwóch panelach.
+
+### Audyty i co z nich zostało
+
+**AUDIT-1 (Impeccable 4.1.1, `audit android` + krytyka heurystyczna,
+niezależny agent).** Przed: 13/20 (Acceptable), heurystyki 18/32,
+5 × P1: dotyk przechodzący przez szkło do kanwy; cele 40 dp (wiersze opcji)
+i 44 dp (przycisk menu); przygaszony tekst na szkle ~3,5:1; pięć pustych
+znaczników na osi czytających się jak etapy; 15 ujęć bez grup, sześć pod
+fałdą bez sygnału, „Bez dachu" w dwóch znaczeniach ze stałym znacznikiem.
+Wszystkie pięć poprawione (wyżej) oraz P2: wstecz zwalnia wybór, podpowiedzi
+na długim dotknięciu glifów (`TooltipBox`), `Ellipsis` na każdym
+jednowierszowym tekście, `selectableGroup` i grupa przechodzenia dla
+TalkBack, zapis stanu inspektora poza kompozycją (`SideEffect`), jasne ikony
+pasków systemowych wymuszone dla aplikacji tylko-ciemnej
+(`SystemBarStyle.dark`), dolny scrim usunięty, trzy figury „— / — / 0"
+zastąpione jednym zdaniem z akcją, kropka środkowa zastąpiona przecinkiem
+w zasobie, komunikat wczytywania, interpolacja kamery. Świadomie nie
+zrobiono: przeniesienia szyny na środek prawej krawędzi (u góry panel
+zakrywa puste niebo, nie dom) ani przesunięcia kadru presetów pod chrom
+(kadr jest funkcją modelu i pozostaje odtwarzalny).
+
+**AUDIT-2 (Emil Kowalski — `emil-design-eng`, `review-animations`,
+`improve-animations`; niezależny agent).** 14 pozycji w inwentarzu ruchu,
+0 × P0, 5 × P1: dwie tafle nakładające się przy zmianie narzędzia, szewron
+i szczegół osi na dwóch zegarach, inspektor rosnący z narożnika ekranu,
+ease-in na wyjściach, 700 ms crossfade `NavHost` poza polityką — wszystkie
+poprawione (patrz „Ruch" wyżej), plus P2: dystans kamery geometrycznie,
+ease-in-out i czas 150–300 ms wg wielkości ruchu, halo od 0,7, szuflada
+`snapTo` i statyczny pasek postępu pod „Usuń animacje".
+
+**AUDIT-3 (weryfikacja obu soczewek, niezależny agent).** Wszystkie dziesięć
+P1 potwierdzone; 0 × P0/P1; Impeccable 14/20, heurystyki 26/32. Z sześciu P2
+cztery poprawione w tej samej pętli (pivot panelu liczony w `graphicsLayer`
+z rozmiaru bieżącej klatki zamiast ze stanu opóźnionego o klatkę, granice
+inspektora pamiętane przez cykl osi, „Otwory elewacji", znacznik ujęcia
+czyszczony po ręcznym ruchu kamery); dwa zostają jako dług (gesty szuflady
+pod „Usuń animacje", 4 dp między przyciskami szyny). Pełny zapis:
+`PROJECT_STATUS.md`, wpis STAGE-013H.
+
+### Wzorce z Mobbin (zasady, nie kopie)
+
+Cztery zapytania: viewer 3D z narzędziami na krawędziach, pionowa szyna
+przezroczystych przycisków nad kanwą, dolny arkusz z torem postępu nad mapą,
+pływający inspektor wybranego obiektu. Wzięto: pionową szynę ikon przy
+prawej krawędzi nad kanwą (Obsidian), panel opcji otwierany przy pasku
+narzędzi, z którego pochodzi (Freeform, Craft), dolny uchwyt utrzymujący
+mapę widoczną z osią trasy w środku (AllTrails, Polarsteps), kartę
+informacji w lewym dolnym rogu sceny 3D (Google Arts & Culture), obiekt
+wyśrodkowany z okrągłymi przyciskami w narożnikach (Apple Store, Best Buy).
+
+### Narzędzia projektowe zainstalowane w tym etapie
+
+- `frontend-design@claude-plugins-official` (Anthropic, Apache-2.0) —
+  zainstalowany w zakresie projektu przez `claude plugin install
+  frontend-design@claude-plugins-official --scope project`; jedyny ślad
+  w repozytorium to `.claude/settings.json` z `enabledPlugins`. Użyty jako
+  soczewka planu (tokeny, układ, anty-domyślne).
+- `impeccable` 4.1.1 (pbakaus/impeccable) — już obecny w `~/.claude/skills`,
+  użyty przez `audit android` i krytykę heurystyczną; jego deterministyczny
+  detektor dotyczy HTML/JSX i nie został użyty na Kotlinie.
+- `emil-design-eng`, `review-animations`, `improve-animations`,
+  `find-animation-opportunities` (emilkowalski) — już obecne
+  w `~/.claude/skills`, użyte jako druga soczewka.
+- Mobbin MCP — połączony, cztery zapytania.
+Żadnej zależności runtime aplikacji nie dodano.
+
+### Czego świadomie nie zrobiono
+
+Prawdziwego rozmycia tła (patrz „Szkło"), przejścia współdzielonego przez
+granicę renderera, sprężyn, kadru presetów zależnego od chromu, wspólnego
+silnika między sekcjami (sekcje poza domem nie mają modelu), danych na osi
+czasu i w księdze kosztów (puste stany mówią to jednym zdaniem), ikon
+w szufladzie, wersji tabletowej i poziomej (brak klas rozmiaru okna —
+dług), pochwytu przeciągania osi czasu śledzącego palec (przeciągnięcie
+rozstrzyga się na końcu gestu).
 
 ## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
 
@@ -1396,9 +1609,10 @@ Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
 odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
 rozpoznawcze, STAGE-013D poprawiło wierność elewacji, STAGE-013G dołożyło
-ramy okien i pełnoekranowy host — nie produkcjonizację
-hosta), izolacja pomieszczenia w UI, analizator rzutów (kontrakt spisany wyżej,
+ramy okien i pełnoekranowy host, STAGE-013H zrobiło z hosta immersyjną
+przestrzeń roboczą — nie produkcjonizację renderera), izolacja pomieszczenia w UI, analizator rzutów (kontrakt spisany wyżej,
 implementacji nie ma), wycinanie otworów w połaci dachu, grubość połaci,
-picking przez szkło, wspólny silnik renderera między ekranami, docelowy
+picking przez szkło, klasy rozmiaru okna (tablet, poziom) dla przestrzeni
+roboczej, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
 kosztów.

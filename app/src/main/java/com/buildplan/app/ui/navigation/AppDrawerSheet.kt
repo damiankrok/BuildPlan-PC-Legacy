@@ -50,7 +50,7 @@ fun AppDrawerSheet(
                 modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 28.dp),
             )
             Text(
-                text = stringResource(R.string.dashboard_project_title),
+                text = stringResource(R.string.project_title),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 4.dp, bottom = 20.dp),

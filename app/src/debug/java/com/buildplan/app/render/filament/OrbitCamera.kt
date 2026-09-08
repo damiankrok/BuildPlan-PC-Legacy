@@ -8,6 +8,8 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.buildplan.app.geometry.LocalBounds
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -126,12 +128,27 @@ internal class OrbitCameraState(
         yaw = framing.yaw
         pitch = framing.pitch
         distance = framing.distance.coerceIn(minDistance, maxDistance)
-        panRight = 0f
-        panUp = 0f
+        panRight = framing.panRight
+        panUp = framing.panUp
         focusX = framing.focusX
         focusY = framing.focusY
         focusZ = framing.focusZ
     }
+
+    /**
+     * Where the camera is now, in the same terms a preset is given in — so a
+     * move to a preset can start from here and be a path rather than a cut.
+     */
+    fun framing(): Framing = Framing(
+        yaw = yaw,
+        pitch = pitch,
+        distance = distance,
+        focusX = focusX,
+        focusY = focusY,
+        focusZ = focusZ,
+        panRight = panRight,
+        panUp = panUp,
+    )
 
     fun pose(): OrbitPose {
         val sinYaw = sin(yaw.toDouble())
@@ -184,6 +201,14 @@ internal class OrbitCameraState(
         val focusX: Float = 0f,
         val focusY: Float = 0f,
         val focusZ: Float = 0f,
+        /**
+         * The user's two-finger pan, in metres. A named framing never has one
+         * — that is what makes it reproducible — so both default to zero; they
+         * exist so that the camera's *current* state can be written as a
+         * framing and eased out of.
+         */
+        val panRight: Float = 0f,
+        val panUp: Float = 0f,
     )
 
     companion object {
@@ -235,6 +260,50 @@ internal class OrbitCameraState(
          */
         fun frame(bounds: LocalBounds): Framing =
             framing(bounds, DEFAULT_YAW_DEGREES, DEFAULT_PITCH_DEGREES, FRAMING_MARGIN)
+
+        /**
+         * How large a move from [from] to [to] is, 0..1: the larger of the turn
+         * as a share of a half-turn and the change of distance as a share of
+         * where it starts. What the camera's travel time is scaled by.
+         */
+        fun magnitude(from: Framing, to: Framing): Float {
+            var yawDelta = (to.yaw - from.yaw) % TWO_PI
+            if (yawDelta > PI) yawDelta -= TWO_PI
+            if (yawDelta < -PI) yawDelta += TWO_PI
+            val turn = abs(yawDelta) / PI.toFloat()
+            val zoom = abs(to.distance - from.distance) / from.distance
+            val tilt = abs(to.pitch - from.pitch) / (PI.toFloat() / 2f)
+            return maxOf(turn, zoom, tilt).coerceIn(0f, 1f)
+        }
+
+        /**
+         * The framing [fraction] of the way from [from] to [to]. Yaw goes the
+         * short way round, so a view 20 degrees behind the camera does not
+         * send it on a 340-degree tour. Distance is mixed geometrically, because
+         * what the eye sees is the model's apparent size and that goes with
+         * 1/distance: a linear mix of 30 m → 10 m would sit at 1.5× at
+         * half-time and jump to 3× at the end. Everything else is a straight
+         * line.
+         */
+        fun between(from: Framing, to: Framing, fraction: Float): Framing {
+            val t = fraction.coerceIn(0f, 1f)
+            var yawDelta = (to.yaw - from.yaw) % TWO_PI
+            if (yawDelta > PI) yawDelta -= TWO_PI
+            if (yawDelta < -PI) yawDelta += TWO_PI
+            fun mix(a: Float, b: Float) = a + (b - a) * t
+            return Framing(
+                yaw = from.yaw + yawDelta * t,
+                pitch = mix(from.pitch, to.pitch),
+                distance = from.distance * (to.distance / from.distance).pow(t),
+                focusX = mix(from.focusX, to.focusX),
+                focusY = mix(from.focusY, to.focusY),
+                focusZ = mix(from.focusZ, to.focusZ),
+                panRight = mix(from.panRight, to.panRight),
+                panUp = mix(from.panUp, to.panUp),
+            )
+        }
+
+        private val TWO_PI = (2.0 * PI).toFloat()
 
         /**
          * An arbitrary view of [bounds], as two angles and how much room to

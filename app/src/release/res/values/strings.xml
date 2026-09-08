@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release-only label for the reserved model area. The debug variant draws the
+  renderer there and never shows this text, so the string lives with the
+  variant that uses it.
+-->
+<resources>
+    <string name="model_reserved_description">Renderer modelu domu zostanie dodany w osobnym etapie.</string>
+</resources>

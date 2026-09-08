@@ -68,10 +68,11 @@ app/src/main/java/com/buildplan/app/
   geometry/          kontrakt geometrii budynku (metry, Y w górę, rzut w XZ);
                      bez renderera, kamery i zależności od Androida
   ui/
-    AppShell.kt      ramka aplikacji: TopAppBar + ModalNavigationDrawer
+    AppShell.kt      ramka aplikacji: ModalNavigationDrawer + NavHost
     navigation/      lista sekcji, NavHost, zawartość szuflady
-    screens/         ekrany modułów (obecnie placeholdery)
-    components/      komponenty współdzielone
+    screens/         przestrzeń robocza (dom jako kanwa) i placeholdery sekcji
+    components/      komponenty współdzielone: szkło, szyna narzędzi, oś czasu
+    workspace/       stan otwartego chromu i polityka ruchu
     theme/           kolory, typografia, kształty
 
 app/src/debug/java/com/buildplan/app/
@@ -84,14 +85,17 @@ app/src/debug/java/com/buildplan/app/
                      wymiary, nie jest rekonstrukcją realnego projektu
   presentation/      profile prezentacji po identyfikatorze elementu:
                      dekompozycja widoku i pokrycie dachu (tylko debug)
-  render/filament/   debugowy renderer i host podglądu 3D
+  render/filament/   debugowy renderer, kanwa Filamenta i scena modelu
+  ui/screens/        debugowa kanwa przestrzeni roboczej: narzędzia i inspektor
 ```
 
-Ekran **Model 3D** w wariancie debug otwiera się na modelu Marcówek. Przełącznik
-u góry pozwala wrócić do syntetycznego domu (fikstura regresyjna renderera),
-a presety widoku ustawiają powtarzalnie kamerę i widoczność — od widoku
-ogólnego, przez zbliżenie pokrycia dachu, po rzut poddasza z góry. Wariant
-release nadal pokazuje placeholder.
+Ekran startowy **Dom** jest przestrzenią roboczą: w wariancie debug model
+Marcówek wypełnia ekran od krawędzi do krawędzi, a narzędzia siedzą na prawej
+krawędzi — warstwy, ujęcia (kamera i widoczność, powtarzalnie), styl, powrót
+kamery i źródło modelu z przełącznikiem na syntetyczny dom (fiksturę
+regresyjną renderera). Oś czasu kotwiczy dolną krawędź, a dotknięty element
+opisuje inspektor. Wariant release pokazuje w tej samej przestrzeni
+zarezerwowaną rycinę zamiast renderera.
 
 ## Dokumentacja
 

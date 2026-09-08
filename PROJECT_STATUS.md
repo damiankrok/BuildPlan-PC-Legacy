@@ -305,26 +305,108 @@
   `emulator-5570` poza repozytorium (`D:\TRAVELAPPS\_stage013g_evidence`).
   Samoaudyt: model A1–A5 5/5, UI B1–B8 po jednej poprawce 8/8, łączny
   `PASS_STAGE_013G_READY_FOR_OWNER_REVIEW` — nie jest akceptacją OWNER-a.
+  Powłoka z tego etapu została przez OWNER-a **odrzucona** (model w karcie,
+  ekran z prostokątnych bloków) i zastąpiona w STAGE-013H.
 
+- STAGE-013H immersive 3D workspace + multi-skill UI/motion audit — **PASS
+  techniczny, brama wizualna OWNER-a otwarta.** Odpowiedź na odrzucenie
+  powłoki ze STAGE-013G (model w karcie, ekran z prostokątnych bloków).
+
+  **Kompozycja.** Sekcje Start i Model 3D scalone w jedną przestrzeń
+  roboczą `AppSection.Home` („Dom"): kanwa Filamenta od krawędzi do
+  krawędzi, bez karty, kształtu i marginesu; szklana pigułka z szufladą
+  i nazwą projektu u góry; pionowa szyna pięciu narzędzi na prawej krawędzi
+  (Warstwy, Ujęcia, Styl, Wyśrodkuj kamerę, Źródło modelu) z panelem
+  rozwijanym obok szyny; oś czasu jako szkło kotwiczące dolną krawędź,
+  zwinięta do jednego wiersza i rozwijana do dwóch zdań z akcjami;
+  inspektor wybranego elementu w lewym dolnym rogu. Jeden otwarty element
+  chromu naraz (`WorkspaceChromeState`), gest wstecz zamyka go, potem
+  zwalnia wybór, potem opuszcza ekran. Jeden silnik Filamenta zamiast dwóch.
+  Release: ta sama przestrzeń z zarezerwowaną ryciną, bez szyny.
+
+  **Szkło i ruch.** `GlassSurface`: tint 0,84 + obwódka, bez rozmycia (Filament
+  na `SurfaceView` nie da się próbkować), lite dla dotyku, bez nowej
+  zależności. `MotionPolicy`: 220/150/180 ms, kamera do 300 ms skalowana
+  wielkością ruchu, ease-out na wyjściach, ease-in-out na kamerze; „Usuń
+  animacje" (`ANIMATOR_DURATION_SCALE` = 0) obserwowane na żywo i honorowane
+  cięciem — także w szufladzie, `NavHost` i wskaźniku wczytywania. Ujęcia
+  pogrupowane (Bryła / Wnętrze / Elewacje / Detale); podróż kamery do ujęcia
+  interpolowana i przerywalna palcem.
+
+  **AUDIT-1 Impeccable** (niezależny agent, `audit android` + krytyka):
+  przed 13/20 i heurystyki 18/32, 5 × P1 (dotyk przez szkło do kanwy, cele
+  40/44 dp, kontrast ~3,5:1 na szkle, pięć fałszywych znaczników na osi,
+  15 ujęć bez grup z „Bez dachu" w dwóch znaczeniach). Po: wszystkie P1
+  i 12 P2 poprawione (m.in. wstecz zwalnia wybór, podpowiedzi glifów,
+  `Ellipsis`, grupa TalkBack, jasne ikony pasków systemowych, jedno zdanie
+  zamiast trzech kresek, komunikat wczytywania); zweryfikowane na
+  urządzeniu: dotknięcie tytułu panelu nie zmienia wyboru, znacznik ujęcia
+  znika po zmianie warstwy, skala czcionki 1,3 bez ucięć.
+
+  **AUDIT-2 Emil Kowalski** (niezależny agent, `emil-design-eng`,
+  `review-animations`, `improve-animations`): 14 pozycji w inwentarzu ruchu,
+  0 × P0, 5 × P1 (dwie tafle nakładające się przy zmianie narzędzia,
+  szewron i szczegół osi na dwóch zegarach, inspektor rosnący z narożnika
+  ekranu zamiast ku dotkniętemu elementowi, ease-in na każdym wyjściu,
+  700 ms crossfade `NavHost` poza polityką). Po: jedna tafla z crossfade
+  treści i animowaną wysokością, pivot na wciśniętym przycisku szyny;
+  szewron i szczegół na jednym `updateTransition`; inspektor pivotuje na
+  punkcie dotknięcia w swoich granicach i gaśnie pod rozwiniętą osią;
+  `exit()` = ease-out; `NavHost` na polityce; P2: dystans kamery mieszany
+  geometrycznie, krzywa ease-in-out i czas 150–300 ms wg wielkości ruchu,
+  halo szyny od 0,7 zamiast od zera, szuflada `snapTo` i statyczny pasek
+  postępu pod „Usuń animacje". Świadomie zostawione: przeciągnięcie osi
+  rozstrzygane na końcu gestu (bez śledzenia palca), twarde cięcia
+  renderera przy zmianie warstwy i wyboru (poprawne jako feedback).
+
+  **AUDIT-3 (weryfikacja obu soczewek po poprawkach, niezależny agent):**
+  wszystkie 10 P1 z obu audytów potwierdzone jako naprawione (w tym idiom
+  hit-testu szkła, kontrast 5,6:1, przestrzenie współrzędnych pivota
+  inspektora); 0 × P0/P1; Impeccable po: 14/20 (Good), heurystyki 26/32.
+  Sześć P2, z czego cztery poprawione w tej samej pętli: pivot panelu
+  liczony w `graphicsLayer` z rozmiaru bieżącej klatki (bez skoku o klatkę
+  i bez rekompozycji co klatkę), granice inspektora pamiętane przez cykl osi
+  czasu, „Elewacje" → „Otwory elewacji" (grupa i opcja miały jedno słowo),
+  znacznik ujęcia czyszczony po ręcznym obrocie kamery. Zostają jako dług:
+  przeciągnięcie i dotknięcie scrimu szuflady animują pod „Usuń animacje"
+  (ruch własny Material 3; wyłączenie gestów odebrałoby zamykanie scrimem),
+  4 dp między przyciskami szyny. Do tego jedna poprawka poza listą: Material 3
+  `ModalNavigationDrawer` nie zamykał się gestem wstecz i aplikacja wychodziła
+  z otwartą szufladą — własny `BackHandler` w treści szuflady.
+
+  Narzędzia: `frontend-design@claude-plugins-official` w zakresie projektu
+  (`.claude/settings.json`), Impeccable 4.1.1 i skille Emila z `~/.claude/skills`,
+  Mobbin MCP (4 zapytania: viewer 3D z narzędziami na krawędzi, pionowa szyna
+  nad kanwą, dolny arkusz z torem nad mapą, pływający inspektor sceny 3D).
+  Testy 195 zielone (`WorkspaceChromeStateTest`, `MotionPolicyTest` nowe),
+  lint, `assembleDebug` i `assembleRelease` zielone; release bez `.so`
+  Filamenta; Filament nadal 1.75.1, bez zmian natywnych. Model bez zmian
+  (okna, schody, dachówki, „Bez dachu", „Bez poddasza", picking — te same
+  ścieżki, tylko wywołane z szyny). Dowody na `emulator-5570` poza
+  repozytorium (`D:\TRAVELAPPS\_stage013h_evidence\{baseline,first_pass,
+  audit1,audit2,final}`, z klipami `screenrecord` dla przejść, których
+  `screencap` nie łapie). Wynik: `PASS_STAGE_013H_READY_FOR_OWNER_REVIEW` —
+  nie jest akceptacją OWNER-a.
 ## Następny krok
 
-GATE-3D-SHAPE-01 **po raz szósty** (`RETEST_PENDING`) — OWNER sprawdza dwa
-warunki swojej warunkowej akceptacji ze STAGE-013F: czy przeszklenia czytają
-się jako okna (ramy, skrzydła) i czy schody nie wchodzą już w żadną ścianę
-(spiżarnia pod biegiem); do tego ocenia nową powłokę: dom jako obiekt główny
-na starcie, oś czasu pod nim, szufladę jako launcher, dok sterowania modelu.
-Dopiero po tej ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna
-STAGE-013G **nie jest** akceptacją wizualną. Analizatora nie zaczynamy — jego
+GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń
+roboczą ze STAGE-013H: dom jako kanwa ekranu bez karty, chrom przy krawędziach
+(pigułka, szyna narzędzi, oś czasu), panele kontekstowe zamiast stałych
+bloków, szkło i ruch; do tego nadal dwa warunki ze STAGE-013F (okna z ramami,
+schody bez kolizji ze ścianą — bez zmian od STAGE-013G). Dopiero po tej
+ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013H
+**nie jest** akceptacją wizualną. Analizatora nie zaczynamy — jego
 kontrakt jest spisany w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
 
 ## Czego nadal NIE ma
 
-Produkcyjnej architektury renderera, wspólnego silnika między ekranami,
-izolacji pomieszczenia w UI, **analizatora projektów** (spisany jest tylko
+Produkcyjnej architektury renderera, klas rozmiaru okna (tablet, poziom)
+w przestrzeni roboczej, prawdziwego rozmycia tła pod szkłem, śledzenia palca
+przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **analizatora projektów** (spisany jest tylko
 jego kontrakt), wycinania otworów w połaci dachu, grubości połaci, gąsiora
 na kalenicy, drugiego stylu pokrycia dachu, animacji dachówek, pickingu przez
 szkło, profilu ramy okiennej i pochwytu balustrady, danych na osi czasu
-i w pasku pieniędzy, ikon w szufladzie, persystencji i danych rzeczywistych.
+i w księdze kosztów, ikon w szufladzie, persystencji i danych rzeczywistych.
 Model Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma
 otwory z ramami, schody, cechy rozpoznawcze elewacji, pas okapowy i kominy
 ponad dachem z wykazów, rzutów, elewacji i przekroju, ale nie ma trzonów
@@ -358,14 +440,16 @@ kominowych, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 Ocena subiektywna, do wykonania przez właściciela produktu. Nie blokuje
 technicznego PASS.
 
-- ogólny feeling UI (powłoka przebudowana w STAGE-013G — do oceny)
+- ogólny feeling UI (immersyjna przestrzeń robocza ze STAGE-013H — do oceny)
 - estetyka dark mode
-- wygoda szuflady nawigacyjnej (grupy od STAGE-013G — do oceny)
+- wygoda szuflady nawigacyjnej (grupy od STAGE-013G, wejście z pigułki od
+  STAGE-013H — do oceny)
 - wielkości tekstu
 - spacing
 - ergonomia na telefonie trzymanym w jednej ręce
-- wygląd Startu i proporcje miejsca na model 3D (dom jako bohater od
-  STAGE-013G — do oceny)
+- wygląd Startu: dom jako kanwa od krawędzi do krawędzi, szkło, szyna
+  narzędzi, oś czasu (STAGE-013H — do oceny)
+- czytelność szkła na jasnym tle studyjnym i w stylu liniowym
 - czas do pierwszej klatki modelu na realnym urządzeniu (na emulatorze
   kilka sekund pod okładką)
 - zachowanie na realnym urządzeniu

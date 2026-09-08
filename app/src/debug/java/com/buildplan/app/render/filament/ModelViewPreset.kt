@@ -140,6 +140,18 @@ internal enum class DebugModel(val labelRes: Int) {
 internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FRAME, ROOF }
 
 /**
+ * How the views are grouped when listed: the whole mass, the inside with a
+ * layer off, the facades, and close-ups of one detail. Four short lists in
+ * place of one long one; the camera knows nothing of it.
+ */
+internal enum class PresetGroup(val labelRes: Int) {
+    MASSING(R.string.model_view_group_massing),
+    INTERIOR(R.string.model_view_group_interior),
+    FACADES(R.string.model_view_group_facades),
+    DETAILS(R.string.model_view_group_details),
+}
+
+/**
  * A named, reproducible view of the model: a visibility state and a camera.
  *
  * These exist so that the evidence an owner reviews can be regenerated. "Roof
@@ -162,6 +174,8 @@ internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FR
  */
 internal enum class ModelViewPreset(
     val labelRes: Int,
+    /** Where the view is listed; a fact about the list, not about the camera. */
+    val group: PresetGroup,
     val visibility: SpikeVisibility,
     private val yawDegrees: Double,
     private val pitchDegrees: Double,
@@ -172,6 +186,7 @@ internal enum class ModelViewPreset(
     /** The whole house with its roof on: massing, roof direction, relative height. */
     FULL_AXON(
         labelRes = R.string.model_view_full_axon,
+        group = PresetGroup.MASSING,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 35.0,
         pitchDegrees = 22.0,
@@ -181,6 +196,7 @@ internal enum class ModelViewPreset(
     /** Roof off, attic walls standing: the upper storey read from outside. */
     ROOF_OFF_AXON(
         labelRes = R.string.model_view_roof_off_axon,
+        group = PresetGroup.INTERIOR,
         visibility = SpikeVisibility.ROOF_HIDDEN,
         yawDegrees = 35.0,
         pitchDegrees = 30.0,
@@ -190,6 +206,7 @@ internal enum class ModelViewPreset(
     /** Roof and attic off: the ground floor seen into from above and the side. */
     GROUND_CUTAWAY(
         labelRes = R.string.model_view_ground_cutaway,
+        group = PresetGroup.INTERIOR,
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 35.0,
         pitchDegrees = 40.0,
@@ -199,6 +216,7 @@ internal enum class ModelViewPreset(
     /** Near plan view of the ground floor, for comparing partitions to the plan. */
     GROUND_TOP(
         labelRes = R.string.model_view_ground_top,
+        group = PresetGroup.INTERIOR,
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 0.0,
         pitchDegrees = 78.0,
@@ -208,6 +226,7 @@ internal enum class ModelViewPreset(
     /** The same for the attic, with only the roof taken off. */
     UPPER_TOP(
         labelRes = R.string.model_view_upper_top,
+        group = PresetGroup.INTERIOR,
         visibility = SpikeVisibility.ROOF_HIDDEN,
         yawDegrees = 0.0,
         pitchDegrees = 78.0,
@@ -233,6 +252,7 @@ internal enum class ModelViewPreset(
      */
     FACADE_OPENINGS(
         labelRes = R.string.model_view_facade_openings,
+        group = PresetGroup.FACADES,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 145.0,
         pitchDegrees = 10.0,
@@ -253,6 +273,7 @@ internal enum class ModelViewPreset(
      */
     FRONT_SIGNATURE(
         labelRes = R.string.model_view_front_signature,
+        group = PresetGroup.FACADES,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 335.0,
         pitchDegrees = 6.0,
@@ -275,6 +296,7 @@ internal enum class ModelViewPreset(
      */
     SIGNATURE_FACADE(
         labelRes = R.string.model_view_signature_facade,
+        group = PresetGroup.FACADES,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 214.0,
         pitchDegrees = 8.0,
@@ -292,6 +314,7 @@ internal enum class ModelViewPreset(
      */
     GARAGE_RELATION(
         labelRes = R.string.model_view_garage_relation,
+        group = PresetGroup.MASSING,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 48.0,
         pitchDegrees = 16.0,
@@ -305,6 +328,7 @@ internal enum class ModelViewPreset(
      */
     FULL_REAR_AXON(
         labelRes = R.string.model_view_full_rear_axon,
+        group = PresetGroup.MASSING,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 200.0,
         pitchDegrees = 20.0,
@@ -322,6 +346,7 @@ internal enum class ModelViewPreset(
      */
     GLASS_RAILING_CLOSEUP(
         labelRes = R.string.model_view_glass_railing,
+        group = PresetGroup.DETAILS,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 195.0,
         pitchDegrees = 14.0,
@@ -340,6 +365,7 @@ internal enum class ModelViewPreset(
      */
     ROOF_FASCIA_CLOSEUP(
         labelRes = R.string.model_view_roof_fascia,
+        group = PresetGroup.DETAILS,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 245.0,
         pitchDegrees = 12.0,
@@ -362,6 +388,7 @@ internal enum class ModelViewPreset(
      */
     ROOF_COVER_CLOSEUP(
         labelRes = R.string.model_view_roof_cover,
+        group = PresetGroup.DETAILS,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 120.0,
         pitchDegrees = 34.0,
@@ -380,6 +407,7 @@ internal enum class ModelViewPreset(
      */
     SITE_CONTEXT(
         labelRes = R.string.model_view_site_context,
+        group = PresetGroup.MASSING,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 35.0,
         pitchDegrees = 26.0,
@@ -402,6 +430,7 @@ internal enum class ModelViewPreset(
      */
     STAIRS_VIEW(
         labelRes = R.string.model_view_stairs,
+        group = PresetGroup.INTERIOR,
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 205.0,
         pitchDegrees = 62.0,

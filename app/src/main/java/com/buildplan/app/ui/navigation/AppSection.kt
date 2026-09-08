@@ -24,9 +24,11 @@ enum class AppSectionGroup(@get:StringRes val labelRes: Int) {
  * resource. This is a navigation fact, not a data model — no domain entities
  * have been designed yet.
  *
- * The drawer is the launcher for every section: the home screen shows the
- * house and what is next, and everything else is a destination reached from
- * the drawer rather than a card on the home screen.
+ * [Home] is the workspace: the house itself, with the timeline under it and
+ * the model's tools at its edge. There is no separate model section — the
+ * house is not content reached from the start screen, it is the start
+ * screen — so the drawer is the launcher for everything that is not the
+ * house.
  */
 enum class AppSection(
     val route: String,
@@ -35,8 +37,7 @@ enum class AppSection(
     /** Where the drawer lists this section; null for the one that stands alone. */
     val group: AppSectionGroup?,
 ) {
-    Dashboard("dashboard", R.string.section_dashboard, R.string.section_dashboard_summary, AppSectionGroup.Project),
-    Model("model", R.string.section_model, R.string.section_model_summary, AppSectionGroup.Project),
+    Home("home", R.string.section_home, R.string.section_home_summary, AppSectionGroup.Project),
     Timeline("timeline", R.string.section_timeline, R.string.section_timeline_summary, AppSectionGroup.Project),
     Costs("costs", R.string.section_costs, R.string.section_costs_summary, AppSectionGroup.Finance),
     Budget("budget", R.string.section_budget, R.string.section_budget_summary, AppSectionGroup.Finance),
@@ -48,7 +49,7 @@ enum class AppSection(
 
     companion object {
         /** Section shown when the app starts. */
-        val Start: AppSection = Dashboard
+        val Start: AppSection = Home
 
         /** Resolves a navigation route back to its section, falling back to [Start]. */
         fun fromRoute(route: String?): AppSection =

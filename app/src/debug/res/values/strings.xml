@@ -1,22 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Debug-only labels for the Filament renderer viewport and the traced Marcówki
-  reference model. They live in the debug source set because both do, and
-  neither reaches a release build.
+  Debug-only labels for the Filament renderer canvas, its tool rail and the
+  traced Marcówki reference model. They live in the debug source set because
+  all three do, and none reaches a release build.
 -->
 <resources>
     <string name="model_spike_description">Model „Dom w marcówkach (GE)" odrysowany z aktualnych rzutów ARCHON. Rusztowanie deweloperskie do weryfikacji bryły, nie dokumentacja budowlana.</string>
 
-    <string name="model_debug_source_label">Model</string>
     <string name="model_debug_source_marcowki">Marcówki</string>
     <string name="model_debug_source_synthetic">Syntetyczny</string>
 
     <string name="model_view_full_axon">Widok ogólny</string>
-    <string name="model_view_roof_off_axon">Bez dachu</string>
+    <string name="model_view_roof_off_axon">Odkryte poddasze</string>
     <string name="model_view_ground_cutaway">Przekrój parteru</string>
     <string name="model_view_ground_top">Parter z góry</string>
     <string name="model_view_upper_top">Poddasze z góry</string>
-    <string name="model_view_facade_openings">Elewacje</string>
+    <string name="model_view_facade_openings">Otwory elewacji</string>
     <string name="model_view_front_signature">Front</string>
     <string name="model_view_signature_facade">Ogród</string>
     <string name="model_view_garage_relation">Dom i garaż</string>
@@ -27,6 +26,11 @@
     <string name="model_view_site_context">W siatce</string>
     <string name="model_view_stairs">Schody</string>
 
+    <string name="model_view_group_massing">Bryła</string>
+    <string name="model_view_group_interior">Wnętrze</string>
+    <string name="model_view_group_facades">Elewacje</string>
+    <string name="model_view_group_details">Detale</string>
+
     <string name="model_style_clay">Studyjny</string>
     <string name="model_style_lines">Liniowy</string>
 
@@ -35,17 +39,20 @@
     <string name="model_spike_visibility_no_upper_floor">Bez poddasza</string>
     <string name="model_spike_visibility_no_roof_no_upper_floor">Parter</string>
 
-    <string name="model_controls_presets">Ujęcia</string>
+    <!-- Narzędzia na prawej krawędzi przestrzeni roboczej -->
+    <string name="tool_layers">Warstwy</string>
+    <string name="tool_views">Ujęcia</string>
+    <string name="tool_style">Styl</string>
+    <string name="tool_source">Źródło modelu</string>
     <string name="model_spike_reset_camera">Wyśrodkuj kamerę</string>
-    <string name="model_controls_details_show">Pokaż szczegóły</string>
-    <string name="model_controls_details_hide">Ukryj szczegóły</string>
-    <string name="model_selection_clear">Odznacz</string>
+
     <string name="model_spike_gesture_hint">Jeden palec — obrót. Dwa palce — przesuwanie i skala. Dotknięcie — wybór elementu.</string>
     <string name="model_spike_unavailable">Wybrany model nie ma geometrii do wyświetlenia.</string>
+    <string name="model_spike_loading">Wczytywanie modelu</string>
 
-    <string name="model_fidelity_title">Źródło i wiarygodność danych</string>
     <string name="model_fidelity_retrieved">Odczytano: %1$s</string>
-    <string name="model_fidelity_counts">Wartości podane w źródle: %1$d · odrysowane: %2$d · założenia wizualizacyjne: %3$d</string>
+    <string name="model_fidelity_exact">Wartości podane w źródle: %1$d</string>
+    <string name="model_fidelity_traced">Wartości odrysowane: %1$d</string>
+    <string name="model_fidelity_assumed">Założenia wizualizacyjne: %1$d</string>
     <string name="model_fidelity_rooms">Odrysowane pomieszczenia: %1$d, w tym niepewnych: %2$d</string>
-    <string name="model_fidelity_selected_rooms">Pomieszczenia wybranego elementu: %1$s</string>
 </resources>
