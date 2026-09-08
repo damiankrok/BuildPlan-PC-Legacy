@@ -10,6 +10,7 @@ import com.buildplan.app.geometry.LocalBounds
 import com.buildplan.app.geometry.primitivesOf
 import com.buildplan.app.geometry.demo.SyntheticDemoHouse
 import com.buildplan.app.presentation.DecompositionProfile
+import com.buildplan.app.presentation.OpeningFrameProfile
 import com.buildplan.app.presentation.RoofCoverProfile
 import com.buildplan.app.reference.visual.MarcowkiVisualModelV1
 import com.buildplan.app.reference.visual.MarcowkiVisualPresentation
@@ -39,6 +40,8 @@ internal enum class DebugModel(val labelRes: Int) {
             get() = MarcowkiVisualPresentation.decomposition
         override val roofCover: RoofCoverProfile
             get() = MarcowkiVisualPresentation.roofCover
+        override val openingFrames: OpeningFrameProfile
+            get() = MarcowkiVisualPresentation.openingFrames
 
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = when (focus) {
             PresetFocus.WHOLE_MODEL -> null
@@ -56,6 +59,7 @@ internal enum class DebugModel(val labelRes: Int) {
         override val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole> get() = emptyMap()
         override val decomposition: DecompositionProfile get() = DecompositionProfile.NONE
         override val roofCover: RoofCoverProfile get() = RoofCoverProfile.NONE
+        override val openingFrames: OpeningFrameProfile get() = OpeningFrameProfile.NONE
         override fun focusElementId(focus: PresetFocus): BuildingElementId? = null
     },
     ;
@@ -87,6 +91,13 @@ internal enum class DebugModel(val labelRes: Int) {
      * planes the renderer's regression tests know.
      */
     abstract val roofCover: RoofCoverProfile
+
+    /**
+     * Which of this model's panes are drawn with a frame, and how. Presentation
+     * beside the model like the roof cover: the synthetic fixture declares
+     * none and keeps its bare panes.
+     */
+    abstract val openingFrames: OpeningFrameProfile
 
     /**
      * The one decision path for what is on screen: the domain says which
@@ -141,6 +152,13 @@ internal enum class PresetFocus { WHOLE_MODEL, STAIR, NORTH_BALUSTRADE, NORTH_FR
  * which the domain turns into a
  * [com.buildplan.app.domain.model.BuildingVisibility]. A preset chooses *which*
  * question to ask; the domain still answers it.
+ *
+ * Every `distanceMargin` is a multiple of the distance at which the focus
+ * box's bounding sphere fills the field of view, and the field of view spans
+ * the viewport's *shorter* side (see `FilamentModelRenderer.applyCamera`).
+ * The margins were recalibrated in STAGE-013G when the viewport became the
+ * full height of a phone screen: the same margins that framed a near-square
+ * viewport left the house a third of the width of a tall one.
  */
 internal enum class ModelViewPreset(
     val labelRes: Int,
@@ -157,7 +175,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 35.0,
         pitchDegrees = 22.0,
-        distanceMargin = 1.15,
+        distanceMargin = 1.00,
     ),
 
     /** Roof off, attic walls standing: the upper storey read from outside. */
@@ -166,7 +184,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.ROOF_HIDDEN,
         yawDegrees = 35.0,
         pitchDegrees = 30.0,
-        distanceMargin = 1.05,
+        distanceMargin = 0.90,
     ),
 
     /** Roof and attic off: the ground floor seen into from above and the side. */
@@ -175,7 +193,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 35.0,
         pitchDegrees = 40.0,
-        distanceMargin = 1.00,
+        distanceMargin = 0.85,
     ),
 
     /** Near plan view of the ground floor, for comparing partitions to the plan. */
@@ -184,7 +202,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 0.0,
         pitchDegrees = 78.0,
-        distanceMargin = 0.90,
+        distanceMargin = 0.80,
     ),
 
     /** The same for the attic, with only the roof taken off. */
@@ -193,7 +211,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.ROOF_HIDDEN,
         yawDegrees = 0.0,
         pitchDegrees = 78.0,
-        distanceMargin = 0.90,
+        distanceMargin = 0.80,
     ),
 
     /**
@@ -207,17 +225,18 @@ internal enum class ModelViewPreset(
      * between them carry the terrace door, both west windows, the garage's side
      * door and both of the north gable's glazings.
      *
-     * The margin is wider than any other preset's because the framing is
-     * computed against the *vertical* field of view: a building seen almost
-     * side-on is at its widest and at its shortest, so the distance that fits
-     * its height leaves its ends off the screen.
+     * The margin is wider than any other whole-building preset's because a
+     * building seen almost side-on is at its widest, and the field of view
+     * spans the viewport's shorter side — the width, on a phone held upright
+     * (STAGE-013G) — so the distance that fits the bounding sphere is what
+     * keeps both ends of the long facade on the screen.
      */
     FACADE_OPENINGS(
         labelRes = R.string.model_view_facade_openings,
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 145.0,
         pitchDegrees = 10.0,
-        distanceMargin = 1.75,
+        distanceMargin = 1.25,
     ),
 
     /**
@@ -237,7 +256,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 335.0,
         pitchDegrees = 6.0,
-        distanceMargin = 1.20,
+        distanceMargin = 1.00,
     ),
 
     /**
@@ -259,7 +278,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 214.0,
         pitchDegrees = 8.0,
-        distanceMargin = 1.30,
+        distanceMargin = 1.05,
     ),
 
     /**
@@ -276,7 +295,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 48.0,
         pitchDegrees = 16.0,
-        distanceMargin = 1.45,
+        distanceMargin = 1.15,
     ),
 
     /**
@@ -289,7 +308,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 200.0,
         pitchDegrees = 20.0,
-        distanceMargin = 1.15,
+        distanceMargin = 0.95,
     ),
 
     /**
@@ -306,7 +325,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 195.0,
         pitchDegrees = 14.0,
-        distanceMargin = 1.25,
+        distanceMargin = 1.00,
         focus = PresetFocus.NORTH_BALUSTRADE,
     ),
 
@@ -324,7 +343,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 245.0,
         pitchDegrees = 12.0,
-        distanceMargin = 1.10,
+        distanceMargin = 0.90,
         focus = PresetFocus.NORTH_FRAME,
     ),
 
@@ -346,7 +365,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 120.0,
         pitchDegrees = 34.0,
-        distanceMargin = 0.62,
+        distanceMargin = 0.55,
         focus = PresetFocus.ROOF,
     ),
 
@@ -364,7 +383,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.EVERYTHING,
         yawDegrees = 35.0,
         pitchDegrees = 26.0,
-        distanceMargin = 2.10,
+        distanceMargin = 1.60,
     ),
 
     /**
@@ -386,7 +405,7 @@ internal enum class ModelViewPreset(
         visibility = SpikeVisibility.ROOF_AND_UPPER_FLOOR_HIDDEN,
         yawDegrees = 205.0,
         pitchDegrees = 62.0,
-        distanceMargin = 3.40,
+        distanceMargin = 2.40,
         focus = PresetFocus.STAIR,
     ),
     ;

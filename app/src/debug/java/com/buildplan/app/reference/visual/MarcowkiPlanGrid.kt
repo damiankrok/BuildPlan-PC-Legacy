@@ -657,6 +657,14 @@ object MarcowkiPlanGrid {
         UF_SOUTH_GABLE_DOOR,
     )
 
+    /**
+     * The scheduled openings that sit in a facade: the joinery the elevations
+     * draw with a frame round it. Everything scheduled except the unlabelled
+     * door between the garage and the boiler room, which is an internal door
+     * in every respect but where the plan happened to print it.
+     */
+    val facadeOpenings: List<OpeningTrace> = scheduledOpenings - GF_BOILER_GARAGE_DOOR
+
     // ---------------------------------------------------------------------
     // Internal doors — traced from the swing arcs on both plans
     // ---------------------------------------------------------------------
@@ -786,13 +794,40 @@ object MarcowkiPlanGrid {
      * fixes the whole sequence backwards from its arrival.
      */
     const val STAIR_WEST_X: Double = 5.35
-    const val STAIR_EAST_X: Double = 7.47
     const val STAIR_NORTH_Z: Double = 5.18
     const val STAIR_SOUTH_Z: Double = 8.80
 
-    /** East face of the core the flights turn around; its west face is [STAIR_WEST_X]. */
-    const val STAIR_CORE_EAST_X: Double = 6.46
-    const val STAIR_CORE_NORTH_Z: Double = 6.18
+    /**
+     * The well's east edge: the inner face of the east exterior wall.
+     *
+     * Traced at 7.47, two centimetres inside a wall whose inner face the
+     * same grid puts at 7.45; the flight runs along that wall, so the edge is
+     * the face and is derived from it rather than kept as a trace that
+     * buried every east-run tread in the wall by that much.
+     */
+    val STAIR_EAST_X: Double = exteriorFace(X_HOUSE_EAST_WALL, towardsPositive = false)
+
+    /**
+     * East face of the core the flights turn around; its west face is
+     * [STAIR_WEST_X].
+     *
+     * The ground plan draws the pantry directly under the top flight, with
+     * its east wall on the line the winders turn around: traced at 6.46
+     * against a wall face at 6.47. Read as the same line and derived from
+     * the wall, so the whole of that wall is under the north run and none
+     * of it under a winder's corner.
+     */
+    val STAIR_CORE_EAST_X: Double = partitionFace(X_GF_PANTRY_EAST, towardsPositive = true)
+
+    /**
+     * North face of the core: the north face of the pantry's south wall.
+     *
+     * The upper plan's top flight ends where the ground plan's pantry wall
+     * begins — traced 6.18 against a face at 6.16 — so the flight lands on
+     * the wall's line and the void starts behind it. Derived from the wall
+     * for the same reason as [STAIR_CORE_EAST_X].
+     */
+    val STAIR_CORE_NORTH_Z: Double = partitionFace(Z_GF_PANTRY_SOUTH, towardsPositive = false)
     const val STAIR_CORE_SOUTH_Z: Double = 7.77
 
     /**
@@ -826,6 +861,25 @@ object MarcowkiPlanGrid {
     /** Rise of one step, from the two levels the section states. */
     val STAIR_RISER_HEIGHT: Double = (UPPER_FLOOR_Y - GROUND_FLOOR_Y) / STAIR_RISER_COUNT
 
+    /**
+     * How far below a tread's underside a partition standing beneath the
+     * flight stops.
+     *
+     * The ground plan draws the pantry (room 5) directly under the top
+     * flight: its walls at [X_GF_HALL_EAST], [X_GF_PANTRY_EAST] and
+     * [Z_GF_PANTRY_SOUTH] enclose the band the upper plan draws the north run
+     * over, and the plan shows no treads there because the flight is above
+     * its cut plane. So the walls exist — the owner's question — and they are
+     * under-stair walls: they rise to the flight's soffit, not through it.
+     * The soffit itself is the stepped underside the treads already draw; a
+     * wall top exactly on it would share a plane with a tread and flicker, so
+     * every under-stair piece stops this far short. Display only.
+     */
+    const val STAIR_SOFFIT_CLEARANCE: Double = 0.02
+
+    /** The partition faces the well is derived from, for the trace ledger. */
+    private const val STAIR_DERIVED_EDGES = 3
+
     // ---------------------------------------------------------------------
     // Derived faces, for the room zones
     // ---------------------------------------------------------------------
@@ -846,7 +900,8 @@ object MarcowkiPlanGrid {
      * attic partition centrelines, the two traced thicknesses, the traced gable
      * overhang and the portal depth measured beside it, both edges of every
      * traced opening, all four edges of every rooflight, the seven lines that
-     * place the stair and its core, the two lines the elevations added in
+     * place the stair and its core less the three STAGE-013G derives from
+     * the partition faces they coincide with, the two lines the elevations added in
      * STAGE-013C — the inner edge of the gable frame and the lower edge of the
      * storey band — and the four STAGE-013D added: the cheek thickness, the
      * west edge of the south balcony, the underside of the eaves fascia and
@@ -858,7 +913,7 @@ object MarcowkiPlanGrid {
         6 + 9 + 8 + 2 + 1 + 1 +
             2 * allOpenings.size +
             4 * allRooflights.size +
-            7 + 2 +
+            (7 - STAIR_DERIVED_EDGES) + 2 +
             4 + 4 * allStacks.size
 
     /** An axis-aligned rectangle on the plan, walked from its north-west corner. */

@@ -26,4 +26,19 @@ class AppSectionTest {
         assertEquals(AppSection.Start, AppSection.fromRoute(null))
         assertEquals(AppSection.Start, AppSection.fromRoute("not-a-route"))
     }
+
+    @Test
+    fun theDrawerListsEverySectionExactlyOnce() {
+        val grouped = AppSectionGroup.entries.flatMap { AppSection.inGroup(it) }
+        val listed = grouped + AppSection.ungrouped
+
+        assertEquals(AppSection.entries.size, listed.size)
+        assertEquals(AppSection.entries.toSet(), listed.toSet())
+        AppSectionGroup.entries.forEach { group ->
+            assertTrue("Group $group lists nothing", AppSection.inGroup(group).isNotEmpty())
+        }
+        // Settings stand alone at the foot; the start screen leads the first group.
+        assertEquals(listOf(AppSection.Settings), AppSection.ungrouped)
+        assertEquals(AppSection.Start, AppSection.inGroup(AppSectionGroup.Project).first())
+    }
 }

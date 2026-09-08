@@ -5,40 +5,42 @@
   neither reaches a release build.
 -->
 <resources>
-    <string name="model_spike_title">Podgląd 3D — model referencyjny (debug)</string>
-    <string name="model_spike_description">Model „Dom w marcówkach (GE)" odrysowany z aktualnych rzutów ARCHON i renderowany silnikiem Filament. Rusztowanie deweloperskie do weryfikacji bryły i układu ścian, a nie dokumentacja budowlana.</string>
+    <string name="model_spike_description">Model „Dom w marcówkach (GE)" odrysowany z aktualnych rzutów ARCHON. Rusztowanie deweloperskie do weryfikacji bryły, nie dokumentacja budowlana.</string>
 
+    <string name="model_debug_source_label">Model</string>
     <string name="model_debug_source_marcowki">Marcówki</string>
     <string name="model_debug_source_synthetic">Syntetyczny</string>
 
     <string name="model_view_full_axon">Widok ogólny</string>
-    <string name="model_view_roof_off_axon">Bez dachu — aksonometria</string>
+    <string name="model_view_roof_off_axon">Bez dachu</string>
     <string name="model_view_ground_cutaway">Przekrój parteru</string>
     <string name="model_view_ground_top">Parter z góry</string>
     <string name="model_view_upper_top">Poddasze z góry</string>
-    <string name="model_view_facade_openings">Elewacje — otwory</string>
-    <string name="model_view_front_signature">Front — rama i opaska</string>
-    <string name="model_view_signature_facade">Ogród — rama i opaska</string>
+    <string name="model_view_facade_openings">Elewacje</string>
+    <string name="model_view_front_signature">Front</string>
+    <string name="model_view_signature_facade">Ogród</string>
     <string name="model_view_garage_relation">Dom i garaż</string>
-    <string name="model_view_full_rear_axon">Widok od ogrodu</string>
-    <string name="model_view_glass_railing">Balustrada szklana</string>
+    <string name="model_view_full_rear_axon">Od ogrodu</string>
+    <string name="model_view_glass_railing">Balustrada</string>
     <string name="model_view_roof_fascia">Okap i rama</string>
     <string name="model_view_roof_cover">Pokrycie dachu</string>
-    <string name="model_view_site_context">Model w siatce</string>
+    <string name="model_view_site_context">W siatce</string>
     <string name="model_view_stairs">Schody</string>
 
-    <string name="model_style_clay">Model studyjny</string>
-    <string name="model_style_lines">Studium liniowe</string>
+    <string name="model_style_clay">Studyjny</string>
+    <string name="model_style_lines">Liniowy</string>
 
-    <string name="model_spike_visibility_all">Wszystko</string>
+    <string name="model_spike_visibility_all">Całość</string>
     <string name="model_spike_visibility_no_roof">Bez dachu</string>
     <string name="model_spike_visibility_no_upper_floor">Bez poddasza</string>
-    <string name="model_spike_visibility_no_roof_no_upper_floor">Bez dachu i poddasza</string>
+    <string name="model_spike_visibility_no_roof_no_upper_floor">Parter</string>
 
+    <string name="model_controls_presets">Ujęcia</string>
     <string name="model_spike_reset_camera">Wyśrodkuj kamerę</string>
+    <string name="model_controls_details_show">Pokaż szczegóły</string>
+    <string name="model_controls_details_hide">Ukryj szczegóły</string>
+    <string name="model_selection_clear">Odznacz</string>
     <string name="model_spike_gesture_hint">Jeden palec — obrót. Dwa palce — przesuwanie i skala. Dotknięcie — wybór elementu.</string>
-    <string name="model_spike_selection_none">Nie wybrano elementu. Dotknij bryły, aby sprawdzić jej identyfikator.</string>
-    <string name="model_spike_selection">Wybrano: %1$s (%2$s)</string>
     <string name="model_spike_unavailable">Wybrany model nie ma geometrii do wyświetlenia.</string>
 
     <string name="model_fidelity_title">Źródło i wiarygodność danych</string>

@@ -1181,6 +1181,142 @@ niezwieńczona), przesunięcia rzędów, drugiego stylu pokrycia, katalogu
 pokryć w UI, animacji, koloru, refleksów i profilu producenta. Blokery
 wklęsłe i połacie wklęsłe są obsługiwane po otoczce, nie dokładnie.
 
+## Okna, schody i powłoka produktu (STAGE-013G)
+
+Etap zlecony przez OWNER-a po przeglądzie STAGE-013F: model „w miarę w
+porządku", ale przeszklenia czytają się jak puste dziury, a schody wchodzą
+w ścianę; do tego powłoka aplikacji nie jest produktem, tylko prototypem
+z kart. Dwie równorzędne części: korekta modelu i przebudowa powłoki.
+Przebieg: implementacja → audyt modelu → audyt UI (z Mobbin) → jedna
+poprawka kalibracji kamery i okładki pierwszej klatki → audyt łączny.
+Samoaudyt nie jest akceptacją OWNER-a.
+
+### Schody: ściana pod biegiem, nie przez bieg
+
+Rzut parteru rysuje spiżarnię (5) dokładnie pod górnym biegiem, który rzut
+poddasza prowadzi na zachód do korytarza; na rzucie parteru nie ma tam
+stopni, bo bieg jest ponad płaszczyzną cięcia. Ściany spiżarni istnieją
+w źródle (wraz z drzwiami z holu) i **nie zostały usunięte** — zostały
+zatrzymane pod biegiem. `MarcowkiVisualModelV1.groundPartitionRun` tnie
+każdą ściankę parteru w miejscach, gdzie krawędź stopnia ją przecina,
+buduje każdy kawałek do wysokości kondygnacji albo do spodu najniższego
+stopnia nad nim minus `STAIR_SOFFIT_CLEARANCE` (0,02 m,
+`DISPLAY_ASSUMPTION`), i scala sąsiednie kawałki o tej samej górze.
+Odcinek krótszy niż grubość ścianki jest wchłaniany przez sąsiada na
+niższej z dwóch gór — żaden pełnowysoki słupek nie zostaje obok biegu.
+Stopnie są układane raz (`stairTreads()`) i czytane dwa razy: przez element
+schodów i przez ścianki, więc ścianka może uniknąć tylko stopnia, który jest
+rysowany.
+
+Trzy krawędzie klatki — wschodnia krawędź szybu oraz wschodnia i północna
+ściana rdzenia — były odrysowane 1–2 cm od lic ścian, na których leżą
+(lico wewnętrzne ściany wschodniej, lica ścianki wschodniej i południowej
+spiżarni). Są teraz **wyprowadzone z tych lic** (`STAIR_EAST_X`,
+`STAIR_CORE_EAST_X`, `STAIR_CORE_NORTH_Z` jako `val` z `exteriorFace` /
+`partitionFace`), a licznik odrysowanych linii jest o trzy mniejszy. Efekt:
+jedyną ścianą pod biegiem jest wschodnia ścianka spiżarni (dwa pryzmaty,
+2,32 m pod pierwszym stopniem biegu północnego), 52 pryzmaty ścian, 140
+prymitywów; `G013-01` sprawdza, że żaden pryzmat ściany nie przecina
+żadnego stopnia w trzech wymiarach.
+
+### Ramy okien: prezentacja obok modelu, jak pokrycie dachu
+
+Naga półprzezroczysta tafla w ościeżu czyta się z odległości telefonu jak
+dziura. To, co robi z dziury okno, to rama i podział na skrzydła — jedyna
+linia, którą każda elewacja rysuje wokół każdej szyby. Kanoniczna dziura,
+tafla i ściana nie zmieniły się o bajt; ramy żyją w dwóch plikach
+`src/debug`, na wzór `RoofCover`:
+
+- `presentation/OpeningFrame.kt` — `OpeningFrameSpec` (szerokość listwy,
+  głębokość przez płaszczyznę tafli, maksymalna szerokość skrzydła albo
+  `null` dla bramy i drzwi) i `OpeningFrameProfile` — mapa
+  `BuildingElementId → OpeningFrameSpec` obok modelu referencyjnego.
+  Marcówki: 11 otworów elewacyjnych (`MarcowkiPlanGrid.facadeOpenings`,
+  czyli wykaz bez drzwi garaż–kotłownia) plus trzy okna połaciowe pod
+  identyfikatorem dachu; brama garażowa bez skrzydeł; drzwi wewnętrzne
+  **bez ram** — dziura z płatem, tak jak bez klamki. Syntetyczny dom:
+  `OpeningFrameProfile.NONE`.
+- `render/filament/OpeningFrameMesh.kt` — generator ogólny względem tafli:
+  pracuje w płaszczyźnie wielokąta (prostokąt okna, pięciokąt przeszklenia
+  szczytu z nadprożem po połaci, okno połaciowe na spadku), listwa wzdłuż
+  każdej krawędzi jako pas w odległości ≤ szerokości od tej krawędzi
+  i bliżej niej niż sąsiednich (skos w narożach bez nakładania), słupki
+  tam, gdzie skrzydło przekroczyłoby maksimum (470 → cztery, 234 → dwa,
+  drzwi → jedno). Wynik to zwykłe `BuildingRenderMesh` (`SOLID`, kontur
+  krawędzi cech, id tafli) wytłoczone przez nowy `bakeExtrudedPolygons`
+  w `BuildingRenderMesh.kt`, więc rama jest oświetlana, kreskowana,
+  ukrywana, podświetlana i pickowana jak ściana — renderer nie ma o ramach
+  ani słowa (`G013-05`).
+
+Liczby ramy (0,07 × 0,08 m, skrzydło ≤ 1,20 m) są `DISPLAY_ASSUMPTION`
+„Ramy i słupki okien"; wpis `notModelled` o ramach został zastąpiony
+pochwytem balustrady, którego nadal nie ma.
+
+### Powłoka: dom jest obiektem głównym
+
+Ekran startowy (`DashboardScreen`) przestał być siatką pustych kart:
+kompaktowy nagłówek projektu, **bohater** — model w wariancie
+`ViewportMode.HERO` (bez sterowania, obrót jednym palcem, dotknięcie
+otwiera ekran modelu; w wariancie release ten sam slot wypełnia
+zarezerwowana rycina) — na pozostałej wysokości ekranu, pod nim pasek osi
+czasu (`TimelineStrip`: pusty tor z pustymi znacznikami jako kształt, nie
+dane) i jeden pasek pieniędzy (`SummaryStrip`: trzy figury, jedno zdanie,
+jedna akcja). Szuflada (`AppDrawerSheet`) jest launcherem: grupy *Projekt /
+Finanse / Zasoby* z `AppSectionGroup`, ustawienia osobno na dole; „Dashboard"
+nazywa się „Start". Nawigacja do sekcji ma jedno wejście
+(`navigateToSection`) dla szuflady i dla linków ze startu. `MetricCard`
+i cztery puste KPI zniknęły.
+
+Ekran modelu (`ModelScreen`) jest pełnoekranowy: viewport na całej
+wysokości i dok sterowania pod nim — segmentowany wybór stanu widoczności
+(Całość / Bez dachu / Bez poddasza / Parter), przewijany rząd ujęć,
+segmentowana para stylów, przycisk kamery i przełącznik szczegółów
+(źródło modelu, gest, panel wiarygodności — zwinięte domyślnie). Wybrany
+element pokazuje pigułka nad viewportem, nie stały wiersz tekstu.
+
+Dwie konsekwencje techniczne pełnoekranowego viewportu:
+
+- **Pole widzenia rozpina krótszy bok viewportu**
+  (`FilamentModelRenderer.applyCamera`: `Fov.HORIZONTAL` przy aspekcie < 1).
+  Presety kadrowały względem pionowego kąta w prawie kwadratowym viewporcie;
+  w wysokim dom zajmował trzecią część szerokości i był ucinany po bokach.
+  Marginesy presetów zostały przekalibrowane, przesuw dwoma palcami liczy
+  metry na piksel po krótszym boku.
+- **Okładka do pierwszej sensownej klatki.** Filament kompiluje programy
+  materiałów leniwie na wątku sterownika i nie rysuje niczego programem,
+  który nie jest gotowy, więc „pierwsza klatka" była czarna. Renderer prosi
+  trzy materiały o kompilację wariantów sceny (`DIRECTIONAL_LIGHTING |
+  SHADOW_RECEIVER`) z góry i zgłasza `onReady` po ostatniej kompilacji *i*
+  wyrenderowanej klatce; viewport do tego czasu zakrywa powierzchnię tłem
+  stylu i zdejmuje okładkę z zanikiem. Zabezpieczenie: okładka zdejmuje się
+  sama po 15 s, gdyby sterownik nigdy nie odpowiedział.
+
+Dwa viewporty (start i model) to dwa silniki żyjące w dwóch `SurfaceView`,
+każdy dokładnie tak długo, jak jego kompozycja — bez singletona, zgodnie
+z regułą STAGE-012; kosztem jest ponowna kompilacja programów przy zmianie
+ekranu.
+
+### Audyt z Mobbin
+
+Sześć zapytań (ekran główny z obiektem-bohaterem, viewer 3D z dolnym
+paskiem, szuflada z grupami, przegląd projektu z pustym stanem, oś postępu
+pod bohaterem) i wzorce, z których wzięto zasady, nie wygląd: obiekt
+wyśrodkowany na spokojnym tle z jedną akcją pod nim (Crate & Barrel
+„Object", Tesla, My BMW), status i „co dalej" w jednym kompaktowym pasku
+zamiast siatki (Waking Up, Calm), szuflada z nagłówkiem i grupami oraz
+ustawieniami na dole (X, Spotify, Oura), pusty stan zachowujący kształt
+przyszłej treści zamiast martwych kart (Klarna Insights, Vipps), tor postępu
+pod bohaterem (Instacart, Grab). Nic nie jest kopią.
+
+### Czego świadomie nie zrobiono
+
+Pochwytu balustrady, profilu ramy (ramy są prostokątnymi listwami jednego
+koloru), koloru stolarki, bramy garażowej jako litej płyty (nadal tafla
+z ramą bez skrzydeł), wspólnego silnika między ekranami, ikon w szufladzie
+(zestaw `material-icons-core` nie ma pasujących ikon, a rozszerzony to
+zależność bez potrzeby), danych na osi czasu i w pasku pieniędzy
+(pozostają puste stany, bo danych nie ma).
+
 ## Kontrakt przyszłego analizatora projektów (dokumentacja, STAGE-013C)
 
 Analizatora **nie ma** i ten etap go nie zaczyna. Ta sekcja zapisuje poprzeczkę,
@@ -1259,9 +1395,10 @@ modelu, po identyfikatorze, i nigdy nie wchodzi do domeny.
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
 odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
-rozpoznawcze, STAGE-013D poprawiło wierność elewacji — nie produkcjonizację
+rozpoznawcze, STAGE-013D poprawiło wierność elewacji, STAGE-013G dołożyło
+ramy okien i pełnoekranowy host — nie produkcjonizację
 hosta), izolacja pomieszczenia w UI, analizator rzutów (kontrakt spisany wyżej,
 implementacji nie ma), wycinanie otworów w połaci dachu, grubość połaci,
-picking przez szkło, docelowy
+picking przez szkło, wspólny silnik renderera między ekranami, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji
 kosztów.

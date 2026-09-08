@@ -263,28 +263,72 @@
   `force-stop`); po `adb -s emulator-5570 reboot` cykl tło→pierwszy plan
   aplikacji przeszedł bez zastrzeżeń, więc nie jest to regresja renderera.
 
+- STAGE-013G marcowki windows/stairs + modern shell — **PASS techniczny,
+  brama wizualna OWNER-a nadal otwarta.** Odpowiedź na piąty przegląd
+  (model „w miarę w porządku", ale przeszklenia jak dziury i schody
+  w ścianie; powłoka nieakceptowalna). Dwie równorzędne części.
+
+  **Model.** *Schody:* rzut parteru rysuje spiżarnię pod górnym biegiem —
+  ściany istnieją w źródle i zostają, ale kończą się pod biegiem: ścianki
+  parteru cięte na krawędziach stopni do spodu najniższego stopnia nad
+  nimi minus 0,02 m (`DISPLAY_ASSUMPTION` „Ścianki pod biegiem schodów"),
+  odcinki krótsze od grubości ścianki wchłaniane przez sąsiada. Trzy
+  krawędzie klatki (7,47 / 6,46 / 6,18) wyprowadzone z lic ścian, na których
+  leżą (7,45 / 6,47 / 6,16); licznik odrysu o trzy mniejszy. Guard `G013-01`:
+  żaden pryzmat ściany nie przecina żadnego stopnia. *Okna:* ramy i słupki
+  jako prezentacja obok modelu (`presentation/OpeningFrame.kt`,
+  `render/filament/OpeningFrameMesh.kt`, generator ogólny względem tafli,
+  skos w narożach, słupki co ≤ 1,20 m, brama bez skrzydeł, drzwi wewnętrzne
+  bez ram); 14 siatek ram (11 otworów elewacyjnych + 3 okna połaciowe)
+  z id tafli, lite, konturowane, pickowalne; kanoniczne tafle, dziury
+  i ściany bez zmian (`G013-03..05`). 65 elementów, 140 prymitywów
+  (52 ściany, 33 płyty, 10 połaci, 18 paneli, 27 tafli). Wiarygodność:
+  `SOURCE_EXACT` 22, `SOURCE_TRACED` 12 cech + 106 linii siatki,
+  `DISPLAY_ASSUMPTION` 17.
+
+  **Powłoka.** Start = nagłówek projektu + model jako bohater na pozostałej
+  wysokości (`ViewportMode.HERO`, dotknięcie otwiera model; release: rycina)
+  + pasek osi czasu (pusty tor jako kształt) + jeden pasek pieniędzy
+  z jedną akcją; cztery puste karty KPI i `MetricCard` usunięte. Szuflada
+  pogrupowana (Projekt / Finanse / Zasoby, Ustawienia na dole; „Dashboard"
+  → „Start"). Ekran modelu pełnoekranowy z dokiem: segmentowany stan
+  widoczności, przewijane ujęcia, segmentowany styl, kamera, zwijane
+  szczegóły (źródło modelu, gest, panel wiarygodności), pigułka wyboru nad
+  viewportem. Kamera: pole widzenia po krótszym boku viewportu, marginesy
+  presetów przekalibrowane; okładka viewportu do pierwszej klatki po
+  kompilacji programów (`Material.compile` + `onReady`, zabezpieczenie 15 s).
+  Audyt Mobbin: sześć zapytań, zasady (obiekt-bohater, pasek statusu zamiast
+  siatki, szuflada z grupami, pusty stan zachowujący kształt, tor postępu
+  pod bohaterem), bez kopiowania. Testy 183 zielone (`Stage013GCorrectionTest`
+  G013-01..05, `AppSectionTest` grupy), lint i `assembleDebug`/`assembleRelease`
+  zielone; Filament nadal 1.75.1, bez zmian natywnych. Dowody na
+  `emulator-5570` poza repozytorium (`D:\TRAVELAPPS\_stage013g_evidence`).
+  Samoaudyt: model A1–A5 5/5, UI B1–B8 po jednej poprawce 8/8, łączny
+  `PASS_STAGE_013G_READY_FOR_OWNER_REVIEW` — nie jest akceptacją OWNER-a.
+
 ## Następny krok
 
-GATE-3D-SHAPE-01 **po raz piąty** (`RETEST_PENDING`) — OWNER porównuje
-model z rzutami, elewacjami, wizualizacjami ARCHON i własnym pakietem
-referencyjnym i decyduje, czy mówi „to jest mój dom". Pytanie: czy schody z zabiegami, drzwi wewnętrzne, czyste „Bez dachu",
-prezentacja studyjna (cienie, SSAO, krawędzie cech) i modułowe pokrycie dachu
-ze STAGE-013F czytają się jako ten dom
-bez objaśnień. Dopiero po tej
-ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013D **nie
-jest** akceptacją wizualną. Analizatora nie zaczynamy — jego kontrakt jest spisany
-w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
+GATE-3D-SHAPE-01 **po raz szósty** (`RETEST_PENDING`) — OWNER sprawdza dwa
+warunki swojej warunkowej akceptacji ze STAGE-013F: czy przeszklenia czytają
+się jako okna (ramy, skrzydła) i czy schody nie wchodzą już w żadną ścianę
+(spiżarnia pod biegiem); do tego ocenia nową powłokę: dom jako obiekt główny
+na starcie, oś czasu pod nim, szufladę jako launcher, dok sterowania modelu.
+Dopiero po tej ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna
+STAGE-013G **nie jest** akceptacją wizualną. Analizatora nie zaczynamy — jego
+kontrakt jest spisany w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
 
 ## Czego nadal NIE ma
 
-Produkcyjnej architektury renderera, izolacji pomieszczenia w UI, **analizatora
-projektów** (spisany jest tylko jego kontrakt), wycinania otworów w połaci dachu,
-grubości połaci, gąsiora na kalenicy, drugiego stylu pokrycia dachu, animacji
-dachówek, pickingu przez szkło, persystencji i danych rzeczywistych. Model
-Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma otwory,
-schody, cechy rozpoznawcze elewacji, pas okapowy i kominy ponad dachem
-z wykazów, rzutów, elewacji i przekroju, ale nie ma trzonów kominowych,
-materiałów, konstrukcji ani rzędnych konstrukcyjnych.
+Produkcyjnej architektury renderera, wspólnego silnika między ekranami,
+izolacji pomieszczenia w UI, **analizatora projektów** (spisany jest tylko
+jego kontrakt), wycinania otworów w połaci dachu, grubości połaci, gąsiora
+na kalenicy, drugiego stylu pokrycia dachu, animacji dachówek, pickingu przez
+szkło, profilu ramy okiennej i pochwytu balustrady, danych na osi czasu
+i w pasku pieniędzy, ikon w szufladzie, persystencji i danych rzeczywistych.
+Model Marcówek jest odrysem walidacyjnym, a nie geometrią techniczną: ma
+otwory z ramami, schody, cechy rozpoznawcze elewacji, pas okapowy i kominy
+ponad dachem z wykazów, rzutów, elewacji i przekroju, ale nie ma trzonów
+kominowych, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 
 ## OPEN
 
@@ -314,13 +358,16 @@ materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 Ocena subiektywna, do wykonania przez właściciela produktu. Nie blokuje
 technicznego PASS.
 
-- ogólny feeling UI
+- ogólny feeling UI (powłoka przebudowana w STAGE-013G — do oceny)
 - estetyka dark mode
-- wygoda szuflady nawigacyjnej
+- wygoda szuflady nawigacyjnej (grupy od STAGE-013G — do oceny)
 - wielkości tekstu
 - spacing
 - ergonomia na telefonie trzymanym w jednej ręce
-- wygląd Dashboardu i proporcje miejsca na model 3D
+- wygląd Startu i proporcje miejsca na model 3D (dom jako bohater od
+  STAGE-013G — do oceny)
+- czas do pierwszej klatki modelu na realnym urządzeniu (na emulatorze
+  kilka sekund pod okładką)
 - zachowanie na realnym urządzeniu
 
 ## Do potwierdzenia przez OWNER-a

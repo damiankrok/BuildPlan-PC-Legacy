@@ -171,6 +171,25 @@ internal class FilamentModelRenderer(
     /** Where to look from, replaced by the host whenever a gesture moves the camera. */
     var pose: OrbitPose? = null
 
+    /**
+     * Called once, on the main thread, when the surface shows the model: the
+     * shader programs the scene needs have been compiled and a frame has been
+     * rendered with them. Until then the surface is undefined or empty —
+     * black, on most devices, for as long as the driver takes to compile —
+     * and the host covers it; this is what lets it uncover.
+     *
+     * Filament compiles a material's programs lazily, on its driver thread,
+     * the first time a frame needs them, and draws nothing with a program
+     * that is not ready. So "a frame was rendered" is not "the model is on
+     * screen": the first frames after start-up are empty. The materials are
+     * therefore asked to compile the variants this scene uses up front, and
+     * readiness is the last of those compilations *and* a rendered frame.
+     */
+    var onReady: (() -> Unit)? = null
+    private var frameRendered = false
+    private var pendingCompilations = 0
+    private var readySignalled = false
+
     private var selectedElementId: BuildingElementId? = null
 
     /** The presentation currently applied. See [setStyle]. */
@@ -222,6 +241,18 @@ internal class FilamentModelRenderer(
         meshes.forEach(::uploadMesh)
         roofCovers.forEach(::uploadRoofCover)
         grid?.let(::uploadGrid)
+
+        // The variants this scene draws with: one directional light, with
+        // shadows. Every other user variant — dynamic lights, fog, skinning,
+        // screen-space reflections — is never used and never compiled.
+        val materials = listOf(material, glassMaterial, lineMaterial)
+        pendingCompilations = materials.size
+        materials.forEach { compiled ->
+            compiled.compile(Material.CompilerPriorityQueue.HIGH, SCENE_VARIANTS, pickHandler) {
+                pendingCompilations--
+                signalReadyIfSo()
+            }
+        }
 
         camera.setExposure(APERTURE, SHUTTER_SPEED, SENSITIVITY)
 
@@ -750,19 +781,34 @@ internal class FilamentModelRenderer(
         if (renderer.beginFrame(currentSwapChain, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
+            if (!frameRendered) {
+                frameRendered = true
+                signalReadyIfSo()
+            }
         }
+    }
+
+    private fun signalReadyIfSo() {
+        if (destroyed || readySignalled || !frameRendered || pendingCompilations > 0) return
+        readySignalled = true
+        onReady?.invoke()
     }
 
     private fun applyCamera() {
         val currentPose = pose ?: return
         if (viewportWidth <= 0 || viewportHeight <= 0) return
 
+        // The field of view spans the viewport's shorter side. A preset frames
+        // the model so that it fills that angle; on a tall phone viewport the
+        // shorter side is the width, and a vertical angle there would leave
+        // the house wider than the screen and cropped at both ends.
+        val aspect = viewportWidth.toDouble() / viewportHeight.toDouble()
         camera.setProjection(
             OrbitCameraState.FIELD_OF_VIEW_DEGREES,
-            viewportWidth.toDouble() / viewportHeight.toDouble(),
+            aspect,
             currentPose.near,
             currentPose.far,
-            Camera.Fov.VERTICAL,
+            if (aspect < 1.0) Camera.Fov.HORIZONTAL else Camera.Fov.VERTICAL,
         )
         camera.lookAt(
             currentPose.eyeX, currentPose.eyeY, currentPose.eyeZ,
@@ -799,6 +845,10 @@ internal class FilamentModelRenderer(
 
         /** The selection tint, linear RGB; the one hue the study has. */
         val SELECTED = floatArrayOf(0.13f, 0.46f, 0.74f, 1.0f)
+
+        /** The user variants the scene's materials are compiled for up front. */
+        val SCENE_VARIANTS: Int =
+            Material.UserVariantFilterBit.DIRECTIONAL_LIGHTING or Material.UserVariantFilterBit.SHADOW_RECEIVER
 
         /**
          * Glass: a neutral sheet at the opacity [GlassPresentation] fixes,

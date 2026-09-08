@@ -324,7 +324,7 @@ object MarcowkiSourceEvidence {
         ),
         FidelityRecord(
             name = "Klatka schodowa",
-            value = "5.35-7.47 x 5.18-8.80 m, rdzeń 5.35-6.46 x 6.18-7.77 m, zabiegi w narożach",
+            value = "5.35-7.45 x 5.18-8.80 m, rdzeń 5.35-6.47 x 6.16-7.77 m, zabiegi w narożach",
             fidelity = SourceFidelity.SOURCE_TRACED,
             note = "Three straight runs turning twice around a rectangular core, traced from " +
                 "both plans: the flight the ground plan draws across the south of the " +
@@ -336,7 +336,10 @@ object MarcowkiSourceEvidence {
                 "partition between the core and the boiler room, and the top flight " +
                 "arrives in the corridor through a gap in its east partition between the " +
                 "walk-in and the core — both drawn as open on the plans, and STAGE-013B " +
-                "had walled both.",
+                "had walled both. The well's east edge and the core's east and north " +
+                "faces were traced at 7.47, 6.46 and 6.18, one to two centimetres off " +
+                "the east wall's inner face and the pantry's two wall faces on the same " +
+                "lines; STAGE-013G derives them from those faces instead.",
         ),
         FidelityRecord(
             name = "Drzwi wewnętrzne",
@@ -600,6 +603,34 @@ object MarcowkiSourceEvidence {
                 "the 150.4 m2 that reconciles with the published area; the tiles stop " +
                 "0.03 m short of the stacks and the rooflights and go away with the roof.",
         ),
+        FidelityRecord(
+            name = "Ścianki pod biegiem schodów",
+            value = "górna krawędź 0.02 m pod spodem stopnia",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The ground plan draws the pantry directly under the top flight: its " +
+                "three partitions enclose the band the upper plan draws the north run " +
+                "over, and the plan shows no treads there because the flight is above " +
+                "its cut plane. The walls are therefore kept — the source draws them " +
+                "and the door into the pantry — and stopped under the flight: a " +
+                "partition piece under a tread rises to that tread's underside less " +
+                "two centimetres, never through it. The pantry's east wall stands " +
+                "under the first tread of the north run and is the piece cut; the " +
+                "clearance is the only chosen number.",
+        ),
+        FidelityRecord(
+            name = "Ramy i słupki okien",
+            value = "listwa 0.07 m, głębokość 0.08 m, skrzydło do 1.20 m",
+            fidelity = SourceFidelity.DISPLAY_ASSUMPTION,
+            note = "The schedule gives every facade opening a width and a height and " +
+                "no joinery, and a bare pane in a reveal read as a hole. Each facade " +
+                "pane and each rooflight is drawn with a bar round its edge and a " +
+                "mullion wherever a leaf would exceed 1.20 m — four leaves across " +
+                "the terrace glazing, two in each north gable glazing, none in a " +
+                "door or the garage gate. A presentation mesh laid through the pane " +
+                "by the renderer's adapter: the hole, the pane and the wall are " +
+                "untouched, internal doors stay bare, and a tap on a bar is a tap on " +
+                "its window.",
+        ),
     )
 
     /**
@@ -624,9 +655,9 @@ object MarcowkiSourceEvidence {
         "Grubość połaci. The roof stays a plane and its edge is drawn beside it as " +
             "the eaves fascia; the facets themselves keep the 150.4 m2 that " +
             "reconciles with the published roof area.",
-        "Pochwyt balustrady, ramy okien i słupki. The renders show a thin top rail " +
-            "and window frames; the study draws sheets and holes, and a frame section " +
-            "it has not been told would be invented.",
+        "Pochwyt balustrady. The renders show a thin top rail on the glass guarding; " +
+            "the study draws the sheet alone. Window frames are drawn since STAGE-013G, " +
+            "as a presentation assumption listed above, not as a traced section.",
     )
 
     /**

@@ -103,7 +103,21 @@ object MarcowkiVisualModelV1 {
         elementId("komin-kotlowni"),
     )
 
+    /** The garage door, which the presentation frames without leaves: a gate, not a glazing. */
+    val garageDoorId: BuildingElementId = elementId("parter-brama-garazowa")
+
     private val assembly: Assembly = assemble()
+
+    /**
+     * The elements filling the facade openings the plans schedule — see
+     * [MarcowkiPlanGrid.facadeOpenings] — in assembly order.
+     *
+     * Exposed for the presentation beside the model, which frames these and
+     * only these: an internal door is a hole with a leaf and no frame, by the
+     * same rule that gives it no handle. The ids are collected as the openings
+     * are placed rather than listed a second time here.
+     */
+    val facadeOpeningIds: List<BuildingElementId> get() = assembly.facadeOpeningIds
 
     /**
      * The reference building, carrying the traced elements.
@@ -152,6 +166,18 @@ object MarcowkiVisualModelV1 {
 
         val elements = mutableListOf<BuildingElement>()
         val primitives = mutableListOf<BuildingGeometryPrimitive>()
+        val facadeOpeningIds = mutableListOf<BuildingElementId>()
+
+        /**
+         * The stair's treads, laid out before any wall is built.
+         *
+         * Computed first because two things read them: the stair element
+         * draws them, and the ground-floor partitions ask whether they stand
+         * under one — the pantry does, and its walls stop at the flight's
+         * soffit instead of passing through the treads. One list, read twice,
+         * so the wall can only ever duck under the tread that is drawn.
+         */
+        private val treads: List<StairTread> = stairTreads()
 
         fun addFoundation() {
             val id = element(
@@ -630,13 +656,28 @@ object MarcowkiVisualModelV1 {
                 name = "Schody na poddasze",
                 scope = BuildingElementScope.OnFloor(groundFloorId),
             )
+            treads.forEach { tread ->
+                primitives += SlabGeometry(
+                    elementId = id,
+                    outline = tread.outline,
+                    elevation = tread.underside,
+                    thickness = Grid.STAIR_RISER_HEIGHT,
+                )
+            }
+        }
 
-            // The stairwell as both plans draw it: three straight runs, each
-            // the full width of the band it occupies, and a corner square at
-            // each turn cut on its diagonal into two winders. Nothing is walked
-            // along a centreline: every tread is the piece of stairwell floor
-            // the plan draws it on, so a step can neither jam into the one
-            // before it at a corner nor float outside its band.
+        /**
+         * The seventeen treads, in climbing order, each with the level of
+         * its underside.
+         *
+         * The stairwell as both plans draw it: three straight runs, each the
+         * full width of the band it occupies, and a corner square at each
+         * turn cut on its diagonal into two winders. Nothing is walked along
+         * a centreline: every tread is the piece of stairwell floor the plan
+         * draws it on, so a step can neither jam into the one before it at a
+         * corner nor float outside its band.
+         */
+        private fun stairTreads(): List<StairTread> {
             val (southRisers, eastRisers, northRisers) = Grid.STAIR_RUN_RISERS
             val treads = mutableListOf<List<PlanPoint>>()
 
@@ -690,13 +731,8 @@ object MarcowkiVisualModelV1 {
             check(treads.size == Grid.STAIR_RISER_COUNT) {
                 "The stair has ${treads.size} treads for ${Grid.STAIR_RISER_COUNT} risers"
             }
-            treads.forEachIndexed { step, outline ->
-                primitives += SlabGeometry(
-                    elementId = id,
-                    outline = outline,
-                    elevation = Grid.GROUND_FLOOR_Y + step * Grid.STAIR_RISER_HEIGHT,
-                    thickness = Grid.STAIR_RISER_HEIGHT,
-                )
+            return treads.mapIndexed { step, outline ->
+                StairTread(outline, Grid.GROUND_FLOOR_Y + step * Grid.STAIR_RISER_HEIGHT)
             }
         }
 
@@ -1431,11 +1467,16 @@ object MarcowkiVisualModelV1 {
             name: String,
             scope: BuildingElementScope,
             rooms: Set<RoomId>,
-        ): PlannedOpening = PlannedOpening(
-            trace = trace,
-            elementId = element(slug, kind, name, scope, rooms),
-        )
+        ): PlannedOpening {
+            val id = element(slug, kind, name, scope, rooms)
+            if (trace in Grid.facadeOpenings) facadeOpeningIds += id
+            return PlannedOpening(trace = trace, elementId = id)
+        }
 
+        /**
+         * A ground-floor partition: one element, and as many prisms as the
+         * stair over it makes of it — see [groundPartitionRun].
+         */
         private fun partition(
             slug: String,
             name: String,
@@ -1446,10 +1487,118 @@ object MarcowkiVisualModelV1 {
             base: Double,
             height: Double,
             openings: List<PlannedOpening> = emptyList(),
-        ): BuildingElementId = wall(
-            slug, name, scope, rooms, from, to, base, height,
-            Grid.PARTITION_THICKNESS, openings,
-        )
+        ): BuildingElementId {
+            val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
+            groundPartitionRun(id, from, to, base, height, openings)
+            return id
+        }
+
+        /**
+         * One straight run of a ground-floor partition, stopped under any
+         * stair tread that stands over it.
+         *
+         * The ground plan draws the pantry directly beneath the top flight,
+         * and its walls at full storey height stood straight through the
+         * treads — the collision the owner saw. The plan is not wrong and the
+         * walls are not removed: a wall under a flight is a wall that stops at
+         * the flight's soffit. So the run is cut wherever a tread's edge
+         * crosses it, each piece is built to the storey height or to the
+         * lowest tread over it less [MarcowkiPlanGrid.STAIR_SOFFIT_CLEARANCE],
+         * whichever is lower, and neighbouring pieces with one top are
+         * merged back. Along the flight that leaves a stepped wall following
+         * the treads; across it, one lower piece; away from the stair, the
+         * one prism it always was.
+         *
+         * A piece shorter than the wall is thick — the few centimetres of the
+         * pantry's east wall left past the last tread — is absorbed by its
+         * neighbour at the lower of the two tops rather than left standing as
+         * a full-height post beside the flight.
+         */
+        private fun groundPartitionRun(
+            id: BuildingElementId,
+            from: PlanPoint,
+            to: PlanPoint,
+            base: Double,
+            height: Double,
+            openings: List<PlannedOpening>,
+        ) {
+            val runsEastWest = abs(to.x - from.x) >= abs(to.z - from.z)
+            val start = if (runsEastWest) minOf(from.x, to.x) else minOf(from.z, to.z)
+            val end = if (runsEastWest) maxOf(from.x, to.x) else maxOf(from.z, to.z)
+            val across = if (runsEastWest) from.z else from.x
+            fun pointAt(along: Double) =
+                if (runsEastWest) PlanPoint(along, across) else PlanPoint(across, along)
+
+            val cuts = buildList {
+                add(start)
+                treads.flatMap { it.outline }
+                    .map { if (runsEastWest) it.x else it.z }
+                    .filter { it > start + GAP_TOLERANCE && it < end - GAP_TOLERANCE }
+                    .forEach(::add)
+                add(end)
+            }.distinct().sorted()
+
+            val half = Grid.PARTITION_THICKNESS / 2.0
+            val pieces = cuts.zipWithNext { a, b ->
+                val footprint = if (runsEastWest) {
+                    Grid.rectangle(a, across - half, b, across + half)
+                } else {
+                    Grid.rectangle(across - half, a, across + half, b)
+                }
+                val soffit = treads
+                    .filter { tread -> overlapsInPlan(footprint, tread.outline) }
+                    .minOfOrNull { it.underside - Grid.STAIR_SOFFIT_CLEARANCE }
+                PartitionPiece(a, b, minOf(base + height, soffit ?: (base + height)))
+            }.toMutableList()
+
+            // Absorb slivers into a neighbour, then merge equal tops.
+            var index = 0
+            while (index < pieces.size && pieces.size > 1) {
+                val piece = pieces[index]
+                if (piece.length >= Grid.PARTITION_THICKNESS) {
+                    index++
+                    continue
+                }
+                if (index > 0) {
+                    val previous = pieces[index - 1]
+                    pieces[index - 1] = PartitionPiece(previous.from, piece.to, minOf(previous.top, piece.top))
+                    pieces.removeAt(index)
+                } else {
+                    val next = pieces[index + 1]
+                    pieces[index] = PartitionPiece(piece.from, next.to, minOf(piece.top, next.top))
+                    pieces.removeAt(index + 1)
+                }
+            }
+            val merged = mutableListOf<PartitionPiece>()
+            pieces.forEach { piece ->
+                val last = merged.lastOrNull()
+                if (last != null && abs(last.top - piece.top) < GAP_TOLERANCE) {
+                    merged[merged.lastIndex] = PartitionPiece(last.from, piece.to, last.top)
+                } else {
+                    merged += piece
+                }
+            }
+
+            var placed = 0
+            merged.forEach { piece ->
+                val here = openings.filter {
+                    it.trace.nearEdge >= piece.from - GAP_TOLERANCE && it.trace.farEdge <= piece.to + GAP_TOLERANCE
+                }
+                placed += here.size
+                wallPrism(
+                    id, pointAt(piece.from), pointAt(piece.to), base, piece.top - base,
+                    Grid.PARTITION_THICKNESS, here,
+                )
+            }
+            check(placed == openings.size) {
+                "A door on ${id.value} straddles a line where the stair cuts the partition"
+            }
+        }
+
+        /** A stretch of one partition run, from one cut to the next, with its own top. */
+        private class PartitionPiece(val from: Double, val to: Double, val top: Double) {
+            val length: Double get() = to - from
+        }
 
         /** One straight piece of a partition that stands in more than one piece. */
         class PartitionRun(
@@ -1478,7 +1627,7 @@ object MarcowkiVisualModelV1 {
         ): BuildingElementId {
             val id = element(slug, BuildingElementKind.WALL, name, scope, rooms)
             runs.forEach { run ->
-                wallPrism(id, run.from, run.to, base, height, Grid.PARTITION_THICKNESS, run.openings)
+                groundPartitionRun(id, run.from, run.to, base, height, run.openings)
             }
             return id
         }
@@ -1982,6 +2131,35 @@ object MarcowkiVisualModelV1 {
             )
             return id
         }
+    }
+
+    /** One tread of the stair: its plan outline and the level of its underside. */
+    private class StairTread(val outline: List<PlanPoint>, val underside: Double)
+
+    /**
+     * Whether two convex plan polygons share any area — touching along an
+     * edge does not count. The separating-axis test: they are apart exactly
+     * when some edge normal of one of them separates their projections.
+     */
+    private fun overlapsInPlan(a: List<PlanPoint>, b: List<PlanPoint>): Boolean {
+        listOf(a, b).forEach { polygon ->
+            polygon.indices.forEach { index ->
+                val from = polygon[index]
+                val to = polygon[(index + 1) % polygon.size]
+                val axisX = -(to.z - from.z)
+                val axisZ = to.x - from.x
+                if (abs(axisX) <= GAP_TOLERANCE && abs(axisZ) <= GAP_TOLERANCE) return@forEach
+                val (minA, maxA) = a.projectedOnto(axisX, axisZ)
+                val (minB, maxB) = b.projectedOnto(axisX, axisZ)
+                if (maxA <= minB + GAP_TOLERANCE || maxB <= minA + GAP_TOLERANCE) return false
+            }
+        }
+        return true
+    }
+
+    private fun List<PlanPoint>.projectedOnto(axisX: Double, axisZ: Double): Pair<Double, Double> {
+        val projections = map { it.x * axisX + it.z * axisZ }
+        return projections.min() to projections.max()
     }
 
     /**

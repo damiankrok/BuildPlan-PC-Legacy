@@ -2,6 +2,10 @@ package com.buildplan.app.render.filament
 
 import android.util.Log
 import android.view.SurfaceView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -10,17 +14,31 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -29,7 +47,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalView
@@ -47,6 +68,7 @@ import com.buildplan.app.reference.visual.MarcowkiRoomTrace
 import com.buildplan.app.reference.visual.MarcowkiSourceEvidence
 import com.buildplan.app.reference.visual.SourceFidelity
 import com.buildplan.app.reference.visual.TraceCertainty
+import kotlinx.coroutines.delay
 
 private const val TAG = "FilamentSpike"
 
@@ -81,55 +103,81 @@ internal enum class SpikeVisibility(val labelRes: Int) {
 }
 
 /**
+ * How much of the viewport is shown around the model.
+ *
+ * [HERO] is the home screen: the house alone, orbitable, and a tap goes to
+ * the model screen. [STUDIO] is the model screen: the same house with the
+ * control dock under it — views, presets, style — and the developer details
+ * folded away until asked for. One renderer, one model, two amounts of
+ * furniture.
+ */
+enum class ViewportMode { HERO, STUDIO }
+
+/**
  * The debug model viewport: a traced or synthetic building drawn by Filament,
- * with just enough controls around it to answer the questions this stage exists
- * to answer.
+ * with as much or as little around it as [mode] asks for.
  *
- * Debug-only, deliberately. It is reachable from the Model 3D screen in a debug
- * build and absent from release: a model traced off a third party's product
- * drawings is a development aid for one owner review, not product content.
+ * Debug-only, deliberately. It is reachable from the Model 3D screen and the
+ * home screen in a debug build and absent from release: a model traced off a
+ * third party's product drawings is a development aid for one owner review,
+ * not product content.
  *
- * Nothing here is persisted. The model, the view and the selection start over on
- * every recreation; only the camera is remembered, and only because the user
- * aimed it by hand.
+ * Nothing here is persisted. The model, the view and the selection start over
+ * on every recreation; only the camera is remembered, and only because the
+ * user aimed it by hand.
  */
 @Composable
-fun FilamentModelViewport(modifier: Modifier = Modifier) {
+fun FilamentModelViewport(
+    modifier: Modifier = Modifier,
+    mode: ViewportMode = ViewportMode.STUDIO,
+    onTap: (() -> Unit)? = null,
+) {
     var model by remember { mutableStateOf(DebugModel.MARCOWKI) }
+    var detailsShown by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ChipRow {
-            DebugModel.entries.forEach { option ->
-                FilterChip(
-                    selected = option == model,
-                    onClick = { model = option },
-                    label = { ChipLabel(stringResource(option.labelRes)) },
-                )
-            }
-        }
-
-        // Keyed on the model: switching it replaces every mesh, so the renderer
-        // and its engine are torn down and rebuilt rather than being asked to
-        // swap their buffers underneath themselves.
-        key(model) {
-            ModelStage(model)
-        }
+    // Keyed on the model: switching it replaces every mesh, so the renderer
+    // and its engine are torn down and rebuilt rather than being asked to
+    // swap their buffers underneath themselves.
+    key(model) {
+        ModelStage(
+            model = model,
+            mode = mode,
+            onTap = onTap,
+            detailsShown = detailsShown,
+            onToggleDetails = { detailsShown = !detailsShown },
+            onSelectModel = { model = it },
+            modifier = modifier,
+        )
     }
 }
 
 @Composable
-private fun ModelStage(model: DebugModel) {
+private fun ModelStage(
+    model: DebugModel,
+    mode: ViewportMode,
+    onTap: (() -> Unit)?,
+    detailsShown: Boolean,
+    onToggleDetails: () -> Unit,
+    onSelectModel: (DebugModel) -> Unit,
+    modifier: Modifier,
+) {
     val bounds = remember(model) { model.geometry.bounds }
     if (bounds == null) {
         Text(
             text = stringResource(R.string.model_spike_unavailable),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
         )
         return
     }
 
-    val meshes = remember(model) { model.geometry.primitives.toRenderMeshes() }
+    // The frames round the facade panes are meshes like any other: baked
+    // from the panes the model's presentation names, carrying the panes'
+    // own ids, and uploaded beside the primitives' meshes.
+    val meshes = remember(model) {
+        model.geometry.primitives.toRenderMeshes() + model.geometry.openingFrameMeshes(model.openingFrames)
+    }
 
     // The roof coverings, laid once over the facets the model's presentation
     // names and handed to the renderer beside the meshes. They carry the
@@ -148,6 +196,20 @@ private fun ModelStage(model: DebugModel) {
     var style by remember { mutableStateOf(RenderStyle.DEFAULT) }
     var selected by remember { mutableStateOf<BuildingElementId?>(null) }
     var renderer by remember { mutableStateOf<FilamentModelRenderer?>(null) }
+
+    // Until the renderer has compiled its programs and drawn with them the
+    // surface is undefined — black on most devices — so the viewport is
+    // covered in the style's own backdrop and uncovered when the renderer
+    // says it is showing the model. The model appears; nothing flashes.
+    // Should that word never come — a driver that never reports a compile —
+    // the cover lifts on its own after a while rather than hiding a working
+    // renderer for good.
+    var modelShown by remember { mutableStateOf(false) }
+    LaunchedEffect(currentRendererKey(renderer)) {
+        if (renderer == null || modelShown) return@LaunchedEffect
+        delay(COVER_TIMEOUT_MILLIS)
+        modelShown = true
+    }
 
     // The single decision path: the domain says which elements survive, the
     // model's presentation profile narrows that to what the view is meant to
@@ -193,50 +255,51 @@ private fun ModelStage(model: DebugModel) {
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(VIEWPORT_HEIGHT_DP.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(currentRenderer) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            var multiTouch = false
-                            var travelled = 0f
+    val surface: @Composable (Modifier) -> Unit = { surfaceModifier ->
+        Box(
+            modifier = surfaceModifier
+                .clip(MaterialTheme.shapes.large)
+                .pointerInput(currentRenderer, onTap) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var multiTouch = false
+                        var travelled = 0f
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val pressed = event.changes.count { it.pressed }
-                                if (pressed == 0) break
-                                if (pressed > 1) multiTouch = true
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.count { it.pressed }
+                            if (pressed == 0) break
+                            if (pressed > 1) multiTouch = true
 
-                                val pan = event.calculatePan()
-                                travelled += pan.getDistance()
+                            val pan = event.calculatePan()
+                            travelled += pan.getDistance()
 
-                                if (multiTouch) {
-                                    cameraState.zoomBy(event.calculateZoom())
-                                    cameraState.pan(pan.x, pan.y, size.height)
-                                } else {
-                                    cameraState.orbit(pan.x, pan.y)
-                                }
-                                currentRenderer?.pose = cameraState.pose()
-
-                                // Consuming keeps the surrounding scroll from
-                                // stealing a drag that was meant for the camera.
-                                event.changes.forEach { change ->
-                                    if (change.positionChanged()) change.consume()
-                                }
+                            if (multiTouch) {
+                                cameraState.zoomBy(event.calculateZoom())
+                                // The field of view spans the shorter side —
+                                // see FilamentModelRenderer.applyCamera — so
+                                // that is the side a pan is measured against.
+                                cameraState.pan(pan.x, pan.y, minOf(size.width, size.height))
+                            } else {
+                                cameraState.orbit(pan.x, pan.y)
                             }
+                            currentRenderer?.pose = cameraState.pose()
 
-                            if (!multiTouch && travelled <= viewConfiguration.touchSlop) {
-                                // Filament's viewport origin is bottom-left; the
-                                // touch arrives top-left.
+                            // Consuming keeps any surrounding scroll from
+                            // stealing a drag that was meant for the camera.
+                            event.changes.forEach { change ->
+                                if (change.positionChanged()) change.consume()
+                            }
+                        }
+
+                        if (!multiTouch && travelled <= viewConfiguration.touchSlop) {
+                            if (onTap != null) {
+                                // The hero: a tap is a request to open the
+                                // model, not a pick.
+                                onTap()
+                            } else {
+                                // Filament's viewport origin is bottom-left;
+                                // the touch arrives top-left.
                                 currentRenderer?.pick(
                                     down.position.x.toInt(),
                                     size.height - down.position.y.toInt(),
@@ -246,102 +309,323 @@ private fun ModelStage(model: DebugModel) {
                                 }
                             }
                         }
-                    },
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        SurfaceView(context).also { surfaceView ->
-                            val created = FilamentModelRenderer(
-                                surfaceView = surfaceView,
-                                meshes = meshes,
-                                grid = grid,
-                                surfaceRoles = model.surfaceRoles,
-                                initialStyle = style,
-                                roofCovers = roofCovers,
-                            )
-                            created.setVisibleElements(visibleElementIds)
-                            created.resume()
-                            renderer = created
-                        }
-                    },
-                    onRelease = {
-                        renderer?.destroy()
-                        renderer = null
-                    },
-                )
-            }
-        }
-
-        // A preset moves the camera as well as the visibility, which is what
-        // makes the owner evidence reproducible.
-        ChipRow {
-            ModelViewPreset.entries.forEach { option ->
-                FilterChip(
-                    selected = option == preset,
-                    onClick = {
-                        preset = option
-                        visibility = option.visibility
-                        cameraState.apply(option.framing(bounds, model.focusBounds(option.focus, bounds)))
-                        currentRenderer?.pose = cameraState.pose()
-                    },
-                    label = { ChipLabel(stringResource(option.labelRes)) },
-                )
-            }
-        }
-
-        // The visibility chips stay, because hiding something without moving the
-        // camera is exactly what you want when checking one wall.
-        ChipRow {
-            SpikeVisibility.entries.forEach { option ->
-                FilterChip(
-                    selected = option == visibility,
-                    onClick = { visibility = option },
-                    label = { ChipLabel(stringResource(option.labelRes)) },
-                )
-            }
-        }
-        // Two presentations of one model: the chip changes how the same
-        // entities are lit and inked, never which entities exist.
-        ChipRow {
-            RenderStyle.entries.forEach { option ->
-                FilterChip(
-                    selected = option == style,
-                    onClick = { style = option },
-                    label = { ChipLabel(stringResource(option.labelRes)) },
-                )
-            }
-        }
-        TextButton(
-            onClick = {
-                cameraState.reset()
-                currentRenderer?.pose = cameraState.pose()
-            },
+                    }
+                },
         ) {
-            Text(stringResource(R.string.model_spike_reset_camera))
-        }
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    SurfaceView(context).also { surfaceView ->
+                        val created = FilamentModelRenderer(
+                            surfaceView = surfaceView,
+                            meshes = meshes,
+                            grid = grid,
+                            surfaceRoles = model.surfaceRoles,
+                            initialStyle = style,
+                            roofCovers = roofCovers,
+                        )
+                        created.setVisibleElements(visibleElementIds)
+                        created.onReady = { modelShown = true }
+                        created.resume()
+                        renderer = created
+                    }
+                },
+                onRelease = {
+                    renderer?.destroy()
+                    renderer = null
+                },
+            )
 
-        val selectedId = selected
-        Text(
-            text = if (selectedId == null) {
-                stringResource(R.string.model_spike_selection_none)
-            } else {
-                stringResource(
-                    R.string.model_spike_selection,
-                    elementNames[selectedId] ?: selectedId.value,
-                    selectedId.value,
+            AnimatedVisibility(
+                visible = !modelShown,
+                enter = EnterTransition.None,
+                exit = fadeOut(),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(style.backdropColor()),
                 )
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            }
+
+            val selectedId = selected
+            if (selectedId != null) {
+                SelectionPill(
+                    name = elementNames[selectedId] ?: selectedId.value,
+                    onClear = { selected = null },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp),
+                )
+            }
+        }
+    }
+
+    when (mode) {
+        ViewportMode.HERO -> surface(modifier.fillMaxSize())
+        ViewportMode.STUDIO -> Column(modifier = modifier.fillMaxSize()) {
+            surface(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+            )
+            ControlDock(
+                model = model,
+                preset = preset,
+                visibility = visibility,
+                style = style,
+                selected = selected,
+                detailsShown = detailsShown,
+                onPreset = { option ->
+                    preset = option
+                    visibility = option.visibility
+                    cameraState.apply(option.framing(bounds, model.focusBounds(option.focus, bounds)))
+                    currentRenderer?.pose = cameraState.pose()
+                },
+                onVisibility = { visibility = it },
+                onStyle = { style = it },
+                onResetCamera = {
+                    cameraState.reset()
+                    currentRenderer?.pose = cameraState.pose()
+                },
+                onToggleDetails = onToggleDetails,
+                onSelectModel = onSelectModel,
+            )
+        }
+    }
+}
+
+/**
+ * The name of the picked element, floating over the viewport, with one way
+ * to let go of it. Shown only while something is picked: an empty prompt
+ * under the model is furniture, and the model is the point.
+ */
+@Composable
+private fun SelectionPill(name: String, onClear: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.model_selection_clear),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The control system under the viewport, in the order a reviewer reaches for
+ * it: what is shown, from where, in which presentation — and, folded away,
+ * the developer's details.
+ *
+ * Three rows of one visual language. The view state is a segmented control,
+ * because it is one choice of four. The presets are chips in a scrolling
+ * row, because there are fifteen and any may be next. The style is a
+ * segmented pair beside the camera reset and the details toggle, because
+ * those are the things touched once. Everything else — which model, how to
+ * gesture, where the numbers came from — is behind the toggle.
+ */
+@Composable
+private fun ControlDock(
+    model: DebugModel,
+    preset: ModelViewPreset,
+    visibility: SpikeVisibility,
+    style: RenderStyle,
+    selected: BuildingElementId?,
+    detailsShown: Boolean,
+    onPreset: (ModelViewPreset) -> Unit,
+    onVisibility: (SpikeVisibility) -> Unit,
+    onStyle: (RenderStyle) -> Unit,
+    onResetCamera: () -> Unit,
+    onToggleDetails: () -> Unit,
+    onSelectModel: (DebugModel) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
+                val options = SpikeVisibility.entries
+                options.forEachIndexed { index, option ->
+                    SegmentedButton(
+                        selected = option == visibility,
+                        onClick = { onVisibility(option) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                        colors = SegmentedButtonDefaults.colors(
+                            activeContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            activeContentColor = MaterialTheme.colorScheme.onSurface,
+                            inactiveContainerColor = MaterialTheme.colorScheme.background,
+                            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        icon = {},
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                        label = {
+                            Text(
+                                text = stringResource(option.labelRes),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        },
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.model_controls_presets),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ModelViewPreset.entries.forEach { option ->
+                    FilterChip(
+                        selected = option == preset,
+                        onClick = { onPreset(option) },
+                        label = { ChipLabel(stringResource(option.labelRes)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.width(200.dp)) {
+                    val options = RenderStyle.entries
+                    options.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = option == style,
+                            onClick = { onStyle(option) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                            colors = SegmentedButtonDefaults.colors(
+                                activeContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                activeContentColor = MaterialTheme.colorScheme.onSurface,
+                                inactiveContainerColor = MaterialTheme.colorScheme.background,
+                                inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                            icon = {},
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                            label = {
+                                Text(
+                                    text = stringResource(option.labelRes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onResetCamera) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.model_spike_reset_camera),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onToggleDetails) {
+                    Icon(
+                        imageVector = if (detailsShown) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                        contentDescription = stringResource(
+                            if (detailsShown) R.string.model_controls_details_hide else R.string.model_controls_details_show,
+                        ),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = detailsShown) {
+                Details(model = model, selected = selected, onSelectModel = onSelectModel)
+            }
+        }
+    }
+}
+
+/**
+ * The developer's details: which model, how to gesture, and where the
+ * numbers came from. Folded away by default because none of it is the house.
+ */
+@Composable
+private fun Details(
+    model: DebugModel,
+    selected: BuildingElementId?,
+    onSelectModel: (DebugModel) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.model_debug_source_label),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DebugModel.entries.forEach { option ->
+                FilterChip(
+                    selected = option == model,
+                    onClick = { onSelectModel(option) },
+                    label = { ChipLabel(stringResource(option.labelRes)) },
+                )
+            }
+        }
         Text(
             text = stringResource(R.string.model_spike_gesture_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
         if (model == DebugModel.MARCOWKI) {
+            Text(
+                text = stringResource(R.string.model_spike_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SourceFidelityPanel(selectedElementId = selected)
         }
     }
@@ -435,27 +719,21 @@ private fun PanelLine(text: String, emphasised: Boolean = false) {
     )
 }
 
+/** The identity a renderer's cover timer is keyed on: the instance, or none. */
+private fun currentRendererKey(renderer: FilamentModelRenderer?): Any? = renderer
+
+/** How long the cover waits for the renderer's word before lifting on its own. */
+private const val COVER_TIMEOUT_MILLIS = 15_000L
+
 /**
- * A horizontally scrollable row of chips.
- *
- * The padding is not decoration. Chips are laid out against the row's own edge,
- * and a chip that starts exactly at it has its label's first glyph on the
- * clipping boundary — which is what the owner's screenshots showed as truncated
- * labels. A little room at each end also leaves the half-chip that says the row
- * scrolls actually visible.
+ * The style's backdrop as a Compose colour: Filament's linear values encoded
+ * to sRGB, which is what the screen and Compose both speak.
  */
-@Composable
-private fun ChipRow(content: @Composable () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = CHIP_ROW_EDGE_DP.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        content()
-    }
-}
+private fun RenderStyle.backdropColor(): Color =
+    Color(background[0].toSrgb(), background[1].toSrgb(), background[2].toSrgb())
+
+private fun Float.toSrgb(): Float =
+    if (this <= 0.0031308f) this * 12.92f else (1.055f * Math.pow(toDouble(), 1.0 / 2.4).toFloat() - 0.055f)
 
 /**
  * A chip label that is always one line.
@@ -468,8 +746,3 @@ private fun ChipRow(content: @Composable () -> Unit) {
 private fun ChipLabel(text: String) {
     Text(text = text, maxLines = 1, softWrap = false)
 }
-
-/** How much room a chip row leaves at each end. */
-private const val CHIP_ROW_EDGE_DP = 4
-
-private const val VIEWPORT_HEIGHT_DP = 420

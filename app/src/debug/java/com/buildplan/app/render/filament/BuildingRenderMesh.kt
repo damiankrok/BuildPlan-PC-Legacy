@@ -133,6 +133,38 @@ fun BuildingGeometryPrimitive.toRenderMesh(): BuildingRenderMesh {
 }
 
 /**
+ * Bakes a set of planar polygons, each extruded [depth] along the shared unit
+ * [axis] and centred on its own plane, into one solid mesh under [elementId].
+ *
+ * The one bake that is not a primitive's own: it is what a presentation
+ * layer — the bars of an opening frame — uses to become an ordinary mesh
+ * with the same outline rules, the same id join and the same shading as a
+ * wall. Returns null when nothing encloses any area.
+ */
+internal fun bakeExtrudedPolygons(
+    elementId: BuildingElementId,
+    polygons: List<List<ModelPoint>>,
+    axis: DoubleArray,
+    depth: Double,
+): BuildingRenderMesh? {
+    val mesh = MeshAccumulator()
+    val corners = ArrayList<ModelPoint>()
+    polygons.forEach { polygon ->
+        val front = polygon.map { it.along(axis, depth / 2.0) }
+        val back = polygon.map { it.along(axis, -depth / 2.0) }
+        if (mesh.addExtrudedPolygon(front, back, axis)) {
+            corners += front
+            corners += back
+        }
+    }
+    if (corners.isEmpty()) return null
+    return mesh.build(elementId, MeshStyle.SOLID, LocalBounds.around(corners))
+}
+
+private fun ModelPoint.along(axis: DoubleArray, distance: Double): ModelPoint =
+    ModelPoint(x + axis[0] * distance, y + axis[1] * distance, z + axis[2] * distance)
+
+/**
  * Collects faces into flat vertex, normal and index arrays.
  *
  * Every face is added with the outward normal it should be shaded by, and its
@@ -234,6 +266,57 @@ private class MeshAccumulator {
                 normal,
             )
         }
+    }
+
+    /**
+     * A prism between two parallel copies of one polygon — [front] offset
+     * along [axis], [back] against it — closed with a cap at each end and a
+     * side face per edge, every side facing away from the prism's centre.
+     * Returns false, and adds nothing, for a polygon that encloses no area.
+     */
+    fun addExtrudedPolygon(front: List<ModelPoint>, back: List<ModelPoint>, axis: DoubleArray): Boolean {
+        val usableFront = front.withoutRepeatedVertices()
+        if (usableFront.size < 3 || usableFront.newellUnitNormal() == null) return false
+        val usableBack = back.withoutRepeatedVertices()
+        if (usableBack.size != usableFront.size) return false
+
+        val forward = floatArrayOf(axis[0].toFloat(), axis[1].toFloat(), axis[2].toFloat())
+        addPolygon(usableFront, forward)
+        addPolygon(usableBack, floatArrayOf(-forward[0], -forward[1], -forward[2]))
+
+        val centreX = usableFront.sumOf { it.x } / usableFront.size
+        val centreY = usableFront.sumOf { it.y } / usableFront.size
+        val centreZ = usableFront.sumOf { it.z } / usableFront.size
+        usableFront.indices.forEach { index ->
+            val next = (index + 1) % usableFront.size
+            val from = usableFront[index]
+            val to = usableFront[next]
+            val edgeX = to.x - from.x
+            val edgeY = to.y - from.y
+            val edgeZ = to.z - from.z
+            // edge × axis, then turned to point away from the polygon's centre.
+            var sideX = edgeY * axis[2] - edgeZ * axis[1]
+            var sideY = edgeZ * axis[0] - edgeX * axis[2]
+            var sideZ = edgeX * axis[1] - edgeY * axis[0]
+            val length = sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ)
+            if (length <= GeometryTolerance.LENGTH_METERS) return@forEach
+            sideX /= length
+            sideY /= length
+            sideZ /= length
+            val midX = (from.x + to.x) / 2.0 - centreX
+            val midY = (from.y + to.y) / 2.0 - centreY
+            val midZ = (from.z + to.z) / 2.0 - centreZ
+            if (midX * sideX + midY * sideY + midZ * sideZ < 0.0) {
+                sideX = -sideX
+                sideY = -sideY
+                sideZ = -sideZ
+            }
+            addPolygon(
+                listOf(usableBack[index], usableBack[next], usableFront[next], usableFront[index]),
+                floatArrayOf(sideX.toFloat(), sideY.toFloat(), sideZ.toFloat()),
+            )
+        }
+        return true
     }
 
     /**

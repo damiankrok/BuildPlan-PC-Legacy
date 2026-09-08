@@ -1,63 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Planer kosztów budowy</string>
-    <string name="app_stage_label">Etap 1 · szkielet aplikacji</string>
 
     <string name="open_navigation">Otwórz nawigację</string>
 
+    <!-- Grupy nawigacji w szufladzie -->
+    <string name="nav_group_project">Projekt</string>
+    <string name="nav_group_finance">Finanse</string>
+    <string name="nav_group_resources">Zasoby</string>
+
     <!-- Sekcje aplikacji -->
-    <string name="section_dashboard">Dashboard</string>
-    <string name="section_dashboard_summary">Przegląd całej budowy w jednym miejscu: postęp, koszty i model budynku.</string>
+    <string name="section_dashboard">Start</string>
+    <string name="section_dashboard_summary">Przegląd całej budowy w jednym miejscu: model budynku, oś czasu i koszty.</string>
 
     <string name="section_model">Model 3D</string>
-    <string name="section_model_summary">Tutaj powstanie uproszczony techniczny model budynku powiązany z kosztami, etapami i pomieszczeniami.</string>
+    <string name="section_model_summary">Uproszczony techniczny model budynku powiązany z kosztami, etapami i pomieszczeniami.</string>
 
     <string name="section_timeline">Oś czasu</string>
-    <string name="section_timeline_summary">Tutaj użytkownik będzie planował i śledził kolejne etapy budowy w czasie.</string>
+    <string name="section_timeline_summary">Planowanie i śledzenie kolejnych etapów budowy w czasie.</string>
 
     <string name="section_costs">Koszty</string>
-    <string name="section_costs_summary">Tutaj użytkownik będzie rejestrował i analizował wydatki związane z budową.</string>
+    <string name="section_costs_summary">Rejestr i analiza wydatków związanych z budową.</string>
 
     <string name="section_documents">Dokumenty</string>
-    <string name="section_documents_summary">Tutaj będą gromadzone dokumenty, faktury i pozwolenia dotyczące budowy.</string>
+    <string name="section_documents_summary">Dokumenty, faktury i pozwolenia dotyczące budowy.</string>
 
     <string name="section_statistics">Statystyki</string>
-    <string name="section_statistics_summary">Tutaj pojawią się zestawienia i wskaźniki opisujące rzeczywisty przebieg budowy.</string>
+    <string name="section_statistics_summary">Zestawienia i wskaźniki opisujące rzeczywisty przebieg budowy.</string>
 
     <string name="section_budget">Budżet</string>
-    <string name="section_budget_summary">Tutaj użytkownik będzie ustalał budżet i porównywał go z rzeczywistymi wydatkami.</string>
+    <string name="section_budget_summary">Budżet budowy i porównanie z rzeczywistymi wydatkami.</string>
 
     <string name="section_market">Rynek / PRO</string>
-    <string name="section_market_summary">Tutaj znajdą się rozszerzone funkcje rynkowe i porównawcze planowane w wersji PRO.</string>
+    <string name="section_market_summary">Rozszerzone funkcje rynkowe i porównawcze planowane w wersji PRO.</string>
 
     <string name="section_settings">Ustawienia</string>
-    <string name="section_settings_summary">Tutaj użytkownik skonfiguruje aplikację oraz preferencje swojego projektu.</string>
+    <string name="section_settings_summary">Konfiguracja aplikacji i preferencje projektu.</string>
 
-    <!-- Dashboard -->
+    <!-- Start -->
     <string name="dashboard_project_title">Budowa domu</string>
-    <string name="dashboard_project_description">Aplikacja jest na wczesnym etapie. Dane pojawią się, gdy dodamy projekty, koszty i etapy budowy.</string>
+    <string name="dashboard_project_status">Brak aktywnego etapu</string>
+    <string name="dashboard_open_model">Otwórz model</string>
+
+    <string name="dashboard_timeline_title">Oś czasu</string>
+    <string name="dashboard_timeline_empty">Etapy budowy pojawią się tutaj po ich zaplanowaniu.</string>
+    <string name="dashboard_timeline_open">Planuj</string>
+
+    <string name="dashboard_summary_spent">Wydano</string>
+    <string name="dashboard_summary_budget">Budżet</string>
+    <string name="dashboard_summary_costs">Kosztów</string>
+    <string name="dashboard_summary_empty">Brak zarejestrowanych kosztów i budżetu.</string>
+    <string name="dashboard_summary_open_costs">Dodaj koszt</string>
 
     <string name="placeholder_value">—</string>
+    <string name="placeholder_count_zero">0</string>
 
-    <string name="metric_spent">Wydano</string>
-    <string name="metric_spent_hint">Brak zarejestrowanych kosztów.</string>
-    <string name="metric_budget">Budżet</string>
-    <string name="metric_budget_hint">Budżet nie został jeszcze ustalony.</string>
-    <string name="metric_stage">Aktualny etap</string>
-    <string name="metric_stage_hint">Etapy budowy pojawią się później.</string>
-    <string name="metric_last_cost">Ostatni koszt</string>
-    <string name="metric_last_cost_hint">Brak historii wydatków.</string>
-
+    <!-- Model 3D -->
     <string name="model_panel_title">Model 3D budynku</string>
     <string name="model_panel_description">Renderer modelu domu zostanie dodany w osobnym etapie.</string>
     <string name="model_screen_panel_description">Renderer modelu domu zostanie dodany w osobnym etapie. Ten obszar jest zarezerwowany dla technicznego modelu budynku powiązanego z kosztami i etapami.</string>
 
-    <string name="dashboard_recent_costs_title">Ostatnie koszty</string>
-    <string name="dashboard_recent_costs_description">Lista ostatnich wydatków pojawi się po uruchomieniu modułu kosztów.</string>
-    <string name="dashboard_upcoming_stages_title">Nadchodzące etapy</string>
-    <string name="dashboard_upcoming_stages_description">Najbliższe etapy budowy pojawią się po uruchomieniu osi czasu.</string>
-
-    <!-- Ekrany placeholderowe -->
+    <!-- Ekrany w przygotowaniu -->
     <string name="placeholder_module_title">Moduł w przygotowaniu</string>
     <string name="placeholder_module_description">Ta sekcja zostanie zaimplementowana w jednym z kolejnych etapów.</string>
 </resources>

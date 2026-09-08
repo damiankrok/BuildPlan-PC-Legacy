@@ -1,8 +1,6 @@
 package com.buildplan.app.ui.screens
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,99 +8,80 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.buildplan.app.R
-import com.buildplan.app.ui.components.BuildingWireframe
-import com.buildplan.app.ui.components.MetricCard
-import com.buildplan.app.ui.components.PlaceholderPanel
-import com.buildplan.app.ui.components.ScreenIntro
+import com.buildplan.app.ui.components.SummaryStrip
+import com.buildplan.app.ui.components.TimelineStrip
+import com.buildplan.app.ui.navigation.AppSection
 
 /**
- * UI placeholder only. These entries are not domain objects and there is no
- * data source behind them: every value renders as an em dash until real
- * project, cost and stage data exists.
+ * The home screen: the house in the middle, the timeline under it, and the
+ * state of the money in one line at the foot.
+ *
+ * Nothing here is a card for a section. The sections are reached from the
+ * drawer; the home screen only shows the object the product is about and
+ * what is next for it. With no project data yet, what is next is said in one
+ * compact line each rather than in a grid of empty tiles.
  */
-private data class PlaceholderMetric(
-    @param:StringRes val labelRes: Int,
-    @param:StringRes val hintRes: Int,
-)
-
-private val PlaceholderMetrics = listOf(
-    PlaceholderMetric(R.string.metric_spent, R.string.metric_spent_hint),
-    PlaceholderMetric(R.string.metric_budget, R.string.metric_budget_hint),
-    PlaceholderMetric(R.string.metric_stage, R.string.metric_stage_hint),
-    PlaceholderMetric(R.string.metric_last_cost, R.string.metric_last_cost_hint),
-)
-
 @Composable
-fun DashboardScreen(modifier: Modifier = Modifier) {
+fun DashboardScreen(
+    onOpenSection: (AppSection) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(top = 4.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ScreenIntro(
-            title = stringResource(R.string.dashboard_project_title),
-            description = stringResource(R.string.dashboard_project_description),
+        ProjectHeader(onOpenModel = { onOpenSection(AppSection.Model) })
+
+        // The hero. It takes whatever height the strips below leave it, so
+        // the house is the largest thing on the screen on every phone.
+        HomeModelHero(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .heightIn(min = 240.dp),
+            onOpen = { onOpenSection(AppSection.Model) },
         )
 
-        MetricGrid()
+        TimelineStrip(onOpen = { onOpenSection(AppSection.Timeline) })
 
-        // The building model is the visual centre of the product, so it gets
-        // the largest area on the dashboard.
-        PlaceholderPanel(
-            title = stringResource(R.string.model_panel_title),
-            description = stringResource(R.string.model_panel_description),
-            modifier = Modifier.heightIn(min = 280.dp),
-        ) {
-            BuildingWireframe(modifier = Modifier.padding(bottom = 24.dp))
-        }
-
-        PlaceholderPanel(
-            title = stringResource(R.string.dashboard_recent_costs_title),
-            description = stringResource(R.string.dashboard_recent_costs_description),
-            modifier = Modifier.heightIn(min = 140.dp),
-        )
-
-        PlaceholderPanel(
-            title = stringResource(R.string.dashboard_upcoming_stages_title),
-            description = stringResource(R.string.dashboard_upcoming_stages_description),
-            modifier = Modifier.heightIn(min = 140.dp),
-        )
+        SummaryStrip(onAddCost = { onOpenSection(AppSection.Costs) })
     }
 }
 
-/** Two columns on a phone, four on a wider screen. */
 @Composable
-private fun MetricGrid(modifier: Modifier = Modifier) {
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 600.dp) 4 else 2
-        val placeholderValue = stringResource(R.string.placeholder_value)
-
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PlaceholderMetrics.chunked(columns).forEach { rowMetrics ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    rowMetrics.forEach { metric ->
-                        MetricCard(
-                            label = stringResource(metric.labelRes),
-                            value = placeholderValue,
-                            hint = stringResource(metric.hintRes),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    repeat(columns - rowMetrics.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
+private fun ProjectHeader(onOpenModel: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.dashboard_project_title),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = stringResource(R.string.dashboard_project_status),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = onOpenModel) {
+            Text(stringResource(R.string.dashboard_open_model))
         }
     }
 }

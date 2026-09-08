@@ -96,11 +96,14 @@ internal class OrbitCameraState(
      * Two-finger drag: slide the target across the screen plane. The pixel-to-
      * metre scale follows the distance, so panning feels the same whether the
      * camera is close in or far out.
+     *
+     * [fovExtentPixels] is the length of the viewport side the field of view
+     * spans — the shorter one, as the renderer projects it.
      */
-    fun pan(dragX: Float, dragY: Float, viewportHeight: Int) {
-        if (viewportHeight <= 0) return
+    fun pan(dragX: Float, dragY: Float, fovExtentPixels: Int) {
+        if (fovExtentPixels <= 0) return
         val metersPerPixel =
-            (2.0 * distance * tan(Math.toRadians(FIELD_OF_VIEW_DEGREES / 2.0)) / viewportHeight)
+            (2.0 * distance * tan(Math.toRadians(FIELD_OF_VIEW_DEGREES / 2.0)) / fovExtentPixels)
         panRight -= (dragX * metersPerPixel).toFloat()
         panUp += (dragY * metersPerPixel).toFloat()
     }
@@ -185,7 +188,11 @@ internal class OrbitCameraState(
 
     companion object {
 
-        /** Vertical field of view, shared with the renderer's projection. */
+        /**
+         * Field of view across the viewport's shorter side, shared with the
+         * renderer's projection — vertical on a wide viewport, horizontal on
+         * a tall one, so a framing fits whichever way the phone is held.
+         */
         const val FIELD_OF_VIEW_DEGREES: Double = 45.0
 
         private const val ORBIT_RADIANS_PER_PIXEL = 0.008f
@@ -209,7 +216,12 @@ internal class OrbitCameraState(
 
         private const val MIN_DISTANCE_FACTOR = 0.55
         private const val MAX_DISTANCE_FACTOR = 10.0
-        private const val FRAMING_MARGIN = 1.15
+        /**
+         * How far outside the bounding sphere the default view stands. Under
+         * one, because a sphere is a generous box for a house: the diagonal
+         * it is drawn round is longer than any side the camera sees.
+         */
+        private const val FRAMING_MARGIN = 1.00
         private const val DEFAULT_YAW_DEGREES = 35.0
         private const val DEFAULT_PITCH_DEGREES = 22.0
         private const val NEAR_PLANE_FACTOR = 0.01

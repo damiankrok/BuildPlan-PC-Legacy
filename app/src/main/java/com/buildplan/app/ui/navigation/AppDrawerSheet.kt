@@ -2,6 +2,7 @@ package com.buildplan.app.ui.navigation
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -18,7 +19,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.buildplan.app.R
 
-/** Full list of sections. The active one is marked as selected. */
+/**
+ * The launcher for every area of the app: the sections in their groups, the
+ * active one marked, and settings on their own at the foot.
+ *
+ * Grouped rather than flat so that nine destinations read as three ideas —
+ * the project, its money, the material around it — and the eye finds one in
+ * a glance rather than by counting down a list.
+ */
 @Composable
 fun AppDrawerSheet(
     currentSection: AppSection,
@@ -29,38 +37,64 @@ fun AppDrawerSheet(
         modifier = modifier,
         drawerContainerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 24.dp),
+                modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 28.dp),
             )
             Text(
-                text = stringResource(R.string.app_stage_label),
-                style = MaterialTheme.typography.labelSmall,
+                text = stringResource(R.string.dashboard_project_title),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 4.dp, bottom = 20.dp),
             )
-
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(12.dp))
 
-            AppSection.entries.forEach { section ->
-                NavigationDrawerItem(
-                    label = { Text(stringResource(section.labelRes)) },
-                    selected = section == currentSection,
-                    onClick = { onSectionClick(section) },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+            AppSectionGroup.entries.forEach { group ->
+                Text(
+                    text = stringResource(group.labelRes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 20.dp, bottom = 6.dp),
                 )
+                AppSection.inGroup(group).forEach { section ->
+                    DrawerEntry(section, section == currentSection, onSectionClick)
+                }
             }
-
             Spacer(Modifier.height(16.dp))
         }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(8.dp))
+        AppSection.ungrouped.forEach { section ->
+            DrawerEntry(section, section == currentSection, onSectionClick)
+        }
+        Spacer(Modifier.height(16.dp))
     }
+}
+
+@Composable
+private fun DrawerEntry(
+    section: AppSection,
+    selected: Boolean,
+    onSectionClick: (AppSection) -> Unit,
+) {
+    NavigationDrawerItem(
+        label = { Text(stringResource(section.labelRes)) },
+        selected = selected,
+        onClick = { onSectionClick(section) },
+        colors = NavigationDrawerItemDefaults.colors(
+            selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+    )
 }

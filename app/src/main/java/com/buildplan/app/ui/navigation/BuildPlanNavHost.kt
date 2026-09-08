@@ -12,6 +12,7 @@ import com.buildplan.app.ui.screens.SectionPlaceholderScreen
 @Composable
 fun BuildPlanNavHost(
     navController: NavHostController,
+    onNavigateToSection: (AppSection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -19,7 +20,7 @@ fun BuildPlanNavHost(
         startDestination = AppSection.Start.route,
         modifier = modifier,
     ) {
-        composable(AppSection.Dashboard.route) { DashboardScreen() }
+        composable(AppSection.Dashboard.route) { DashboardScreen(onOpenSection = onNavigateToSection) }
         composable(AppSection.Model.route) { ModelScreen() }
         composable(AppSection.Timeline.route) { SectionPlaceholderScreen(AppSection.Timeline) }
         composable(AppSection.Costs.route) { SectionPlaceholderScreen(AppSection.Costs) }

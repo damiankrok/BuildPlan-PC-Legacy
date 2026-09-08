@@ -4,6 +4,8 @@ import com.buildplan.app.domain.model.BuildingElementId
 import com.buildplan.app.geometry.OpeningPanelGeometry
 import com.buildplan.app.presentation.DecompositionGroup
 import com.buildplan.app.presentation.DecompositionProfile
+import com.buildplan.app.presentation.OpeningFrameProfile
+import com.buildplan.app.presentation.OpeningFrameSpec
 import com.buildplan.app.presentation.RoofCoverBlocker
 import com.buildplan.app.presentation.RoofCoverProfile
 import com.buildplan.app.presentation.RoofCoverSpec
@@ -123,6 +125,44 @@ object MarcowkiVisualPresentation {
     val roofCover: RoofCoverProfile = RoofCoverProfile(
         covers = mapOf(MarcowkiVisualModelV1.roofId to roofCoverSpec),
         blockers = roofCoverBlockers(),
+    )
+
+    /**
+     * The frame every facade pane is drawn with: a display assumption,
+     * recorded as one in [MarcowkiSourceEvidence.displayAssumptions].
+     *
+     * The schedule gives each opening a width and a height and no joinery.
+     * These are the proportions a frame needs to read as a frame at the
+     * distance a phone is held — a 7 cm bar, 8 cm through the wall — and a
+     * leaf no wider than 1.20 m, which divides the 4.70 m terrace glazing
+     * into four and the two 2.34 m gable glazings into two, as the published
+     * renders show them divided. Nothing in the canonical pane, hole or wall
+     * changes; the frame is a mesh laid through the pane by the renderer's
+     * adapter.
+     */
+    val glazingFrameSpec: OpeningFrameSpec = OpeningFrameSpec(
+        barWidth = 0.07,
+        barDepth = 0.08,
+        maxLeafWidth = 1.20,
+    )
+
+    /** The garage door's frame: the same bar, no leaves — it is a gate, not a glazing. */
+    val gateFrameSpec: OpeningFrameSpec = glazingFrameSpec.copy(maxLeafWidth = null)
+
+    /**
+     * Which of this model's panes are framed.
+     *
+     * The facade joinery the plans schedule, and the three rooflights under
+     * the roof's own id. Internal doors are deliberately absent: a hole with
+     * a leaf and nothing round it, by the same rule that gives them no
+     * handle. The ids come from the model as its openings were placed, so an
+     * opening the trace gains or loses is framed or not without a second
+     * list to keep in step.
+     */
+    val openingFrames: OpeningFrameProfile = OpeningFrameProfile(
+        MarcowkiVisualModelV1.facadeOpeningIds.associateWith { id ->
+            if (id == MarcowkiVisualModelV1.garageDoorId) gateFrameSpec else glazingFrameSpec
+        } + (MarcowkiVisualModelV1.roofId to glazingFrameSpec),
     )
 
     private fun roofCoverBlockers(): List<RoofCoverBlocker> {
