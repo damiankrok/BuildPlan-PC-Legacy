@@ -1603,7 +1603,7 @@ podstawić generyczny domyślny kształt: dom bez tej cechy jest innym domem.
 Prezentacja (co jest szkłem, co jest przygaszone) pozostaje metadaną obok
 modelu, po identyfikatorze, i nigdy nie wchodzi do domeny.
 
-## Analizator projektów — prototyp (STAGE-023A)
+## Analizator projektów — prototyp (STAGE-023A, utwardzony w STAGE-023B)
 
 Pierwsza implementacja kontraktu spisanego wyżej: z adresu publicznej strony
 projektu (dziś: ARCHON) do kandydata bryły, przedmiaru i listy pytań — bez
@@ -1671,14 +1671,23 @@ ProjectInput ─► UrlSafety ─► SourceResolver ─► SiteAdapter (ARCHON) 
    zabudowy (`ppm = √(px/m²)`); suma powierzchni pomieszczeń jest wyłącznie
    sprawdzeniem (`residual`), rzuty wyższe dziedziczą skalę parteru
    (`SHARED_PLAN_SCALE`). Residuum ≤ 3 % → `SOURCE_DERIVED`, > 8 % →
-   `CONFLICTING`.
-6. **Dopasowanie pomieszczeń** (`RoomMatcher`): jedyny sygnał to
-   powierzchnia, więc matcher mówi wprost, czego nią nie rozstrzygnie:
-   jednoznaczne pary najpierw, potem grupy regionów spójne przez uszczelnione
-   przerwy, na końcu unie otwartych planów dzielone proporcjonalnie
-   (`DISPLAY_ASSUMPTION` + pytanie). Cechy strukturalne (brama ≥ 2,2 m,
-   bieg schodów) są preferencją, nie wetem. Dwie równe powierzchnie to
-   jawna niejednoznaczność, nie cichy wybór.
+   `CONFLICTING`. **Po dopasowaniu pomieszczeń residuum jest przeliczane
+   ponownie** (`PlanCalibrator.reconcile`): anchor `MATCHED_ROOM_AREAS`
+   porównuje piksele *dopasowanych* regionów z powierzchniami *tych*
+   pomieszczeń i zastępuje surowy `PUBLISHED_ROOM_AREAS`, który ważył
+   wszystkie zamknięte regiony (także taras, szacht i drzazgi) przeciw
+   tabeli pomieszczeń. Skala nigdy się przez to nie przesuwa — powierzchnie
+   pomieszczeń sprawdzają kalibrację, nie ustawiają jej.
+6. **Dopasowanie pomieszczeń** (`RoomMatcher`): powierzchnia jest sygnałem
+   wiodącym, ale nie jedynym, a matcher mówi wprost, czego nią nie
+   rozstrzygnie: jednoznaczne pary najpierw, potem grupy regionów spójne
+   przez uszczelnione przerwy, na końcu unie otwartych planów dzielone
+   proporcjonalnie (`DISPLAY_ASSUMPTION` + pytanie). Cechy strukturalne —
+   brama ≥ 2,2 m, bieg schodów, `CIRCULATION_HUB` (region, na który otwiera
+   się najwięcej innych) — są preferencją, nie wetem, i żadna nie przebije
+   powierzchni, która nie pasuje. Dwie równe powierzchnie to jawna
+   niejednoznaczność; rozstrzyga ją dopiero druga cecha, a każde dopasowanie
+   niesie `alternatives` (co jeszcze pasowało) i `signals` (co zdecydowało).
 7. **Dach** (`roof/`): prostoliniowy szkielet z prędkościami krawędzi
    (1 = okap, 0 = szczyt) — zdarzenia zapadania i podziału, łuki → połacie —
    wspólny dla dachu dwuspadowego i kopertowego; płytkie wnęki obrysu
@@ -1714,6 +1723,69 @@ ProjectInput ─► UrlSafety ─► SourceResolver ─► SiteAdapter (ARCHON) 
     `schemaVersion 1`, `analyzerVersion 0.1.0-stage023a`, `Locale.ROOT`
     w każdym formatowaniu, obieg zapis→odczyt→zapis identyczny co do bajtu.
 
+### Niezmiennik obrysu: pierścień prosty albo nic (STAGE-023B)
+
+Obrys pomieszczenia jest albo **poprawnym pierścieniem prostym**, albo nie ma
+go wcale (`RoomGeometryState.UNRESOLVED_REGION`, `polygon == null`). Trzeciej
+możliwości nie ma, bo pierścień, który sam siebie przecina, ma i tak
+powierzchnię z shoelace'a i i tak odpowiada na `contains` — a obie odpowiedzi
+są złe w sposób, którego nic dalej nie zauważa.
+
+- `candidate/RingValidity.kt` sprawdza: skończoność, ≥ 3 wierzchołki,
+  brak krawędzi zerowej długości, brak kolców, **brak przecięcia
+  nieprzyległych krawędzi** (samo dotknięcie już dyskwalifikuje), niezerowe
+  pole. Naprawa tylko **usuwa** (kolec, zdublowany wierzchołek, mniejsze pętle
+  zaciśniętego pierścienia) i raportuje `areaRetained`; nigdy nie łączy
+  regionów.
+- `plan/RoomGeometry.kt` składa to w trzy kroki: **mostkowanie** pasków, które
+  segmentacja uszczelniła w miejscu linii ściany, jakiej źródło nie narysowało
+  (tylko gdy po obu stronach jest ten sam pokój); **śledzenie i dowód** —
+  kolejne warianty wygładzenia uskoków, pierwszy prosty pierścień wygrywa,
+  więc wygładzanie nie może wprowadzić przecięcia; **uzgodnienie** — pole
+  pierścienia musi zgadzać się z polem pikseli, z których był śledzony
+  (pasmo 90–115 %).
+- Powierzchnia podłogi (`plannedArea`) jest liczona z pikseli **regionów przed
+  mostkowaniem** — do lica ścian, jak mierzy je strona — a pierścień obejmuje
+  dodatkowo progi drzwiowe łączące części pokoju. To dwie różne liczby, każda
+  do swojego celu.
+- Przedmiar pilnuje granicy: pokój bez pierścienia dostaje `MISSING` na
+  suficie, kubaturze, licach ścian i powierzchni użytkowej — nigdy małej
+  liczby wyglądającej na zmierzoną.
+
+Błąd, który to zamyka: pokój złożony z dwóch regionów po obu stronach
+drzwi dostawał pierścień **pierwszego** z nich, więc podłoga (z pikseli)
+i sufit (z pierścienia) różniły się trzykrotnie.
+
+### Szew odczytu tekstu z rysunku (STAGE-023B)
+
+`text/` to kontrakt, nie silnik OCR: `DrawingTextExtractor` →
+`TextObservation(text, bounds, confidence, sourceAsset, method, legibility)`.
+Rdzeń nie zna czcionki ani biblioteki; implementacja może mieszkać w adapterze.
+
+- `GlyphRunLocator` znajduje **gdzie** rysunek drukuje tekst (składowe
+  wielkości glifu na wspólnej linii bazowej) i **mierzy wysokość glifu**.
+- `DrawingTextExtractor.MIN_LEGIBLE_GLYPH_HEIGHT_PX = 10` jest bramką
+  wysokości: poniżej niej rozpoznawanie nie jest w ogóle podejmowane. Obie
+  strony benchmarku wymiarują otwory i rzędne przy **4–6 px na glif**, więc
+  wszystkie przebiegi wracają `TOO_SMALL_TO_READ`, a wysokości otworów
+  zostają `MISSING` z pytaniem. To wynik o *źródle*, mocniejszy niż milczenie:
+  liczby tam są, a opublikowany raster ich nie unosi.
+- `DimensionLabelParser` jest bramką jakości: `SOURCE_EXACT` dopiero przy
+  `legibility == READ`, `confidence ≥ 0,90`, pełnym dopasowaniu wzorca
+  i fizycznie możliwej wartości. `OpeningLabelMatcher` wiąże etykiety
+  z otworami i odrzuca etykietę, której szerokość kłóci się z odrysowaną.
+
+### Schody: dwa niezależne świadectwa (STAGE-023B)
+
+`StairCandidate` niesie `evidence: Set<StairEvidence>` —
+`PUBLISHED_STAIR_ROOM` (tabela pomieszczeń nazywa pokój schodami i region go
+dopasował), `TREAD_LINES` (bieg równo rozstawionych linii stopni),
+`CROSS_FLOOR_ALIGNMENT` (strefa nad strefą) — oraz `fromFloorId`/`toFloorId`,
+`flights`, `roomId` i `unresolved`. Rozstaw stopnia to fizyczny przedział
+0,16–0,42 m, a o fałszywce decyduje **regularność** rozstawu (najszersza
+przerwa ≤ 1,4 × najwęższa): to ona odróżnia bieg od kreskowania mebla.
+Liczba stopni i kierunek wejścia zostają nieodczytane — są tekstem i strzałką.
+
 ### Dwie semantyki ścian i dwie semantyki powierzchni
 
 Lico pomieszczenia (tynk, malowanie; osobno dla każdej strony ściany
@@ -1733,23 +1805,48 @@ pośrednie, raporty i migawki obu projektów. Cudze rysunki nie wchodzą do
 repozytorium — w kodzie są wyłącznie adresy, klucze i liczby oczekiwane,
 i to tylko w testach.
 
-### Znane ograniczenia prototypu
+### Semantyka elewacji: dwa odczyty obwiedni
 
-- Wysokości otworów, rzędne z przekroju i teren nie są czytane (to tekst na
-  rysunku) — wszędzie `MISSING` albo `DISPLAY_ASSUMPTION` z pytaniem.
+Ta sama ściana ma dwie liczby i strona kosztów nie mówi, którą drukuje:
+
+- **mur między otworami** (`facadeWallMaterial`) — odrysowane kawałki ścian
+  zewnętrznych. Otwory są z niej nieobecne z definicji, bo otwór to przerwa
+  *między* kawałkami, więc **nic nie może ich odjąć drugi raz**; brakuje w niej
+  też obwiedni, której raster nie rozłożył na prostokąty. To dolny widełek.
+- **obwiednia** (`exteriorEnvelopeGross`) — obwód obrysu kondygnacji × jej
+  wysokość, mierzona **nad** otworami, plus szczyty; `…Net` to ona minus
+  stolarka.
+
+`CrossSourceValidator.bracketed` porównuje z widełkami: gdy liczba ze strony
+wypada **między** odczytem brutto a netto, rozbieżność jest definicją, a nie
+geometrią, i wynik to `NOT_COMPARABLE` z wypisanymi obiema wartościami. Poza
+widełkami porównanie idzie do bliższego odczytu i pozostaje `MISMATCH`.
+Pozycję „ściany zewnętrzne" ze strony kosztów porównujemy z **murem** (to
+wielkość do wybudowania), a nie z obwiednią.
+
+### Znane ograniczenia prototypu (po STAGE-023B)
+
+- **Tekst rysunku pozostaje nieodczytany.** Rzuty wymiarują każdy otwór,
+  a przekrój drukuje każdą rzędną — przy 4–6 px na glif, poniżej bramki
+  10 px. Etykiety są **lokalizowane i liczone** (Projekt A: 43 + 25 przebiegów
+  na rzutach, 6 na przekroju; 19 z 31 i 13 z 19 otworów ma etykietę w zasięgu
+  2,5 m), ale żadna nie jest czytana, więc wysokości otworów i rzędne zostają
+  `MISSING`/`DISPLAY_ASSUMPTION` z pytaniem. Łańcuchy wymiarowe obrysu są
+  drukowane przy 10–13 px — **są nad bramką** i pozostają nieodczytane tylko
+  dlatego, że nie ma podpiętego rozpoznawania glifów. To pierwszy krok
+  następnego etapu.
 - Szkielet o jednym spadku przeszacowuje wzniesienie dachu kopertowego ze
   skrzydłami; łańcuch pionowy ma przez to bramkę wiarygodności.
-- Skrzydło pod niższym dachem na rzucie poddasza Projektu B jest odzyskiwane
-  tylko częściowo (14 z 20 pomieszczeń); kalibracja tego rzutu jest
-  `CONFLICTING` i tak jest raportowana.
-- Schody nie są wykrywane na żadnym z dwóch projektów (0 stref).
-- Pojedyncze wielokąty pomieszczeń po wygładzeniu uskoków bywają
-  samoprzecinające; wtedy sufit i kubatura liczone po siatce wychodzą
-  mniejsze niż podłoga liczona z pikseli (na urządzeniu: pokój 5 parteru
-  Projektu B, 4,2 m² sufitu przy 14,65 m² podłogi). Liczby nie są ukrywane,
-  rozbieżność jest widoczna w Lab.
-- Elewacja brutto ze strony obejmuje elementy, których kandydat nie ma
-  (okapy, przybudówki), więc pozostaje `MISMATCH` na obu projektach.
+- Poddasze Projektu B odzyskuje 14 z 20 pomieszczeń. Trzy pokoje przegrywają
+  z **prawdziwą** niejednoznacznością powierzchni (Łazienka 15,36 m²
+  i Pokój 15,60 m² — 1,5 % różnicy), którą matcher zgłasza jako
+  niejednoznaczność z alternatywami, i to kaskaduje na trzy kolejne. Suma
+  kondygnacji jest przez to o 33 % za mała i tak jest raportowana.
+- Schody: po jednym kandydacie `SOURCE_DERIVED` z pomieszczenia schodowego na
+  każdy projekt; liczba stopni i kierunek wejścia nieodczytane.
+- Elewacja Projektu B pozostaje `MISMATCH` (236 m² obwiedni przy 171,6 m²
+  ze strony) — poza widełkami, więc to nie jest sama definicja; podejrzenie
+  pada na zakres (garaż, cokół), którego strona nie precyzuje.
 - Lab jest surowym harnessem debugowym (listy tekstu), a na emulatorze
   z 2 GB RAM pierwsze uruchomienie po instalacji trwa 1–2 minuty
   (weryfikacja bajtkodu), co system zgłasza jako ANR do przeczekania.

@@ -456,6 +456,93 @@
   schody 0 stref, wysokości otworów `MISSING`, elewacja brutto
   nieporównywalna). Wynik: `PARTIAL_STAGE_023A_MULTI_PROJECT_ANALYZER` —
   prototyp do oceny OWNER-a, nie funkcja produktu.
+
+- STAGE-023B analyzer hardening — **PARTIAL** (nadal prototyp badawczy).
+  Siedem iteracji utwardzania prototypu ze STAGE-023A, bez zmiany
+  architektury, bez nowych zależności, bez zdalnej AI, bez rozpoznawania
+  glifów.
+
+  **Niezmiennik obrysu.** Nowe `candidate/RingValidity.kt`
+  i `plan/RoomGeometry.kt`: pomieszczenie ma albo poprawny pierścień prosty,
+  albo `UNRESOLVED_REGION` i `polygon == null`, a przedmiar odmawia wtedy
+  sufitu, kubatury i lic ścian (`MISSING` z powodem) zamiast liczyć je
+  z odrzuconego kształtu. Przyczyna dawnej katastrofy: pokój złożony
+  z kilku regionów po obu stronach drzwi dostawał pierścień **pierwszego**
+  z nich, więc podłoga (z pikseli) i sufit (z pierścienia) różniły się
+  trzykrotnie. Paski, które segmentacja uszczelniła w miejscu nienarysowanej
+  linii, są teraz mostkowane (tylko gdy po obu stronach ten sam pokój),
+  a pole pierścienia musi zgodzić się z polem pikseli (90–115 %).
+  **Wynik: 15/15 i 14/14 poprawnych pierścieni, 0 samoprzecinających się,
+  0 katastrof sufitu** (było: 14,65 m² podłogi przy 4,2 m² sufitu na B,
+  8,14 przy 1,1 na A).
+
+  **Ściany ukośne uszczelniają segmentację.** Kwadratowy element
+  strukturalny gubił ścianę pod kątem (25 cm mieści tylko kwadrat 18 cm), więc
+  wykusz salonu Projektu B nie zamykał się i największe pomieszczenie
+  (31 m²) nie pasowało do niczego. Uszczelnianie pełną maską `structure`
+  naprawiło jednocześnie obrys, kalibrację i dach.
+
+  **Kalibracja.** `PlanCalibrator.reconcile` przelicza residuum po
+  dopasowaniu, porównując dopasowane regiony z powierzchniami tych
+  pomieszczeń zamiast wszystkich regionów z całą tabelą. B: poddasze
+  14,8 % `CONFLICTING` → **0,37 % `SOURCE_DERIVED`**, parter 6,9 % → 0,72 %;
+  A: 1,8 % → 0,41 % i 0,8 % → 0,99 %. Skala się przy tym nie przesuwa.
+
+  **Dach.** B: +10,2 % → **+0,69 %** (248,4 vs 246,7 m²); A bez regresji
+  −1,5 % (148,3 vs 150,6). Obrys dachu jest dodatkowo ograniczony
+  wysięgiem okapu (1,5 m), a pas dachu musi przylegać do ścian — kreska
+  tarasu i łańcuch wymiarowy nie są już brane za dach.
+
+  **Schody.** Z 0 stref na obu domach do po jednym kandydacie
+  `SOURCE_DERIVED` z pomieszczenia schodowego na każdy projekt (A dodatkowo
+  jeden `TRACE_UNCERTAIN` z linii stopni). Rozstaw stopnia to fizyczny
+  przedział 0,16–0,42 m, a fałszywki (6 na B po samym poszerzeniu) odsiewa
+  wymóg **regularności** rozstawu.
+
+  **Tekst rysunku.** Nowy szew `text/` (`DrawingTextExtractor`,
+  `TextObservation`, `GlyphRunLocator`, `DimensionLabelParser`,
+  `OpeningLabelMatcher`) z bramką wysokości glifu 10 px. Zmierzony wynik:
+  rzuty i przekrój obu projektów drukują wymiary przy **4–6 px na glif**,
+  więc nic nie jest czytane, a wysokości otworów zostają `MISSING`
+  z pytaniem — przebiegi są jednak **lokalizowane i wiązane z otworami**
+  (A: 19 z 31 i 13 z 19 otworów ma etykietę w zasięgu 2,5 m). Łańcuchy
+  wymiarowe obrysu idą przy 10–13 px, są nad bramką i pozostają
+  nieodczytane wyłącznie dlatego, że nie podpięto rozpoznawania glifów.
+
+  **Semantyka wielkości.** Otwór zewnętrzny wymaga pokoju po **dokładnie
+  jednej** stronie (było: po co najmniej jednej), co usunęło 10 widmowych
+  okien z obwiedni B i obniżyło stolarkę ze 107,8 do 63,8 m². Usunięto
+  podwójne odejmowanie: „netto" ścian zewnętrznych odejmowało otwory od
+  sumy muru, w której ich nigdy nie było (A: 73 m² przy 123 m² muru).
+  Elewacja jest teraz porównywana widełkami brutto–netto: gdy liczba ze
+  strony wypada między nimi, wynik to `NOT_COMPARABLE` z obiema wartościami,
+  bo różnica jest definicją, nie geometrią.
+
+  **Dopasowanie pomieszczeń.** Sygnał `CIRCULATION_HUB`, jawne
+  `alternatives` i `signals` przy każdym dopasowaniu; cecha nigdy nie
+  przebija powierzchni, która nie pasuje.
+
+  **Audyt (iteracja 7).** Znalazł i naprawił trzy błędy: podwójne
+  odejmowanie otworów, `FLOOR_PLAN_RASTER: 0` (czytane z manifestu sprzed
+  pobrania, gdzie wszystko jest `PENDING`) i metrykę porównującą sufit
+  z podłogą zamiast z pierścieniem.
+
+  **Bilans porównań.** A: 12 STRONG / 11 ACCEPTABLE / 1 MISMATCH,
+  kompletność 65 % → **72,1 %**. B: 2 → **11 STRONG**, 6 MISMATCH,
+  kompletność 63 % → **75,0 %**. Migawki obu projektów bajt w bajt
+  identyczne między biegami (poza czasami). Projekt A przebiegnięty też na
+  żywo w Lab na `emulator-5570` z tym samym wynikiem (zrzuty w
+  `D:\TRAVELAPPS\_stage023b_evidence\device\`). `:analyzer:test` (77 testów
+  offline + ewaluacyjne opt-in), `lintDebug`, `testDebugUnitTest`,
+  `assembleDebug`, `assembleRelease` zielone; release nadal bez
+  `INTERNET`, bez Lab, bez modułu analizatora, jsoup i Filamenta
+  (zweryfikowane w dex i manifeście), bez nowych `.so`.
+
+  Pozostaje otwarte: rozpoznawanie glifów w łańcuchach wymiarowych (P1),
+  trzy pomieszczenia poddasza B przegrywające z prawdziwą
+  niejednoznacznością 15,36 vs 15,60 m² (P1), zakres elewacji B (P1).
+  Wynik: `PARTIAL_STAGE_023B_ANALYZER_HARDENING`.
+
 ## Następny krok
 
 GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń

@@ -63,13 +63,27 @@ class PlanRaster(val image: RasterImage) {
      * area, in components large enough to frame a building — never a shaded
      * symbol or a coloured fill inside a room.
      */
-    fun roofBand(minThicknessPx: Int, minExtentPx: Int): BinaryMask {
+    fun roofBand(minThicknessPx: Int, minExtentPx: Int, nearWalls: BinaryMask? = null, minNearFraction: Double = 0.6): BinaryMask {
         val opened = midTone.openWindow(minThicknessPx, minThicknessPx)
         val components = opened.components()
         val keep = (1..components.count).filter { label ->
             val box = components.boundingBox(label) ?: return@filter false
             // A band segment along one facade is long in one direction only; a corner piece in both.
-            box.width >= minExtentPx || box.height >= minExtentPx
+            if (box.width < minExtentPx && box.height < minExtentPx) return@filter false
+            // An eaves band hugs the walls it overhangs. A terrace edge, a lower-roof outline or a
+            // dimension chain is also a long mid-tone run, and on a plan that draws one it used to
+            // be taken for the roof — which pushed the roof outline metres past the building and
+            // inflated both the storey footprint and the roof area. Requiring most of a component
+            // to lie within an overhang of the walls tells the two apart without knowing the house.
+            if (nearWalls == null) return@filter true
+            var total = 0
+            var near = 0
+            for (y in box.minY..box.maxY) for (x in box.minX..box.maxX) {
+                if (components.label(x, y) != label) continue
+                total++
+                if (nearWalls[x, y]) near++
+            }
+            total > 0 && near.toDouble() / total >= minNearFraction
         }.toSet()
         val out = BinaryMask(image.width, image.height)
         for (i in out.bits.indices) if (components.labels[i] in keep) out.bits[i] = true

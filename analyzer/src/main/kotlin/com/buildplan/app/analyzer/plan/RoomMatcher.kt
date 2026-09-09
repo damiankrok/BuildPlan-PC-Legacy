@@ -37,19 +37,48 @@ import kotlin.math.ln
  */
 object RoomMatcher {
 
+    /** A room that also fitted the regions a match took, kept so the choice can be questioned. */
+    data class Alternative(val roomIndex: Int, val roomName: String, val publishedArea: Double, val relativeError: Double, val why: String)
+
     data class Match(
         val regionIndices: List<Int>,
         val roomIndices: List<Int>,
         val fidelity: FactFidelity,
         val note: String,
+        /** Rooms that fit these regions nearly as well, best first; empty when the fit was unique. */
+        val alternatives: List<Alternative> = emptyList(),
+        /** Which signals decided this match, in the order they were applied. */
+        val signals: List<String> = emptyList(),
     )
 
     data class Result(val matches: List<Match>, val unmatchedRegions: List<Int>, val unmatchedRooms: List<Int>, val ambiguities: List<String>)
 
     private data class Target(val index: Int, val area: Double, val oneSided: Boolean)
 
-    /** What a region is next to on the plan, independent of any room name. */
-    enum class RegionCue { GATE, STAIR }
+    /**
+     * What a region is next to on the plan, independent of any room name.
+     *
+     * [CIRCULATION_HUB] is the structural half of "this is the hall": the
+     * region the most other regions open onto. A house has one or two of them
+     * per storey and they are the circulation, whatever the table calls them.
+     * Like every cue it is a preference and never a veto — a hall and a
+     * bedroom of the same published area stay ambiguous unless a cue picks
+     * one, and the ambiguity is reported either way.
+     */
+    enum class RegionCue { GATE, STAIR, CIRCULATION_HUB }
+
+    /** Regions that the most others open onto, as a cue map to merge into the caller's. */
+    fun circulationCues(regionCount: Int, adjacency: List<Pair<Int, Int>>, minDegree: Int = 3): Map<Int, Set<RegionCue>> {
+        if (regionCount == 0) return emptyMap()
+        val degree = IntArray(regionCount)
+        adjacency.forEach { (a, b) ->
+            if (a in 0 until regionCount) degree[a]++
+            if (b in 0 until regionCount) degree[b]++
+        }
+        val best = degree.max()
+        if (best < minDegree) return emptyMap()
+        return degree.indices.filter { degree[it] == best }.associateWith { setOf(RegionCue.CIRCULATION_HUB) }
+    }
 
     fun match(
         regionAreasM2: List<Double>,
@@ -101,13 +130,16 @@ object RoomMatcher {
          * A wide terrace glazing also passes for a gate, so a gate region is
          * still open to other rooms.
          */
+        val hubCueExists = cues.values.any { RegionCue.CIRCULATION_HUB in it }
+        fun cueFor(t: Target): RegionCue? = when (rooms[t.index].kind) {
+            RoomKind.GARAGE -> RegionCue.GATE
+            RoomKind.STAIRS -> if (stairCueExists) RegionCue.STAIR else null
+            RoomKind.HALL, RoomKind.VESTIBULE -> if (hubCueExists) RegionCue.CIRCULATION_HUB else null
+            else -> null
+        }
+
         fun preferred(t: Target, candidates: List<List<Int>>): List<List<Int>> {
-            val kind = rooms[t.index].kind
-            val cue = when (kind) {
-                RoomKind.GARAGE -> RegionCue.GATE
-                RoomKind.STAIRS -> if (stairCueExists) RegionCue.STAIR else null
-                else -> null
-            } ?: return candidates
+            val cue = cueFor(t) ?: return candidates
             val cued = candidates.filter { hasCue(it, cue) }
             return if (cued.isEmpty()) candidates else cued
         }
@@ -133,7 +165,14 @@ object RoomMatcher {
                 if (roomsForRegion.size != 1) continue
                 val error = distance(regionAreasM2[r], t)!!
                 val fidelity = if (strong(error)) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN
-                matches += Match(listOf(r), listOf(t.index), fidelity, "region ${r + 1}: ${"%.2f".format(java.util.Locale.ROOT, regionAreasM2[r])} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (regionAreasM2[r] / t.area - 1) * 100)} %); unique fit")
+                matches += Match(
+                    listOf(r), listOf(t.index), fidelity,
+                    "region ${r + 1}: ${"%.2f".format(java.util.Locale.ROOT, regionAreasM2[r])} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (regionAreasM2[r] / t.area - 1) * 100)} %); unique fit",
+                    signals = listOf(
+                        "published area residual ${"%.1f".format(java.util.Locale.ROOT, (regionAreasM2[r] / t.area - 1) * 100)} %",
+                        "mutually unique: this room fits only this region and this region fits only this room",
+                    ),
+                )
                 usedRooms += t.index
                 usedRegions += r
                 settled = true
@@ -157,16 +196,55 @@ object RoomMatcher {
             val (set, error) = ranked.first()
             val area = set.sumOf { regionAreasM2[it] }
 
+            // Every other unmatched room these same regions would also fit. Reported whether or not
+            // one was close enough to call the match ambiguous, because a reader checking a room
+            // needs to see what else it could have been, not only that something else could.
+            val alternatives = targets
+                .filter { o -> o.index != t.index && o.index !in usedRooms }
+                .mapNotNull { o -> distance(area, o)?.let { d -> o to d } }
+                .sortedBy { it.second }
+                .take(3)
+                .map { (o, _) ->
+                    val cue = cueFor(o)
+                    Alternative(
+                        o.index, rooms[o.index].name, o.area, area / o.area - 1,
+                        buildString {
+                            append("area fits within tolerance")
+                            if (cue != null && !hasCue(set, cue)) append("; but these regions carry no $cue cue, which this kind of room expects")
+                        },
+                    )
+                }
+            val signals = buildList {
+                add("published area residual ${"%.1f".format(java.util.Locale.ROOT, (area / t.area - 1) * 100)} %")
+                if (set.size > 1) add("${set.size} regions joined across wall-line gaps")
+                cueFor(t)?.let { c -> if (hasCue(set, c)) add("$c cue on the region") else add("no $c cue, which this kind of room expects") }
+            }
             // Ambiguity: another unmatched room of almost the same area would fit these regions as well.
             val rival = targets.firstOrNull { o -> o.index != t.index && o.index !in usedRooms && abs(o.area - t.area) / t.area < 0.06 && distance(area, o) != null }
             val label = if (set.size == 1) "region ${set.first() + 1}" else "regions ${set.joinToString { "${it + 1}" }} joined across wall-line gaps"
             val polishLabel = if (set.size == 1) "regionu ${set.first() + 1}" else "regionów ${set.joinToString { "${it + 1}" }}"
             if (rival != null) {
-                matches += Match(set, listOf(t.index), FactFidelity.TRACE_UNCERTAIN, "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 fits ${rooms[t.index].name} and ${rooms[rival.index].name} (~${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); assigned by table order")
-                ambiguities += "Pomieszczenia ${rooms[t.index].name} i ${rooms[rival.index].name} mają zbliżoną powierzchnię (${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); przypisanie $polishLabel jest niepewne."
+                // A cue the rival lacks and this room has is exactly the second signal that is
+                // allowed to settle an area tie; without one the two stay indistinguishable.
+                val cue = cueFor(t)
+                val settledByCue = cue != null && hasCue(set, cue) && cueFor(rival) != cue
+                matches += Match(
+                    set, listOf(t.index),
+                    if (settledByCue) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN,
+                    "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 fits ${rooms[t.index].name} and ${rooms[rival.index].name} (~${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); " +
+                        if (settledByCue) "settled by the $cue cue" else "assigned by table order",
+                    alternatives, signals,
+                )
+                if (!settledByCue) {
+                    ambiguities += "Pomieszczenia ${rooms[t.index].name} i ${rooms[rival.index].name} mają zbliżoną powierzchnię (${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); przypisanie $polishLabel jest niepewne."
+                }
             } else {
                 val fidelity = if (set.size == 1 && strong(error)) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN
-                matches += Match(set, listOf(t.index), fidelity, "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (area / t.area - 1) * 100)} %)")
+                matches += Match(
+                    set, listOf(t.index), fidelity,
+                    "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (area / t.area - 1) * 100)} %)",
+                    alternatives, signals,
+                )
             }
             usedRooms += t.index
             usedRegions += set

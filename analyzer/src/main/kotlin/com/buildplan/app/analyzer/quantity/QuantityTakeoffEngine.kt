@@ -62,10 +62,22 @@ data class RoomQuantities(
 data class FloorQuantities(
     val floorId: String,
     val roomFloorAreaSum: Measured,
+    /**
+     * Masonry: the traced exterior wall pieces of this storey.
+     *
+     * Already net of every opening, because an opening is a gap *between*
+     * pieces and never a piece — so nothing may subtract openings from this
+     * again. It is also short of whatever envelope the raster left oblique or
+     * unresolved, which makes it a lower bracket rather than a measurement of
+     * the envelope.
+     */
     val exteriorWallsStructural: Measured,
     val loadBearingWallsStructural: Measured,
     val partitionsStructural: Measured,
-    val exteriorWallsNet: Measured,
+    /** The envelope over the openings: this storey's footprint perimeter × its height. */
+    val exteriorEnvelopeGross: Measured,
+    /** [exteriorEnvelopeGross] minus the exterior openings on this storey. */
+    val exteriorEnvelopeNet: Measured,
     val openingAreasByType: Map<OpeningType, Double>,
 )
 
@@ -79,8 +91,24 @@ data class ProjectQuantities(
     val hipLength: Measured,
     val eaveLength: Measured,
     val exteriorJoinery: Measured,
+    /**
+     * The envelope as a *surface*: the storey footprints' perimeters run up
+     * their storey heights, plus the gable panels. Openings are part of it,
+     * because a facade is measured over the wall and the openings are taken
+     * off afterwards.
+     */
     val facadeGross: Measured,
     val facadeNet: Measured,
+    /**
+     * The envelope as *masonry*: the traced exterior wall pieces only.
+     *
+     * A different quantity from [facadeGross] and never comparable with it —
+     * this one already excludes every opening, because an opening is not a
+     * wall piece, and it also drops whatever stretch of envelope the raster
+     * left as oblique or unresolved structure. It is the lower bracket on
+     * what the envelope can be.
+     */
+    val facadeWallMaterial: Measured,
     val floorsAndStairsArea: Measured,
     val notes: List<String>,
 )
@@ -134,8 +162,23 @@ class QuantityTakeoffEngine(
             }
 
             for (room in floor.rooms) {
-                val grid = integrate(room, ::heightAt)
                 val floorArea = room.plannedArea
+                // No proved ring, no polygon quantities. The region's pixel area is a measurement
+                // of the room and stands; ceilings, volumes and wall faces are measurements of its
+                // *outline*, and computing them from a ring that was rejected would put an
+                // apparently exact number on geometry the analyzer has said it cannot resolve.
+                if (room.polygon == null) {
+                    val why = "room geometry unresolved: ${room.geometryNote}"
+                    roomQuantities += unresolvedRoom(room, floorArea, why)
+                    surfaces += MeasuredSurfaceCandidate(
+                        "${room.id}-floor", SurfaceType.FLOOR, room.id, room.id, null, null, false,
+                        "enclosed region pixel area (no ring)", floorArea, zero(), floorArea,
+                        "floor finish area from the segmented region; the room has no proved outline",
+                    )
+                    notes += "${room.id}: $why"
+                    continue
+                }
+                val grid = integrate(room, ::heightAt)
                 val fidelityH = if (isTop) FactFidelity.weakest(listOf(room.matchConfidence, levels.atticFlatCeilingHeight.fidelity)) else FactFidelity.weakest(listOf(room.matchConfidence, floor.clearHeight.fidelity))
                 val faceIds = mutableListOf<String>()
                 var gross = 0.0
@@ -217,14 +260,19 @@ class QuantityTakeoffEngine(
             val openings = candidate.openings.filter { it.floorId == floor.id }
             val byType = openings.groupBy { it.type }.mapValues { (t, list) -> list.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[t] ?: 0.0) } }
             val exteriorOpenings = openings.filter { it.exterior }.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[it.type] ?: 0.0) }
+            val envelopeGross = floor.footprint?.edges?.sumOf { e -> lineIntegral(e.a, e.b, ::wallHeightAt) } ?: 0.0
             val f = FactFidelity.weakest(listOf(floor.clearHeight.fidelity, FactFidelity.SOURCE_TRACED))
             FloorQuantities(
                 floorId = floor.id,
                 roomFloorAreaSum = Measured(floor.rooms.sumOf { it.plannedArea.value ?: 0.0 }, MeasureUnit.SQUARE_METER, f, Provenance.derived("sum of room polygons")),
-                exteriorWallsStructural = Measured(exteriorGross, MeasureUnit.SQUARE_METER, f, Provenance.derived("exterior wall centreline length × storey height (floor to floor; to the roof on the top storey)")),
+                exteriorWallsStructural = Measured(exteriorGross, MeasureUnit.SQUARE_METER, f, Provenance.derived("exterior wall piece centreline length × storey height, once per piece; openings are gaps between pieces and are already absent")),
                 loadBearingWallsStructural = Measured(loadBearing, MeasureUnit.SQUARE_METER, f, Provenance.derived("internal walls ≥ 0.20 m thick, once each")),
                 partitionsStructural = Measured(partitions, MeasureUnit.SQUARE_METER, f, Provenance.derived("internal walls < 0.20 m thick, once each")),
-                exteriorWallsNet = Measured(exteriorGross - exteriorOpenings, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+                // Net comes off the *envelope*, never off the masonry: the masonry sum already
+                // has every opening missing from it, and taking them off a second time reported
+                // Project A's envelope at 73 m2 when the traced masonry alone was 123 m2.
+                exteriorEnvelopeGross = Measured(envelopeGross, MeasureUnit.SQUARE_METER, f, Provenance.derived("storey footprint perimeter × storey height, measured over the openings")),
+                exteriorEnvelopeNet = Measured(max(0.0, envelopeGross - exteriorOpenings), MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
                 openingAreasByType = byType,
             )
         }
@@ -242,10 +290,24 @@ class QuantityTakeoffEngine(
         // Joinery and facade.
         val exteriorOpenings = candidate.openings.filter { it.exterior }
         val joinery = exteriorOpenings.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[it.type] ?: 0.0) }
-        val facadeGross = floorQuantities.sumOf { it.exteriorWallsStructural.value ?: 0.0 } + gableArea()
+        // Two readings of the envelope, and the difference between them is the point.
+        //
+        // The masonry reading sums the traced exterior wall pieces. Every opening is already
+        // missing from it, because an opening is a gap between pieces and not a piece, and so is
+        // any stretch of envelope the raster left oblique or unresolved. Calling that "gross" was
+        // wrong: on Project A it counts 24 m of wall around a 57 m perimeter.
+        //
+        // The envelope reading runs each storey's own traced footprint perimeter up that storey's
+        // height and adds the gables. That is a facade as a facade is measured — over the
+        // openings, which are then deducted — and it does not depend on every piece of the
+        // envelope having been resolved into an axis-aligned rectangle.
+        val wallMaterial = floorQuantities.sumOf { it.exteriorWallsStructural.value ?: 0.0 }
+        // One source of truth for the envelope: the per-storey figures computed just above.
+        val facadeGross = floorQuantities.sumOf { it.exteriorEnvelopeGross.value ?: 0.0 } + gableArea()
         val floorsAndStairs = roomQuantities.sumOf { it.floorArea.value ?: 0.0 }
-        notes += "Facade gross = exterior wall structural areas + gable panels from the roof height field; no eaves soffit."
-        notes += "Exterior wall structural area on the top storey runs to the roof underside (knee wall plus slope); lower storeys floor-to-floor."
+        notes += "Facade gross = storey footprint perimeter × storey height + gable panels, measured over openings."
+        notes += "Facade wall material = traced exterior wall pieces only; openings and unresolved envelope are absent from it, so it is the lower bracket."
+        notes += "Exterior wall area on the top storey runs to the roof underside (knee wall plus slope); lower storeys floor-to-floor."
 
         return ProjectQuantities(
             surfaces = surfaces,
@@ -257,10 +319,35 @@ class QuantityTakeoffEngine(
             hipLength = hip,
             eaveLength = eave,
             exteriorJoinery = Measured(joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption, note = "${exteriorOpenings.size} exterior openings, widths traced, heights assumed"),
-            facadeGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("exterior walls + gables")),
+            facadeGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("storey footprint perimeters × storey heights + gables")),
             facadeNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+            facadeWallMaterial = Measured(wallMaterial, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("traced exterior wall pieces, openings and unresolved envelope excluded")),
             floorsAndStairsArea = Measured(floorsAndStairs, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("sum of all room polygons on all floors")),
             notes = notes,
+        )
+    }
+
+    /**
+     * A room whose outline could not be proved: every quantity that needs the
+     * ring is MISSING with the reason, and none of them is silently zero.
+     */
+    private fun unresolvedRoom(room: RoomCandidate, floorArea: Measured, why: String): RoomQuantities {
+        fun gone(unit: MeasureUnit) = Measured.missing(unit, why)
+        return RoomQuantities(
+            roomId = room.id,
+            floorArea = floorArea,
+            perimeter = room.perimeter,
+            wallFaceIds = emptyList(),
+            wallGross = gone(MeasureUnit.SQUARE_METER),
+            wallOpenings = gone(MeasureUnit.SQUARE_METER),
+            wallNet = gone(MeasureUnit.SQUARE_METER),
+            ceilingFlat = gone(MeasureUnit.SQUARE_METER),
+            ceilingSloped = gone(MeasureUnit.SQUARE_METER),
+            ceilingTotal = gone(MeasureUnit.SQUARE_METER),
+            volume = gone(MeasureUnit.CUBIC_METER),
+            usableAreaByHeightRule = gone(MeasureUnit.SQUARE_METER),
+            meanHeight = gone(MeasureUnit.METER),
+            boundaryLengths = emptyList(),
         )
     }
 
@@ -302,7 +389,8 @@ class QuantityTakeoffEngine(
     private class Integral(val area: Double, val volume: Double, val flatArea: Double, val slopedPlanArea: Double, val usable: Double)
 
     private fun integrate(room: RoomCandidate, height: (Pt) -> Double): Integral {
-        val bounds = room.polygon.bounds
+        val polygon = room.polygon ?: return Integral(0.0, 0.0, 0.0, 0.0, 0.0)
+        val bounds = polygon.bounds
         val cell = gridM * gridM
         var area = 0.0
         var volume = 0.0
@@ -317,7 +405,7 @@ class QuantityTakeoffEngine(
             var z = bounds.minZ + gridM / 2
             while (z < bounds.maxZ) {
                 val p = Pt(x, z)
-                if (room.polygon.contains(p)) {
+                if (polygon.contains(p)) {
                     val h = height(p)
                     area += cell
                     volume += cell * h

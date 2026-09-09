@@ -106,9 +106,13 @@ analyzer/src/main/kotlin/com/buildplan/app/analyzer/
   source/            bezpieczeństwo adresu, pobieranie, rozpoznanie strony
   site/              pakiet źródłowy i adapter witryny (archon/)
   asset/             manifest i pobieranie rysunków do pamięci aplikacji
-  raster/ plan/      maski binarne, kawałki ścian, regiony, kalibracja, matcher
+  raster/ plan/      maski binarne, kawałki ścian, regiony, kalibracja, matcher,
+                     obrys pomieszczenia (pierścień prosty albo nic), schody
   roof/ vertical/    szkielet prostoliniowy dachu, łańcuch rzędnych
-  candidate/         kandydat analizy (nigdy nie jest modelem kanonicznym)
+  text/              szew odczytu tekstu z rysunku: lokalizacja przebiegów
+                     glifów, bramka czytelności, parser i bramka jakości
+  candidate/         kandydat analizy (nigdy nie jest modelem kanonicznym),
+                     walidacja pierścienia
   quantity/          przedmiar: lica pomieszczeń, ściany, sufity, dach
   validate/          porównanie ze źródłem, braki, pytania
   snapshot/          deterministyczna migawka JSON

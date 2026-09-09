@@ -253,6 +253,36 @@ Analizator mieszka w osobnym, czysto-JVM module `analyzer/` (pakiet
   to jest `DISPLAY_ASSUMPTION` z powodem i pytaniem — nigdy „typowa wartość"
   wyglądająca na zmierzoną. Nie kalibruj rzutu przez dopasowanie powierzchni
   pomieszczeń; powierzchnie są sprawdzeniem, nie kotwicą.
+- **Obrys pomieszczenia to pierścień prosty albo nic.** `RoomCandidate.polygon`
+  jest `null` dokładnie wtedy, gdy `geometryState == UNRESOLVED_REGION`;
+  trzeciej możliwości nie ma. Pierścień, który sam siebie przecina, ma i tak
+  pole z shoelace'a i i tak odpowiada na `contains`, więc niepoprawnego
+  nie wolno wypuścić „tymczasowo". Kryteria i deterministyczna naprawa
+  (tylko usuwanie, nigdy łączenie) są w `candidate/RingValidity.kt`, złożenie
+  w `plan/RoomGeometry.kt`; pole pierścienia musi zgodzić się z polem pikseli,
+  z których był śledzony. Pokój bez pierścienia ma `MISSING` na suficie,
+  kubaturze i licach ścian — nigdy małą liczbę wyglądającą na zmierzoną.
+- **Powierzchnia podłogi to regiony, nie pierścień.** `plannedArea` liczy się
+  z pikseli regionów **przed** mostkowaniem progów (do lica ścian, jak mierzy
+  je strona); pierścień obejmuje dodatkowo progi łączące części pokoju. To dwie
+  różne liczby i nie wolno ich mieszać.
+- **Otwór zewnętrzny ma pokój po dokładnie jednej stronie.** Pokój po obu
+  stronach to otwór wewnętrzny; brak pokoju po obu stronach to nie otwór, tylko
+  przerwa między kreskami na tarasie. „Co najmniej jedna strona" wpuszcza
+  widmowe okna do obwiedni.
+- **Mur to nie obwiednia.** Suma odrysowanych kawałków ścian zewnętrznych nie
+  zawiera otworów z definicji (otwór to przerwa *między* kawałkami), więc nic
+  nie może ich od niej odjąć drugi raz. Obwiednia (obwód obrysu × wysokość,
+  nad otworami) to osobna wielkość. Liczbę ze strony porównuj z widełkami
+  brutto–netto: gdy wypada między nimi, to `NOT_COMPARABLE` — różnica jest
+  definicją, nie geometrią.
+- **Odczytu tekstu z rysunku nie wolno wymuszać.** Kontrakt to `text/`
+  (`DrawingTextExtractor`, `TextObservation`), a `MIN_LEGIBLE_GLYPH_HEIGHT_PX`
+  jest bramką: poniżej niej rozpoznawanie nie jest podejmowane w ogóle. Wynik
+  wchodzi do modelu jako `SOURCE_EXACT` dopiero przy `READ`, wysokiej pewności,
+  pełnym dopasowaniu wzorca i fizycznie możliwej wartości
+  (`DimensionLabelParser`). Rozpoznany wymiar sprzeczny z odrysowaną
+  geometrią odrzucamy — etykieta nie przebija rysunku.
 - **Kandydat nigdy nie staje się prawdą kanoniczną bez weryfikacji.**
   `ProjectAnalysisCandidate` i `ProjectAnalysisSnapshot` nie zapisują nic do
   `domain/`. Podgląd w Lab buduje ulotny `Building` z identyfikatorami `cand-`

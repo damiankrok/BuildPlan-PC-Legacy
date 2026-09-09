@@ -89,7 +89,19 @@ data class RoomCandidate(
     val name: String,
     /** The printed ordinal in the source table, when it had one. */
     val sourceOrdinal: Int?,
-    val polygon: Polygon,
+    /**
+     * The room's outline, or null when no simple ring could be proved for it.
+     *
+     * Null is not "no data": the room's pixels are still measured in
+     * [plannedArea]. It means no *polygon* may be used, so every quantity that
+     * needs one — ceiling, volume, wall faces — is unresolved rather than
+     * computed from a shape that is not the room. See [geometryState].
+     */
+    val polygon: Polygon?,
+    /** Whether [polygon] was proved a simple ring whose area matches its pixels. */
+    val geometryState: RoomGeometryState,
+    /** Why the geometry is in that state: components bridged, ring repaired, coverage. */
+    val geometryNote: String,
     val perimeter: Measured,
     val plannedArea: Measured,
     /** The published usable area, as the site defines it (attic rooms exclude low strips). */
@@ -99,6 +111,8 @@ data class RoomCandidate(
     val boundary: List<RoomBoundarySegment>,
     val matchConfidence: FactFidelity,
     val matchNote: String,
+    /** Rooms that also fitted these regions, so a reader can see what the match was chosen against. */
+    val matchAlternatives: List<String> = emptyList(),
 )
 
 /** One straight run of a room's boundary: which wall it lies on and what is on the other side. */
@@ -151,14 +165,48 @@ data class OpeningCandidate(
     val typeFidelity: FactFidelity,
 )
 
+/** What told the analyzer a stair is here. More than one may apply, strongest first. */
+enum class StairEvidence {
+    /** The storey's published room table names a room of the stair kind, and a region matched it. */
+    PUBLISHED_STAIR_ROOM,
+
+    /** A run of thin, parallel, evenly spaced lines on the plan: drawn treads. */
+    TREAD_LINES,
+
+    /** A zone that lines up with a stair zone on the storey below or above. */
+    CROSS_FLOOR_ALIGNMENT,
+}
+
+/**
+ * A stair the analyzer believes is at this place on this storey.
+ *
+ * The contract deliberately separates *that* a stair is here from *what* it
+ * is made of. The first is often settled — a published room of the stair
+ * kind, a run of drawn treads — while riser height, going and the number of
+ * steps are printed as text this stage cannot read and stay MISSING. A
+ * candidate with a zone, a floor transition and no tread count is the normal
+ * honest result, not a failure.
+ */
 data class StairCandidate(
     val id: String,
     val floorId: String,
     val zone: Box,
+    /** Number of drawn tread lines counted, or MISSING when only a room told us the stair is here. */
     val treadCount: Measured,
+    /** "up-north" … when a run direction could be read from the flights, else "unknown". */
     val direction: String,
+    /** The storey this flight leaves and the one it reaches, when both were identified. */
+    val fromFloorId: String?,
+    val toFloorId: String?,
+    /** Axis-aligned runs of treads within the zone; empty when only the zone is known. */
+    val flights: List<Box>,
+    /** The room the zone sits in, when the plan encloses it in one. */
+    val roomId: String?,
+    val evidence: Set<StairEvidence>,
     val fidelity: FactFidelity,
     val note: String,
+    /** What about this stair the source did not settle, in the reader's language. */
+    val unresolved: List<String>,
 )
 
 enum class RoofFamily { GABLE, HIP, FLAT, MIXED, UNKNOWN }

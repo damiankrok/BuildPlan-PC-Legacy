@@ -11,8 +11,10 @@ import com.buildplan.app.analyzer.candidate.Pt
 import com.buildplan.app.analyzer.candidate.RegionCandidate
 import com.buildplan.app.analyzer.candidate.RoomBoundarySegment
 import com.buildplan.app.analyzer.candidate.RoomCandidate
+import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.candidate.Segment
 import com.buildplan.app.analyzer.candidate.StairCandidate
+import com.buildplan.app.analyzer.candidate.StairEvidence
 import com.buildplan.app.analyzer.candidate.WallCandidate
 import com.buildplan.app.analyzer.candidate.WallClass
 import com.buildplan.app.analyzer.fidelity.FactFidelity
@@ -83,17 +85,39 @@ object FloorCandidateBuilder {
             val ordinal = room?.ordinal ?: (roomIndex + 1)
             return "$floorId-r$ordinal"
         }
+        // A room the matcher assembled from several regions is separated on the raster only by
+        // the strips the segmentation sealed across wall-line gaps. Filling exactly those strips
+        // makes the room one shape, so the ring traced around it is the whole room and not its
+        // first lobe — which is what made floor and ceiling areas disagree by a factor of three.
+        fun roomMask(regionIndices: List<Int>): BinaryMask = RoomGeometry.bridge(
+            maskOf(analysis, regionIndices),
+            analysis.sealedGaps,
+            { x, y -> analysis.regionIndexByLabel[analysis.regionLabelAt(x, y)] },
+            regionIndices.toSet(),
+            px(0.10),
+        )
+
+        fun recordGeometry(id: String, name: String, resolved: ResolvedRing) {
+            if (resolved.state == RoomGeometryState.UNRESOLVED_REGION) {
+                issues += AnalysisIssue(
+                    IssueSeverity.WARNING, "geometry", id,
+                    "Pomieszczenie $name nie ma poprawnego obrysu (${resolved.check.verdict}); powierzchnie zależne od obrysu pozostają nierozstrzygnięte. ${resolved.note}",
+                )
+            }
+        }
+
         analysis.matching?.matches?.forEach { match ->
-            val mask = maskOf(analysis, match.regionIndices)
+            val mask = roomMask(match.regionIndices)
             val box = mask.boundingBox() ?: return@forEach
             if (match.roomIndices.size == 1) {
                 val ri = match.roomIndices.first()
                 val room = published!!.rooms[ri]
                 val id = roomId(ri)
-                val polygon = polygonOf(mask, box, calibration, px(0.15)) ?: return@forEach
+                val resolved = RoomGeometry.resolve(mask, calibration, px(0.15), regionPixels = maskOf(analysis, match.regionIndices).count())
+                recordGeometry(id, room.name, resolved)
                 match.regionIndices.forEach { regionToRooms.getOrPut(it) { mutableListOf() } += id }
                 roomMasks[id] = mask
-                rooms += roomCandidate(id, floorId, room.name, room.ordinal, polygon, mask.count(), calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note)
+                rooms += roomCandidate(id, floorId, room.name, room.ordinal, resolved, calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note, match.alternatives.map { alt -> "${alt.roomName} (${"%.2f".format(java.util.Locale.ROOT, alt.publishedArea)} m2, ${"%.1f".format(java.util.Locale.ROOT, alt.relativeError * 100)} %): ${alt.why}" })
             } else {
                 // Open plan: one region, several rooms. Split proportionally to published areas
                 // along the region's longer axis, in table order.
@@ -104,12 +128,12 @@ object FloorCandidateBuilder {
                     val room = published!!.rooms[ri]
                     val id = roomId(ri)
                     val partMask = parts[k]
-                    val partBox = partMask.boundingBox() ?: return@forEachIndexed
-                    val polygon = polygonOf(partMask, partBox, calibration, px(0.15)) ?: return@forEachIndexed
+                    val resolved = RoomGeometry.resolve(partMask, calibration, px(0.15))
+                    recordGeometry(id, room.name, resolved)
                     match.regionIndices.forEach { regionToRooms.getOrPut(it) { mutableListOf() } += id }
                     roomMasks[id] = partMask
                     rooms += roomCandidate(
-                        id, floorId, room.name, room.ordinal, polygon, partMask.count(), calibration, url, room.usableArea, room.floorArea,
+                        id, floorId, room.name, room.ordinal, resolved, calibration, url, room.usableArea, room.floorArea,
                         FactFidelity.DISPLAY_ASSUMPTION,
                         "open-plan region shared with ${ordered.filter { it != ri }.joinToString { published.rooms[it].name }}; boundary is a proportional split by published area, not a drawn wall",
                     )
@@ -119,8 +143,8 @@ object FloorCandidateBuilder {
         }
         val unmatched = analysis.matching?.unmatchedRegions.orEmpty().mapNotNull { ri ->
             val region = analysis.regions[ri]
-            val mask = maskOf(analysis, listOf(ri))
-            val poly = polygonOf(mask, region.box, calibration, px(0.15)) ?: return@mapNotNull null
+            val resolved = RoomGeometry.resolve(maskOf(analysis, listOf(ri)), calibration, px(0.15))
+            val poly = resolved.polygon ?: return@mapNotNull null
             RegionCandidate("$floorId-region${ri + 1}", poly, region.pixelArea / (ppm * ppm), emptyList())
         }
 
@@ -169,9 +193,15 @@ object FloorCandidateBuilder {
             val besideExteriorPiece = (before != null && before in analysis.exteriorPieceIndices) || (after != null && after in analysis.exteriorPieceIndices)
             val widthM = gap.width / ppm
             val (sideA, sideB) = WallPieces.sidesOf(gap, analysis.regionLabelAt, px(0.10))
-            // An opening is exterior only when one of its sides is not a room: a gap on an interior
-            // wall line that happens to continue an exterior wall has rooms on both sides.
-            val opensToOutside = analysis.regionIndexByLabel[sideA] == null || analysis.regionIndexByLabel[sideB] == null
+            // An opening in the envelope has the outdoors on one side and a room on the other.
+            // Rooms on both sides make it interior; *neither* side a room makes it not an opening
+            // at all — a gap between two line fragments out on a terrace or under a canopy, with
+            // nothing behind it to open into. Accepting those put twenty phantom windows into
+            // Project B's envelope and inflated its joinery to two and a half times the published
+            // figure, so the test is exactly one side, not at least one.
+            val insideA = analysis.regionIndexByLabel[sideA] != null
+            val insideB = analysis.regionIndexByLabel[sideB] != null
+            val opensToOutside = insideA != insideB
             val exterior = besideExteriorPiece && opensToOutside
             val linked = listOfNotNull(analysis.regionIndexByLabel[sideA], analysis.regionIndexByLabel[sideB]).flatMap { regionToRooms[it].orEmpty() }.distinct()
             val glazed = glazingAcross(gap, analysis.thinInk)
@@ -210,15 +240,78 @@ object FloorCandidateBuilder {
         }
 
         // ---- stairs
-        val stairs = analysis.stairs.mapIndexed { i, zone ->
-            StairCandidate(
+        //
+        // Two independent signals, combined rather than ranked. Drawn treads say exactly where a
+        // flight is but can be missed on a winder; a published room of the stair kind says a stair
+        // is on this storey with the source's own authority but only bounds it to a room. A zone
+        // inside such a room is the same stair seen twice and becomes one candidate carrying both
+        // pieces of evidence; either on its own is still a candidate, with its fidelity saying so.
+        val stairRoomIds = published?.rooms.orEmpty().withIndex()
+            .filter { (_, r) -> r.kind == RoomKind.STAIRS }
+            .mapNotNull { (i, _) -> roomId(i).takeIf { id -> rooms.any { it.id == id } } }
+            .toSet()
+        val stairRoomBoxes = rooms.filter { it.id in stairRoomIds }.mapNotNull { r -> r.polygon?.bounds?.let { r.id to it } }
+
+        val stairs = mutableListOf<StairCandidate>()
+        val zonesInRooms = HashSet<Int>()
+        stairRoomBoxes.forEachIndexed { i, (roomIdOfStair, roomBox) ->
+            val inside = analysis.stairs.withIndex().filter { (_, z) ->
+                val c = z.box.toMeters(calibration).center
+                roomBox.contains(c)
+            }
+            inside.forEach { zonesInRooms += it.index }
+            val flights = inside.map { it.value.box.toMeters(calibration) }
+            val treads = inside.sumOf { it.value.treadLines }
+            val evidence = buildSet {
+                add(StairEvidence.PUBLISHED_STAIR_ROOM)
+                if (inside.isNotEmpty()) add(StairEvidence.TREAD_LINES)
+            }
+            stairs += StairCandidate(
                 id = "$floorId-s${i + 1}",
                 floorId = floorId,
-                zone = zone.box.toMeters(calibration),
-                treadCount = Measured(zone.treadLines.toDouble(), MeasureUnit.COUNT, FactFidelity.TRACE_UNCERTAIN, Provenance(url, "stair zone ${i + 1}", "count of parallel thin lines; nosing lines and landings are not told apart")),
-                direction = "unknown",
-                fidelity = FactFidelity.SOURCE_TRACED,
-                note = "zone of ${zone.treadLines} parallel lines spaced like treads; direction arrows are not read",
+                zone = roomBox,
+                treadCount = if (inside.isEmpty()) {
+                    Measured.missing(MeasureUnit.COUNT, "the published table names the stair room but the plan's tread lines were not resolved; step count is printed as text this stage does not read")
+                } else {
+                    Measured(treads.toDouble(), MeasureUnit.COUNT, FactFidelity.TRACE_UNCERTAIN, Provenance(url, "stair room $roomIdOfStair", "count of parallel thin lines; nosings, landings and winders are not told apart"))
+                },
+                direction = inside.firstOrNull()?.let { StairDetector.runAxisLabel(it.value) } ?: "unknown",
+                fromFloorId = floorId,
+                toFloorId = null,
+                flights = flights,
+                roomId = roomIdOfStair,
+                evidence = evidence,
+                // The source naming the room is stronger evidence that a stair is here than any
+                // number of lines that look like treads.
+                fidelity = FactFidelity.SOURCE_DERIVED,
+                note = "published room of the stair kind" + if (inside.isEmpty()) "; no tread lines resolved inside it" else "; ${inside.size} tread run(s), $treads lines",
+                unresolved = buildList {
+                    add("Liczba stopni i wysokość stopnia nie są odczytywane z rzutu.")
+                    if (inside.isEmpty()) add("Nie wykryto biegów w obrębie pomieszczenia; strefa to obrys pomieszczenia.")
+                    add("Kierunek wejścia (w górę/w dół) wynika ze strzałki, której ten etap nie czyta.")
+                },
+            )
+        }
+        analysis.stairs.forEachIndexed { i, zone ->
+            if (i in zonesInRooms) return@forEachIndexed
+            val box = zone.box.toMeters(calibration)
+            stairs += StairCandidate(
+                id = "$floorId-s${stairRoomBoxes.size + i + 1}",
+                floorId = floorId,
+                zone = box,
+                treadCount = Measured(zone.treadLines.toDouble(), MeasureUnit.COUNT, FactFidelity.TRACE_UNCERTAIN, Provenance(url, "stair zone ${i + 1}", "count of parallel thin lines; nosings, landings and winders are not told apart")),
+                direction = StairDetector.runAxisLabel(zone),
+                fromFloorId = floorId,
+                toFloorId = null,
+                flights = listOf(box),
+                roomId = rooms.firstOrNull { it.polygon?.contains(box.center) == true }?.id,
+                evidence = setOf(StairEvidence.TREAD_LINES),
+                fidelity = FactFidelity.TRACE_UNCERTAIN,
+                note = "run of ${zone.treadLines} parallel lines spaced like treads at ${"%.2f".format(java.util.Locale.ROOT, zone.spacingPx / ppm)} m; no published stair room encloses it",
+                unresolved = listOf(
+                    "Nie ma pomieszczenia „schody” obejmującego ten bieg; to może być bieg zewnętrzny albo inny wzór linii.",
+                    "Liczba stopni i kierunek wejścia nie są odczytywane z rzutu.",
+                ),
             )
         }
 
@@ -246,21 +339,28 @@ object FloorCandidateBuilder {
     }
 
     private fun roomCandidate(
-        id: String, floorId: String, name: String, ordinal: Int?, polygon: Polygon, pixels: Int, calibration: PlanCalibration, url: String,
-        usable: Measured, floorArea: Measured, fidelity: FactFidelity, note: String,
+        id: String, floorId: String, name: String, ordinal: Int?, resolved: ResolvedRing, calibration: PlanCalibration, url: String,
+        usable: Measured, floorArea: Measured, fidelity: FactFidelity, note: String, alternatives: List<String> = emptyList(),
     ) = RoomCandidate(
         id = id,
         floorId = floorId,
         name = name,
         sourceOrdinal = ordinal,
-        polygon = polygon,
-        perimeter = Measured.derived(polygon.perimeter, MeasureUnit.METER, "polygon perimeter", listOf(calibration.pixelsPerMeter)),
-        plannedArea = calibration.tracedArea(pixels, "room $id region", url),
+        polygon = resolved.polygon,
+        geometryState = resolved.state,
+        geometryNote = resolved.note,
+        // The pixel count is a measurement of the region and does not depend on the ring, so it
+        // stands even when no ring could be proved; what needs the ring goes unresolved instead.
+        perimeter = resolved.polygon
+            ?.let { Measured.derived(it.perimeter, MeasureUnit.METER, "polygon perimeter", listOf(calibration.pixelsPerMeter)) }
+            ?: Measured.missing(MeasureUnit.METER, "no simple ring for this room: ${resolved.note}"),
+        plannedArea = calibration.tracedArea(resolved.regionPixels, "room $id region", url),
         sourceUsableArea = usable,
         sourceFloorArea = floorArea,
         boundary = emptyList(),
         matchConfidence = fidelity,
         matchNote = note,
+        matchAlternatives = alternatives,
     )
 
     private fun maskOf(analysis: FloorPlanAnalysis, regionIndices: List<Int>): BinaryMask {
@@ -272,11 +372,6 @@ object FloorCandidateBuilder {
             }
         }
         return mask
-    }
-
-    private fun polygonOf(mask: BinaryMask, box: PixelBox, calibration: PlanCalibration, jogPx: Int): Polygon? {
-        val outline = Regions.smoothJogs(Regions.traceOutline(mask, box), jogPx.toDouble())
-        return outline.toMeterPolygon(calibration)
     }
 
     /** Splits a mask into parts of the given area proportions along the longer axis of its box. */
@@ -343,7 +438,9 @@ object FloorCandidateBuilder {
         analysis: FloorPlanAnalysis,
         regionToRooms: Map<Int, List<String>>,
         calibration: PlanCalibration,
-    ): List<RoomBoundarySegment> = room.polygon.edges.map { edge ->
+        // No proved ring, no boundary: a wall face is a measurement of an edge of the room, and
+        // there are no trustworthy edges here. The quantity engine leaves those faces unresolved.
+    ): List<RoomBoundarySegment> = room.polygon?.edges.orEmpty().map { edge ->
         val horizontal = abs(edge.a.z - edge.b.z) < 1e-9
         val wall = walls.filter { w ->
             val wc = w.centreline
@@ -358,7 +455,7 @@ object FloorCandidateBuilder {
         }.minByOrNull { w -> if (horizontal) abs(w.centreline.a.z - edge.a.z) else abs(w.centreline.a.x - edge.a.x) }
         // The room on the other side: probe a point beyond the wall from the edge midpoint.
         val mid = edge.midpoint
-        val inside = room.polygon.centroid
+        val inside = room.polygon?.centroid ?: edge.midpoint
         val outwardX = if (horizontal) 0.0 else if (mid.x > inside.x) 1.0 else -1.0
         val outwardZ = if (horizontal) (if (mid.z > inside.z) 1.0 else -1.0) else 0.0
         val depth = (wall?.thickness?.value ?: 0.12) + 0.15

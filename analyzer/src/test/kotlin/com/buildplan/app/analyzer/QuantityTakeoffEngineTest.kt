@@ -9,6 +9,7 @@ import com.buildplan.app.analyzer.candidate.ProjectAnalysisCandidate
 import com.buildplan.app.analyzer.candidate.Pt
 import com.buildplan.app.analyzer.candidate.RoomBoundarySegment
 import com.buildplan.app.analyzer.candidate.RoomCandidate
+import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.candidate.Segment
 import com.buildplan.app.analyzer.candidate.WallCandidate
 import com.buildplan.app.analyzer.candidate.WallClass
@@ -23,6 +24,7 @@ import com.buildplan.app.analyzer.roof.RoofSolver
 import com.buildplan.app.analyzer.site.PublishedRoofFamily
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -50,7 +52,7 @@ class QuantityTakeoffEngineTest {
         val shared = WallCandidate("w-shared", "f0", Segment(Pt(4.0, 0.0), Pt(4.0, 3.0)), m(3.0), m(0.12), WallClass.PARTITION, m(0.0), m(2.5), listOf("r1"), listOf("r2"), false, listOf("o1"), FactFidelity.SOURCE_TRACED)
         val door = OpeningCandidate("o1", "w-shared", "f0", OpeningType.DOOR, m(1.0), m(0.9), missing(), missing(), listOf("r1", "r2"), false, FactFidelity.TRACE_UNCERTAIN)
         fun room(id: String, poly: Polygon, sharedSegment: Segment, neighbour: String) = RoomCandidate(
-            id, "f0", id, null, poly, m(poly.perimeter), m(poly.area, MeasureUnit.SQUARE_METER), m(poly.area, MeasureUnit.SQUARE_METER), missing(),
+            id, "f0", id, null, poly, RoomGeometryState.VALID_SIMPLE_RING, "test", m(poly.perimeter), m(poly.area, MeasureUnit.SQUARE_METER), m(poly.area, MeasureUnit.SQUARE_METER), missing(),
             poly.edges.map { e -> RoomBoundarySegment(e, if (e.a.x == 4.0 && e.b.x == 4.0) "w-shared" else null, if (e.a.x == 4.0 && e.b.x == 4.0) neighbour else null, false) },
             FactFidelity.SOURCE_TRACED, "test",
         )
@@ -90,7 +92,7 @@ class QuantityTakeoffEngineTest {
         assertNotNull(roof)
         // Room spanning from the eave (x=0) to the ridge (x=4), 5 m long.
         val poly = rect(0.0, 2.0, 4.0, 7.0)
-        val room = RoomCandidate("a1", "f1", "a1", null, poly, m(poly.perimeter), m(poly.area, MeasureUnit.SQUARE_METER), missing(), missing(),
+        val room = RoomCandidate("a1", "f1", "a1", null, poly, RoomGeometryState.VALID_SIMPLE_RING, "test", m(poly.perimeter), m(poly.area, MeasureUnit.SQUARE_METER), missing(), missing(),
             poly.edges.map { RoomBoundarySegment(it, null, null, false) }, FactFidelity.SOURCE_TRACED, "test")
         val floor = FloorCandidate("f1", "Poddasze", 1, null, outline, outline, m(3.0), m(2.5), listOf(room), emptyList(), null)
         val candidate = ProjectAnalysisCandidate(listOf(floor), emptyList(), emptyList(), emptyList(), roof, levels(2.5, 3.0, 2.5), emptyList(), emptyList())
@@ -110,5 +112,42 @@ class QuantityTakeoffEngineTest {
         val ridgeFace = faces.first { it.basis.contains("from (4.00,") && it.basis.contains("to (4.00,") }
         assertTrue(eaveFace.grossArea.value!! < 1.0)
         assertEquals(5.0 * 2.5, ridgeFace.grossArea.value!!, 0.3)
+    }
+
+    @Test
+    fun `a room with unresolved geometry yields no ceiling, volume or wall faces`() {
+        // Same room twice: once with a proved ring, once refused. The refused one must not
+        // report a small-but-exact-looking ceiling; it must report nothing at all.
+        val poly = rect(0.0, 0.0, 4.0, 3.0)
+        fun room(polygon: Polygon?, state: RoomGeometryState) = RoomCandidate(
+            "r1", "f0", "r1", null, polygon, state, "test", m(poly.perimeter), m(poly.area, MeasureUnit.SQUARE_METER),
+            m(poly.area, MeasureUnit.SQUARE_METER), missing(),
+            if (polygon == null) emptyList() else poly.edges.map { RoomBoundarySegment(it, null, null, false) },
+            FactFidelity.SOURCE_TRACED, "test",
+        )
+        fun quantities(r: RoomCandidate) = QuantityTakeoffEngine(
+            ProjectAnalysisCandidate(
+                listOf(FloorCandidate("f0", "Parter", 0, null, rect(0.0, 0.0, 4.0, 3.0), null, m(0.0), m(2.5), listOf(r), emptyList(), null)),
+                emptyList(), emptyList(), emptyList(), null, levels(2.5), emptyList(), emptyList(),
+            ),
+            null,
+        ).compute()
+
+        val ok = quantities(room(poly, RoomGeometryState.VALID_SIMPLE_RING)).rooms.single()
+        assertEquals(12.0, ok.ceilingFlat.value!!, 0.1)
+        assertNotNull(ok.volume.value)
+
+        val refused = quantities(room(null, RoomGeometryState.UNRESOLVED_REGION))
+        val q = refused.rooms.single()
+        assertNull("ceiling", q.ceilingFlat.value)
+        assertNull("ceiling total", q.ceilingTotal.value)
+        assertNull("volume", q.volume.value)
+        assertNull("wall gross", q.wallGross.value)
+        assertNull("usable by height rule", q.usableAreaByHeightRule.value)
+        assertTrue(q.wallFaceIds.isEmpty())
+        // The floor is a measurement of the region, not of the ring, so it survives — and it is
+        // the only surface the room contributes.
+        assertEquals(12.0, q.floorArea.value!!, 1e-9)
+        assertTrue(refused.surfaces.none { it.type == SurfaceType.WALL_FACE || it.type == SurfaceType.CEILING_FLAT })
     }
 }

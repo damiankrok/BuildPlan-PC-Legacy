@@ -99,12 +99,23 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         /** An exterior opening at least this wide is a vehicle gate, not a door or a window. */
         val gateMinM: Double = 2.20,
         val minRegionM2: Double = 0.7,
-        val minTreadM: Double = 0.7,
-        val treadSpacingM: ClosedFloatingPointRange<Double> = 0.20..0.36,
+        /**
+         * A tread line shorter than this is a hatch stroke, not a step.
+         *
+         * Not the width of a stair: a flight is drawn cut by a break line and a winder's treads
+         * taper, so the *visible* segment of a tread is a fraction of the flight. Half a metre of
+         * drawn line is the shortest thing that can still be a step, and regular spacing rather
+         * than length is what keeps a hatch pattern out.
+         */
+        val minTreadM: Double = 0.40,
+        /** Going of a step: 0.16 m at the narrow end of a winder, 0.42 m at the generous end of a main flight. */
+        val treadSpacingM: ClosedFloatingPointRange<Double> = 0.16..0.42,
         /** A roof band frames the whole building; a component must span at least this to count as one. */
         val minRoofBandExtentM: Double = 3.0,
         /** Sealed structure within this distance of the roof band is its outline stroke, not a wall: the outside flood passes through it. */
         val roofBandHaloM: Double = 0.20,
+        /** No eaves overhang a house by more than this; a mid-tone run further out is not the roof. */
+        val maxRoofOverhangM: Double = 1.50,
         /** How many metres the structure's longer extent is assumed to span before calibration exists. */
         val provisionalStructureSpanM: Double = 14.0,
     )
@@ -169,15 +180,37 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         // The roof band's own outline stroke is structure by thickness but not a wall: the
         // flood passes through anything sealed that hugs the band, so the outdoors reaches the
         // real walls even when the plan draws an eaves strip between them and the roof edge.
-        val roofBand = raster.roofBand(minThicknessPx = px(0.10), minExtentPx = px(t.minRoofBandExtentM))
+        // The wall envelope, from thick structure alone: exterior masonry always is thick, while a
+        // terrace edge, a lower-roof outline and a dimension chain never are. It costs one extra
+        // flood and it is what lets the roof band be told apart from everything else long and grey.
+        val wallEnvelope = thick.outsideRegion().not()
+        val nearWalls = wallEnvelope.dilate(px(t.maxRoofOverhangM), px(t.maxRoofOverhangM))
+        val roofBand = raster.roofBand(
+            minThicknessPx = px(0.10),
+            minExtentPx = px(t.minRoofBandExtentM),
+            nearWalls = nearWalls,
+        )
         if (roofBand.count() > 0) debug.emit("$debugPrefix-0-roofband", roofBand)
         val bandHalo = if (roofBand.count() > 0) roofBand.dilate(px(t.roofBandHaloM), px(t.roofBandHaloM)) else null
-        val sealedRaw = WallPieces.rasterise(image.width, image.height, rawPieces, rawGaps).or(thick)
-        val outsideAll = (bandHalo?.let { sealedRaw.andNot(it) } ?: sealedRaw).outsideRegion(seed = roofBand)
-        debug.emit("$debugPrefix-3a-outside", outsideAll)
-
         // A piece with the outdoors on both faces bounds nothing: a roof-edge stroke, a terrace
         // border, a fence. It is not a wall of this storey and would otherwise be counted as one.
+        //
+        // Re-running the flood after the drop was tried and rejected: it opens the plan up far
+        // enough to swallow the eaves strokes that carry a *correct* roof outline, which cost
+        // Project A 5.6 points of roof accuracy to buy Project B almost nothing. The drop stays a
+        // single pass, and the roof outline is bounded by an overhang instead (see below).
+        // Structure that no axis-aligned piece explains still bounds rooms.
+        //
+        // A square structuring element is what loses it: an oblique wall 0.25 m thick admits only
+        // a 0.18 m square, so it drops out of `thick` and stops sealing anything. Project B's
+        // living room is closed on two sides by the angled walls of a bay, and without them the
+        // outdoors floods straight through a 31 m2 room — which is why its largest published room
+        // matched nothing at all. Sealing with the full structure mask keeps those walls: it is
+        // ink at least a partition thick in both directions, so a dimension chain, a hatch or a
+        // furniture outline is already gone from it and cannot enclose a strip of page.
+        val sealedRaw = WallPieces.rasterise(image.width, image.height, rawPieces, rawGaps).or(structure)
+        val outsideAll = (bandHalo?.let { sealedRaw.andNot(it) } ?: sealedRaw).outsideRegion(seed = roofBand)
+        debug.emit("$debugPrefix-3a-outside", outsideAll)
         val outsideLines = rawPieces.withIndex().filter { (_, p) -> touchesOutside(p, outsideAll, px(0.06), bothFaces = true) }.map { it.index }.toSet()
         val pieces = rawPieces.filterIndexed { i, _ -> i !in outsideLines }
         if (outsideLines.isNotEmpty()) issues += AnalysisIssue(IssueSeverity.INFO, "plan", assetUrl, "${outsideLines.size} line pieces with the outdoors on both faces dropped (roof edge, terrace border or fence, not walls)")
@@ -185,7 +218,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         val pieceMask = WallPieces.rasterise(image.width, image.height, pieces)
         debug.emit("$debugPrefix-2-pieces", pieceMask)
         val unexplained = structure.andNot(pieceMask.dilate(2, 2)).count()
-        val sealedAll = WallPieces.rasterise(image.width, image.height, pieces, allGaps).or(thick)
+        val sealedAll = WallPieces.rasterise(image.width, image.height, pieces, allGaps).or(structure)
         debug.emit("$debugPrefix-3b-sealedAll", sealedAll)
         val footprintComponents = outsideAll.not().components()
         val mainLabel = (1..footprintComponents.count).maxByOrNull { footprintComponents.sizes[it] } ?: 0
@@ -211,7 +244,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         val keptGaps = allGaps.filter { g ->
             g.beforeIndex in exterior || g.afterIndex in exterior || g.width <= px(t.interiorSealMaxM) || collinearPair(g)
         }
-        val sealed = WallPieces.rasterise(image.width, image.height, pieces, keptGaps).or(thick)
+        val sealed = WallPieces.rasterise(image.width, image.height, pieces, keptGaps).or(structure)
         debug.emit("$debugPrefix-4b-sealed", sealed)
         val outside = sealed.outsideRegion(seed = roofBand)
         debug.emit("$debugPrefix-4a-outside2", outside)
@@ -223,9 +256,16 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         }
         debug.emit("$debugPrefix-4-regions", sealed.or(outside).not())
 
-        // Roof outline (attic plans): the outer edge of the band round the walls.
+        // Roof outline (attic plans): the outer edge of the band round the walls, but never
+        // further out than eaves reach. A plan that draws a terrace, a lower-roof outline or a
+        // dimension chain outside the building leaves mid-tone runs and sealed line pieces out
+        // there, and without a bound the filled outline annexes all of it — which is how Project
+        // B's roof came to enclose ground the house does not stand on. Clipping to the walls plus
+        // one overhang is a fact about roofs, not about either house, and it is a no-op wherever
+        // the band already hugs the walls.
         val roofBandOutline = if (roofBand.count() > 0) {
-            val filled = roofBand.or(footprintMask).close(px(0.3), px(0.3)).outsideRegion().not()
+            val reach = wallEnvelope.or(footprintMask.and(nearWalls)).dilate(px(t.maxRoofOverhangM), px(t.maxRoofOverhangM))
+            val filled = roofBand.or(footprintMask).and(reach).close(px(0.3), px(0.3)).outsideRegion().not()
             val comps = filled.components()
             val big = (1..comps.count).maxByOrNull { comps.sizes[it] }
             big?.let { label -> comps.boundingBox(label)?.let { box -> Regions.smoothJogs(Regions.traceOutline(comps.maskOf(label), box), px(0.15).toDouble()) } }
@@ -245,8 +285,6 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         )
         if (calibration == null) {
             issues += AnalysisIssue(IssueSeverity.BLOCKING, "calibration", assetUrl, "no source anchor for the plan scale: neither a published footprint area nor room totals")
-        } else if (calibration.residual != null && calibration.residual > 0.08) {
-            issues += AnalysisIssue(IssueSeverity.WARNING, "calibration", assetUrl, "scale anchors disagree by ${"%.1f".format(java.util.Locale.ROOT, calibration.residual * 100)} %")
         }
         if (unexplained > px(0.4) * px(0.4)) {
             issues += AnalysisIssue(IssueSeverity.INFO, "walls", assetUrl, "$unexplained structure pixels are not on any axis-aligned wall piece (oblique walls or thick symbols); they bound rooms but have no wall candidate")
@@ -275,10 +313,38 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
             val label = components.label((z.box.minX + z.box.maxX) / 2, (z.box.minY + z.box.maxY) / 2)
             labelIndex[label]?.let { cues.getOrPut(it) { mutableSetOf() } += RoomMatcher.RegionCue.STAIR }
         }
+        // The region the most others open onto is the circulation, whatever the table calls it.
+        RoomMatcher.circulationCues(regionsInFootprint.size, adjacency).forEach { (region, set) ->
+            cues.getOrPut(region) { mutableSetOf() } += set
+        }
         val matching = if (calibration != null && floor != null) {
             val ppm2 = calibration.pixelsPerMeter.requireValue().let { it * it }
             RoomMatcher.match(regionsInFootprint.map { it.pixelArea / ppm2 }, adjacency, floor.rooms, attic, cues)
         } else null
+
+        // Step 5b: re-state the residual against the rooms that were actually matched, so a
+        // segmentation gap stops masquerading as a scale conflict. Only rooms whose *floor* area
+        // the page prints count — an attic room's published usable area excludes the strip under
+        // the slope and is not the polygon the plan draws, so it cannot check a scale.
+        var matchedPixels = 0
+        var matchedPublished = 0.0
+        var matchedRooms = 0
+        if (matching != null && floor != null) {
+            matching.matches.filter { it.roomIndices.size == 1 }.forEach { m ->
+                val room = floor.rooms[m.roomIndices.single()]
+                val area = room.floorArea.value ?: room.usableArea.value.takeIf { !attic } ?: return@forEach
+                matchedPixels += m.regionIndices.sumOf { regionsInFootprint[it].pixelArea }
+                matchedPublished += area
+                matchedRooms++
+            }
+        }
+        val reconciled = calibration?.let { PlanCalibrator.reconcile(it, matchedPixels.takeIf { p -> p > 0 }, matchedPublished.takeIf { a -> a > 0 }, matchedRooms) }
+        if (reconciled != null && reconciled.residual != null && reconciled.residual > 0.08) {
+            issues += AnalysisIssue(
+                IssueSeverity.WARNING, "calibration", assetUrl,
+                "scale anchors disagree by ${"%.1f".format(java.util.Locale.ROOT, reconciled.residual * 100)} % (${reconciled.method})",
+            )
+        }
         matching?.ambiguities?.forEach { issues += AnalysisIssue(IssueSeverity.WARNING, "rooms", assetUrl, it) }
         matching?.unmatchedRooms?.forEach { issues += AnalysisIssue(IssueSeverity.WARNING, "rooms", floor?.rooms?.get(it)?.name, "published room has no region of matching area") }
 
@@ -310,7 +376,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
             regionIndexByLabel = labelIndex,
             stairs = stairs,
             thinInk = thin,
-            calibration = calibration,
+            calibration = reconciled,
             matching = matching,
             unexplainedStructurePixels = unexplained,
             issues = issues,

@@ -34,6 +34,7 @@ class EndToEndEvaluationTest {
         val text = SnapshotCodec.write(snapshot)
         EvidenceHarness.write(dir, "iter/e2e-$label/snapshot.json", text)
         EvidenceHarness.write(dir, "iter/e2e-$label/report.txt", report(run))
+        EvidenceHarness.write(dir, "iter/e2e-$label/metrics.txt", EvaluationMetrics.render(project, run, text.length))
 
         assertTrue(run.resolution.isResolved)
         assertEquals(project.projectKey, run.resolution.identity!!.projectKey)
@@ -79,7 +80,7 @@ class EndToEndEvaluationTest {
         appendLine("== stairs ${c.stairs}")
         run.quantities?.let { q ->
             appendLine("== floor quantities")
-            q.floors.forEach { appendLine("  ${it.floorId}: rooms ${"%.1f".format(it.roomFloorAreaSum.value)} m2, ext walls ${"%.1f".format(it.exteriorWallsStructural.value)} (net ${"%.1f".format(it.exteriorWallsNet.value)}), load-bearing ${"%.1f".format(it.loadBearingWallsStructural.value)}, partitions ${"%.1f".format(it.partitionsStructural.value)}, openings ${it.openingAreasByType.mapValues { e -> "%.1f".format(e.value) }}") }
+            q.floors.forEach { appendLine("  ${it.floorId}: rooms ${"%.1f".format(it.roomFloorAreaSum.value)} m2, masonry ${"%.1f".format(it.exteriorWallsStructural.value)}, envelope ${"%.1f".format(it.exteriorEnvelopeGross.value)} gross / ${"%.1f".format(it.exteriorEnvelopeNet.value)} net, load-bearing ${"%.1f".format(it.loadBearingWallsStructural.value)}, partitions ${"%.1f".format(it.partitionsStructural.value)}, openings ${it.openingAreasByType.mapValues { e -> "%.1f".format(e.value) }}") }
             appendLine("== aggregates: roof ${"%.1f".format(q.roofTotal.value)}, ridge ${"%.1f".format(q.ridgeLength.value)}, hips ${"%.1f".format(q.hipLength.value)}, eaves ${"%.1f".format(q.eaveLength.value)}, joinery ${"%.1f".format(q.exteriorJoinery.value)}, facade gross ${"%.1f".format(q.facadeGross.value)} net ${"%.1f".format(q.facadeNet.value)}, floors+stairs ${"%.1f".format(q.floorsAndStairsArea.value)}")
             appendLine("== surfaces ${q.surfaces.size} (${q.surfaces.groupingBy { it.type }.eachCount()})")
         }

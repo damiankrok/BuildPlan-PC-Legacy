@@ -48,8 +48,17 @@ object GapAnalyzer {
         }
 
         // Plan geometry.
-        val decodedPlans = pkg.assets.plans.count { it.retrieval == RetrievalState.DECODED }
-        status(Requirement.FLOOR_PLAN_RASTER, if (decodedPlans > 0) RequirementState.SATISFIED else RequirementState.MISSING, null, "$decodedPlans plan rasters decoded")
+        // Counted from the storeys that came out of the analysis, not from the manifest the page
+        // reader built: that manifest is the list of assets to fetch and every record in it is
+        // still PENDING at this point, so asking it how many plans decoded always answered zero
+        // — on runs whose plans had decoded and been analysed into rooms.
+        val analysedPlans = candidate.floors.count { it.planAssetUrl != null && it.calibration != null }
+        status(
+            Requirement.FLOOR_PLAN_RASTER,
+            if (analysedPlans > 0) RequirementState.SATISFIED else RequirementState.MISSING,
+            null,
+            "$analysedPlans plan rasters decoded and analysed of ${pkg.assets.plans.size} the page links",
+        )
         val calibrated = candidate.floors.filter { it.calibration != null }
         val worstCalibration = calibrated.mapNotNull { it.calibration?.confidence }.maxByOrNull { FactFidelity.weakest(listOf(it)).ordinal }
         status(
@@ -109,10 +118,39 @@ object GapAnalyzer {
         // Openings.
         val exteriorOpenings = candidate.openings.filter { it.exterior }
         status(Requirement.EXTERIOR_OPENINGS, if (exteriorOpenings.isNotEmpty()) RequirementState.SATISFIED else RequirementState.MISSING, FactFidelity.SOURCE_TRACED, "${exteriorOpenings.size} exterior openings with traced widths")
-        status(Requirement.OPENING_HEIGHTS, if (candidate.openings.any { it.height.value != null }) RequirementState.PARTIAL else RequirementState.MISSING, FactFidelity.MISSING, "opening heights are printed as text in the joinery schedule; not read")
+        val withHeight = candidate.openings.count { it.height.value != null }
+        status(
+            Requirement.OPENING_HEIGHTS,
+            if (withHeight > 0) RequirementState.PARTIAL else RequirementState.MISSING,
+            if (withHeight > 0) FactFidelity.SOURCE_EXACT else FactFidelity.MISSING,
+            if (withHeight > 0) {
+                "$withHeight of ${candidate.openings.size} opening heights read from drawing labels"
+            } else {
+                "the plans dimension their openings, but the published raster prints those labels below the " +
+                    "${com.buildplan.app.analyzer.text.DrawingTextExtractor.MIN_LEGIBLE_GLYPH_HEIGHT_PX} px legibility floor, so none was read"
+            },
+        )
         if (exteriorOpenings.isNotEmpty()) ask(Requirement.OPENING_HEIGHTS, "Nie udało się ustalić wysokości ${exteriorOpenings.size} otworów zewnętrznych (wykaz stolarki jest tekstem na rzucie). Podaj wysokości i parapety albo potwierdź założenia użyte do odliczeń.", "drzwi 2,05 m, okna 1,50 m, brama 2,20 m", "openings")
-        status(Requirement.STAIR_ZONE, if (candidate.stairs.isNotEmpty()) RequirementState.PARTIAL else RequirementState.MISSING, FactFidelity.TRACE_UNCERTAIN, "${candidate.stairs.size} stair zones, direction unknown")
-        if (candidate.stairs.isEmpty()) ask(Requirement.STAIR_ZONE, "Nie udało się wykryć biegu schodów na rzutach. Wskaż strefę schodów i kierunek wejścia.", null, "stairs")
+        val stairs = candidate.stairs
+        val withTreads = stairs.count { it.treadCount.value != null }
+        val linked = stairs.count { it.toFloorId != null }
+        status(
+            Requirement.STAIR_ZONE,
+            when {
+                stairs.isEmpty() -> RequirementState.MISSING
+                // A zone plus a floor transition is as far as a drawing without readable step
+                // text can take this; the step count stays a question either way.
+                linked > 0 && withTreads > 0 -> RequirementState.PARTIAL
+                else -> RequirementState.PARTIAL
+            },
+            if (stairs.isEmpty()) null else FactFidelity.weakest(stairs.map { it.fidelity }),
+            if (stairs.isEmpty()) "0 stair zones" else "${stairs.size} stair zones, $withTreads with counted tread lines, $linked linked to the storey above; step count and direction not read",
+        )
+        if (stairs.isEmpty()) {
+            ask(Requirement.STAIR_ZONE, "Nie udało się wykryć biegu schodów na rzutach. Wskaż strefę schodów i kierunek wejścia.", null, "stairs")
+        } else {
+            ask(Requirement.STAIR_ZONE, "Liczba stopni i kierunek wejścia schodów nie wynikają z rzutu (są opisane tekstem). Podaj liczbę stopni i kierunek dla ${stairs.size} wykrytych stref schodów.", null, "stairs")
+        }
         val doors = candidate.openings.count { it.type == OpeningType.DOOR && !it.exterior }
         status(Requirement.DOOR_TOPOLOGY, if (doors > 0) RequirementState.PARTIAL else RequirementState.MISSING, FactFidelity.TRACE_UNCERTAIN, "$doors interior door-width gaps in wall lines")
 

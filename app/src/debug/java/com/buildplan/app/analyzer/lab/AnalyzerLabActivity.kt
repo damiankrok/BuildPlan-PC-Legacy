@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.buildplan.app.R
+import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.pipeline.AnalysisListener
 import com.buildplan.app.analyzer.pipeline.AnalysisRun
 import com.buildplan.app.analyzer.pipeline.ProjectAnalyzer
@@ -244,6 +245,18 @@ private fun linesFor(tab: LabTab, run: AnalysisRun, stages: List<String>): List<
                 .forEach { (n, m) -> add("  $n: ${m.value?.let { "%.2f m".format(it) } ?: "brak"} [${m.fidelity}]") }
             c.roof?.let { r -> add("Dach: ${r.family}, ${r.facets.size} połaci, ${"%.1f".format(java.util.Locale.ROOT, r.totalArea.value)} m², ${r.pitchDegrees.value}°, ${r.note}") }
             add("Ściany: ${c.walls.size}, otwory: ${c.openings.size}, schody: ${c.stairs.size}")
+            // The correctness work of STAGE-023B, where it can be seen at a glance: how many rooms
+            // have a proved outline, what told us a stair is there, and how many opening heights
+            // the drawings actually carry.
+            val unresolved = c.rooms.filter { it.geometryState == RoomGeometryState.UNRESOLVED_REGION }
+            add("Obrysy pomieszczeń: ${c.rooms.size - unresolved.size}/${c.rooms.size} to poprawne pierścienie proste")
+            unresolved.forEach { add("  BEZ OBRYSU ${it.id} ${it.name}: ${it.geometryNote}") }
+            c.stairs.forEach { s ->
+                add("  Schody ${s.id} na ${s.floorId}${s.toFloorId?.let { t -> " → $t" } ?: ""}: ${s.evidence.joinToString("+")} [${s.fidelity}], stopni ${s.treadCount.value?.let { n -> "%.0f".format(n) } ?: "nieodczytane"}")
+                s.unresolved.forEach { u -> add("      ? $u") }
+            }
+            val heights = c.openings.count { it.height.value != null }
+            add("Wysokości otworów odczytane z rysunku: $heights/${c.openings.size}")
         }
         add("")
         add("Czas [ms]: ${run.timingsMillis}")
@@ -254,7 +267,9 @@ private fun linesFor(tab: LabTab, run: AnalysisRun, stages: List<String>): List<
             f.footprint?.let { add("  obrys: ${"%.2f".format(java.util.Locale.ROOT, it.bounds.width)} × ${"%.2f".format(java.util.Locale.ROOT, it.bounds.depth)} m, ${it.vertices.size} narożników, ${"%.1f".format(java.util.Locale.ROOT, it.area)} m²") }
             f.rooms.forEach { r ->
                 val q = run.quantities?.rooms?.firstOrNull { it.roomId == r.id }
-                add("  ${r.sourceOrdinal ?: "?"}. ${r.name} [${r.id}] ${"%.2f".format(java.util.Locale.ROOT, r.plannedArea.value)} m² (źródło ${r.sourceFloorArea.value ?: r.sourceUsableArea.value}) ${r.matchConfidence}")
+                add("  ${r.sourceOrdinal ?: "?"}. ${r.name} [${r.id}] ${"%.2f".format(java.util.Locale.ROOT, r.plannedArea.value)} m² (źródło ${r.sourceFloorArea.value ?: r.sourceUsableArea.value}) ${r.matchConfidence} ${r.geometryState}")
+                if (r.geometryState == RoomGeometryState.UNRESOLVED_REGION) add("      obrys nierozstrzygnięty: ${r.geometryNote}")
+                r.matchAlternatives.forEach { alt -> add("      mogłoby też być: $alt") }
                 add("      obwód ${"%.2f".format(java.util.Locale.ROOT, r.perimeter.value)} m, ściany brutto ${"%.1f".format(java.util.Locale.ROOT, q?.wallGross?.value)} / netto ${"%.1f".format(java.util.Locale.ROOT, q?.wallNet?.value)} m², sufit płaski ${"%.1f".format(java.util.Locale.ROOT, q?.ceilingFlat?.value)} + skosy ${"%.1f".format(java.util.Locale.ROOT, q?.ceilingSloped?.value)} m², kubatura ${"%.1f".format(java.util.Locale.ROOT, q?.volume?.value)} m³")
                 r.boundary.forEachIndexed { i, b -> add("      ściana ${i + 1}: ${"%.2f".format(java.util.Locale.ROOT, b.segment.length)} m → ${b.neighbourRoomId ?: if (b.faceOutside) "zewnątrz" else "?"} (${b.wallId ?: "brak ściany"})") }
             }

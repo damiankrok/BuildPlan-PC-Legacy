@@ -24,10 +24,12 @@ import com.buildplan.app.analyzer.candidate.RoofFacetCandidate
 import com.buildplan.app.analyzer.candidate.RoofFamily
 import com.buildplan.app.analyzer.candidate.RoomBoundarySegment
 import com.buildplan.app.analyzer.candidate.RoomCandidate
+import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.candidate.SecondaryRoofMass
 import com.buildplan.app.analyzer.candidate.Segment
 import com.buildplan.app.analyzer.candidate.Segment3
 import com.buildplan.app.analyzer.candidate.StairCandidate
+import com.buildplan.app.analyzer.candidate.StairEvidence
 import com.buildplan.app.analyzer.candidate.WallCandidate
 import com.buildplan.app.analyzer.candidate.WallClass
 import com.buildplan.app.analyzer.fidelity.FactFidelity
@@ -227,7 +229,7 @@ object SnapshotCodec {
                 "height" to measuredJson(o.height); "sillHeight" to measuredJson(o.sillHeight); "linkedRoomIds" toStrings o.linkedRoomIds; "exterior" to o.exterior; "typeFidelity" to o.typeFidelity
             }
         }
-        "stairs" toArray c.stairs.map { s -> json { "id" to s.id; "floorId" to s.floorId; "zone" to boxJson(s.zone); "treadCount" to measuredJson(s.treadCount); "direction" to s.direction; "fidelity" to s.fidelity; "note" to s.note } }
+        "stairs" toArray c.stairs.map { s -> json { "id" to s.id; "floorId" to s.floorId; "zone" to boxJson(s.zone); "treadCount" to measuredJson(s.treadCount); "direction" to s.direction; "fromFloorId" to s.fromFloorId; "toFloorId" to s.toFloorId; "flights" toArray s.flights.map(::boxJson); "roomId" to s.roomId; "evidence" toStrings s.evidence.map { e -> e.name }; "fidelity" to s.fidelity; "note" to s.note; "unresolved" toStrings s.unresolved } }
         "roof" to c.roof?.let(::roofJson)
         "levels" to levelsJson(c.levels)
         "dimensions" toArray c.dimensions.map { d -> json { "scope" to d.scope; "name" to d.name; "measured" to measuredJson(d.measured) } }
@@ -244,7 +246,14 @@ object SnapshotCodec {
             OpeningCandidate(op.str("id")!!, op.str("wallId")!!, op.str("floorId")!!, OpeningType.valueOf(op.str("type")!!), m(op, "distanceAlongWall"), m(op, "width"), m(op, "height"), m(op, "sillHeight"),
                 strings(op, "linkedRoomIds"), op.bool("exterior") ?: false, FactFidelity.valueOf(op.str("typeFidelity")!!))
         }.orEmpty(),
-        stairs = o.arr("stairs")?.objects?.map { s -> StairCandidate(s.str("id")!!, s.str("floorId")!!, boxFrom(s.obj("zone")!!), m(s, "treadCount"), s.str("direction")!!, FactFidelity.valueOf(s.str("fidelity")!!), s.str("note") ?: "") }.orEmpty(),
+        stairs = o.arr("stairs")?.objects?.map { s ->
+            StairCandidate(
+                s.str("id")!!, s.str("floorId")!!, boxFrom(s.obj("zone")!!), m(s, "treadCount"), s.str("direction")!!,
+                s.str("fromFloorId"), s.str("toFloorId"), s.arr("flights")?.objects?.map(::boxFrom).orEmpty(), s.str("roomId"),
+                strings(s, "evidence").map(StairEvidence::valueOf).toSet(),
+                FactFidelity.valueOf(s.str("fidelity")!!), s.str("note") ?: "", strings(s, "unresolved"),
+            )
+        }.orEmpty(),
         roof = o.obj("roof")?.let(::roofFrom),
         levels = levelsFrom(o.obj("levels")!!),
         dimensions = o.arr("dimensions")?.objects?.map { d -> NamedDimension(d.str("scope")!!, d.str("name")!!, m(d, "measured")) }.orEmpty(),
@@ -267,10 +276,11 @@ object SnapshotCodec {
         "floorElevation" to measuredJson(f.floorElevation); "clearHeight" to measuredJson(f.clearHeight)
         "rooms" toArray f.rooms.map { r ->
             json {
-                "id" to r.id; "floorId" to r.floorId; "name" to r.name; "sourceOrdinal" to r.sourceOrdinal; "polygon" to polygonJson(r.polygon)
+                "id" to r.id; "floorId" to r.floorId; "name" to r.name; "sourceOrdinal" to r.sourceOrdinal; "polygon" to r.polygon?.let(::polygonJson)
+                "geometryState" to r.geometryState; "geometryNote" to r.geometryNote
                 "perimeter" to measuredJson(r.perimeter); "plannedArea" to measuredJson(r.plannedArea); "sourceUsableArea" to measuredJson(r.sourceUsableArea); "sourceFloorArea" to measuredJson(r.sourceFloorArea)
                 "boundary" toArray r.boundary.map { b -> json { "segment" to segJson(b.segment); "wallId" to b.wallId; "neighbourRoomId" to b.neighbourRoomId; "faceOutside" to b.faceOutside } }
-                "matchConfidence" to r.matchConfidence; "matchNote" to r.matchNote
+                "matchConfidence" to r.matchConfidence; "matchNote" to r.matchNote; "matchAlternatives" toStrings r.matchAlternatives
             }
         }
         "unmatchedRegions" toArray f.unmatchedRegions.map { u -> json { "id" to u.id; "polygon" to polygonJson(u.polygon); "areaM2" to u.areaM2; "boundaryWallIds" toStrings u.boundaryWallIds } }
@@ -288,9 +298,11 @@ object SnapshotCodec {
         roofOutline = o.arr("roofOutline")?.let(::polygonFrom),
         floorElevation = m(o, "floorElevation"), clearHeight = m(o, "clearHeight"),
         rooms = o.arr("rooms")?.objects?.map { r ->
-            RoomCandidate(r.str("id")!!, r.str("floorId")!!, r.str("name")!!, r.int("sourceOrdinal"), polygonFrom(r.arr("polygon")!!), m(r, "perimeter"), m(r, "plannedArea"), m(r, "sourceUsableArea"), m(r, "sourceFloorArea"),
+            RoomCandidate(r.str("id")!!, r.str("floorId")!!, r.str("name")!!, r.int("sourceOrdinal"), r.arr("polygon")?.let(::polygonFrom),
+                RoomGeometryState.valueOf(r.str("geometryState") ?: RoomGeometryState.VALID_SIMPLE_RING.name), r.str("geometryNote") ?: "",
+                m(r, "perimeter"), m(r, "plannedArea"), m(r, "sourceUsableArea"), m(r, "sourceFloorArea"),
                 r.arr("boundary")?.objects?.map { b -> RoomBoundarySegment(segFrom(b.obj("segment")!!), b.str("wallId"), b.str("neighbourRoomId"), b.bool("faceOutside") ?: false) }.orEmpty(),
-                FactFidelity.valueOf(r.str("matchConfidence")!!), r.str("matchNote") ?: "")
+                FactFidelity.valueOf(r.str("matchConfidence")!!), r.str("matchNote") ?: "", strings(r, "matchAlternatives"))
         }.orEmpty(),
         unmatchedRegions = o.arr("unmatchedRegions")?.objects?.map { u -> RegionCandidate(u.str("id")!!, polygonFrom(u.arr("polygon")!!), u.num("areaM2")!!, strings(u, "boundaryWallIds")) }.orEmpty(),
         planAssetUrl = o.str("planAssetUrl"),
@@ -352,13 +364,13 @@ object SnapshotCodec {
         "floors" toArray q.floors.map { f ->
             json {
                 "floorId" to f.floorId; "roomFloorAreaSum" to measuredJson(f.roomFloorAreaSum); "exteriorWallsStructural" to measuredJson(f.exteriorWallsStructural)
-                "loadBearingWallsStructural" to measuredJson(f.loadBearingWallsStructural); "partitionsStructural" to measuredJson(f.partitionsStructural); "exteriorWallsNet" to measuredJson(f.exteriorWallsNet)
+                "loadBearingWallsStructural" to measuredJson(f.loadBearingWallsStructural); "partitionsStructural" to measuredJson(f.partitionsStructural); "exteriorEnvelopeGross" to measuredJson(f.exteriorEnvelopeGross); "exteriorEnvelopeNet" to measuredJson(f.exteriorEnvelopeNet)
                 "openingAreasByType" to json { f.openingAreasByType.forEach { (k, v) -> k.name to v } }
             }
         }
         "roofFacetAreas" toArray q.roofFacetAreas.map { (id, a) -> json { "id" to id; "areaM2" to a } }
         "roofTotal" to measuredJson(q.roofTotal); "ridgeLength" to measuredJson(q.ridgeLength); "hipLength" to measuredJson(q.hipLength); "eaveLength" to measuredJson(q.eaveLength)
-        "exteriorJoinery" to measuredJson(q.exteriorJoinery); "facadeGross" to measuredJson(q.facadeGross); "facadeNet" to measuredJson(q.facadeNet); "floorsAndStairsArea" to measuredJson(q.floorsAndStairsArea)
+        "exteriorJoinery" to measuredJson(q.exteriorJoinery); "facadeGross" to measuredJson(q.facadeGross); "facadeNet" to measuredJson(q.facadeNet); "facadeWallMaterial" to measuredJson(q.facadeWallMaterial); "floorsAndStairsArea" to measuredJson(q.floorsAndStairsArea)
         "notes" toStrings q.notes
     }
 
@@ -370,12 +382,12 @@ object SnapshotCodec {
                 r.arr("boundaryLengths")?.items?.map { (it as JsonValue.Num).value }.orEmpty())
         }.orEmpty(),
         floors = o.arr("floors")?.objects?.map { f ->
-            FloorQuantities(f.str("floorId")!!, m(f, "roomFloorAreaSum"), m(f, "exteriorWallsStructural"), m(f, "loadBearingWallsStructural"), m(f, "partitionsStructural"), m(f, "exteriorWallsNet"),
+            FloorQuantities(f.str("floorId")!!, m(f, "roomFloorAreaSum"), m(f, "exteriorWallsStructural"), m(f, "loadBearingWallsStructural"), m(f, "partitionsStructural"), m(f, "exteriorEnvelopeGross"), m(f, "exteriorEnvelopeNet"),
                 f.obj("openingAreasByType")?.fields?.map { (k, v) -> OpeningType.valueOf(k) to (v as JsonValue.Num).value }?.toMap().orEmpty())
         }.orEmpty(),
         roofFacetAreas = o.arr("roofFacetAreas")?.objects?.map { it.str("id")!! to it.num("areaM2")!! }.orEmpty(),
         roofTotal = m(o, "roofTotal"), ridgeLength = m(o, "ridgeLength"), hipLength = m(o, "hipLength"), eaveLength = m(o, "eaveLength"),
-        exteriorJoinery = m(o, "exteriorJoinery"), facadeGross = m(o, "facadeGross"), facadeNet = m(o, "facadeNet"), floorsAndStairsArea = m(o, "floorsAndStairsArea"),
+        exteriorJoinery = m(o, "exteriorJoinery"), facadeGross = m(o, "facadeGross"), facadeNet = m(o, "facadeNet"), facadeWallMaterial = m(o, "facadeWallMaterial"), floorsAndStairsArea = m(o, "floorsAndStairsArea"),
         notes = strings(o, "notes"),
     )
 

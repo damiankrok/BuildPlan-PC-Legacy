@@ -32,6 +32,10 @@ import com.buildplan.app.analyzer.site.ScalarKey
 import com.buildplan.app.analyzer.site.SiteAdapter
 import com.buildplan.app.analyzer.site.SourcePackage
 import com.buildplan.app.analyzer.site.archon.ArchonSiteAdapter
+import com.buildplan.app.analyzer.text.DrawingTextReading
+import com.buildplan.app.analyzer.text.GlyphRunLocator
+import com.buildplan.app.analyzer.text.OpeningLabelMatcher
+import com.buildplan.app.analyzer.text.TextLegibility
 import com.buildplan.app.analyzer.snapshot.ProjectAnalysisSnapshot
 import com.buildplan.app.analyzer.source.ProjectInput
 import com.buildplan.app.analyzer.source.ResourceFetcher
@@ -230,13 +234,59 @@ class ProjectAnalyzer(
                 FloorCandidateBuilder.build(index, source.floors.getOrNull(index)?.name ?: "Kondygnacja ${index + 1}", index, source.floors.getOrNull(index), a, elevation, clear)
             }
         }
+        // ---- what the drawings print as text
+        //
+        // Located, then read only if the raster can carry it. Both benchmark sources dimension
+        // every opening and level every storey, and publish those drawings at four to six pixels
+        // a glyph — so the runs are found, none is read, and every height stays MISSING with the
+        // question attached. Locating them is still worth the pass: "the source states this and
+        // the published image is too small to carry it" is a different answer for the reader than
+        // "the source does not state it", and only one of them is fixed by a bigger drawing.
+        val textExtractor = GlyphRunLocator()
+        val readings = mutableListOf<DrawingTextReading>()
+        analyses.forEachIndexed { index, a ->
+            val reading = DrawingTextReading(a.assetUrl, textExtractor.extract(a.assetUrl, a.image))
+            readings += reading
+            log += "text plan ${index + 1}: ${reading.summary()}"
+        }
+        assets.manifest.firstWithRole(AssetRole.SECTION)?.let { record ->
+            assets.image(record)?.let { image ->
+                val reading = DrawingTextReading(record.url, textExtractor.extract(record.url, image))
+                readings += reading
+                log += "text section: ${reading.summary()}"
+            }
+        }
+
+        val openingsWithLabels = built.mapIndexed { index, b ->
+            val analysis = analyses.getOrNull(index)
+            val calibration = analysis?.calibration
+            val reading = readings.getOrNull(index)
+            if (calibration == null || reading == null) return@mapIndexed b.openings to emptyList<String>()
+            val associations = OpeningLabelMatcher.associate(
+                b.openings,
+                { o -> openingCentre(o, b.walls) },
+                reading,
+                calibration,
+            )
+            val (updated, notes) = OpeningLabelMatcher.applyHeights(b.openings, associations)
+            val labelled = associations.size
+            val readable = associations.count { it.observation.legibility == TextLegibility.READ }
+            log += "text plan ${index + 1}: $labelled of ${b.openings.size} openings have a label within ${OpeningLabelMatcher.SEARCH_RADIUS_M} m, $readable readable"
+            notes.forEach { log += "  $it" }
+            updated to notes
+        }
+
         val issues = built.flatMap { it.issues }.toMutableList()
+        val stairs = linkStairsAcrossFloors(built.map { it.floor }, built.flatMap { it.stairs })
+        if (stairs.isNotEmpty()) {
+            log += "stairs: " + stairs.joinToString { "${it.id} on ${it.floorId} (${it.evidence.joinToString("+") { e -> e.name }})" }
+        }
         val dimensions = dimensions(built.map { it.floor }, roof, levels, groundFootprint)
         val candidate = ProjectAnalysisCandidate(
             floors = built.map { it.floor },
             walls = built.flatMap { it.walls },
-            openings = built.flatMap { it.openings },
-            stairs = built.flatMap { it.stairs },
+            openings = openingsWithLabels.flatMap { it.first },
+            stairs = stairs,
             roof = roof,
             levels = levels,
             dimensions = dimensions,
@@ -252,6 +302,39 @@ class ProjectAnalyzer(
         listener.onStage(AnalysisStage.SNAPSHOT, "Gotowe")
 
         return AnalysisRun(input, resolution, source, assets, analyses, candidate, quantities, validations, gapOutput.gaps, gapOutput.questions, log, timings, built.flatMap { it.roomMasks.entries }.associate { it.key to it.value })
+    }
+
+    /**
+     * Joins each flight to the storey it reaches.
+     *
+     * A stair on one storey and a stair on the next that stand over each other
+     * are the two ends of one flight — the plan draws the same shaft twice,
+     * once climbing and once arriving. Overlap in plan is the whole test; no
+     * arrow is read and no direction of travel is inferred from it, so a
+     * linked pair says *which storeys are connected* and still leaves "up or
+     * down" to the question list.
+     */
+    private fun linkStairsAcrossFloors(floors: List<FloorCandidate>, stairs: List<com.buildplan.app.analyzer.candidate.StairCandidate>): List<com.buildplan.app.analyzer.candidate.StairCandidate> {
+        val order = floors.associate { it.id to it.order }
+        return stairs.map { s ->
+            val myOrder = order[s.floorId] ?: return@map s
+            val above = stairs.firstOrNull { other ->
+                order[other.floorId] == myOrder + 1 && overlapFraction(s.zone, other.zone) > 0.25
+            }
+            if (above == null) s else s.copy(
+                toFloorId = above.floorId,
+                evidence = s.evidence + com.buildplan.app.analyzer.candidate.StairEvidence.CROSS_FLOOR_ALIGNMENT,
+                note = s.note + "; aligned with ${above.id} on the storey above",
+            )
+        }
+    }
+
+    private fun overlapFraction(a: com.buildplan.app.analyzer.candidate.Box, b: com.buildplan.app.analyzer.candidate.Box): Double {
+        val w = kotlin.math.min(a.maxX, b.maxX) - max(a.minX, b.minX)
+        val h = kotlin.math.min(a.maxZ, b.maxZ) - max(a.minZ, b.minZ)
+        if (w <= 0 || h <= 0) return 0.0
+        val smaller = kotlin.math.min(a.area, b.area)
+        return if (smaller <= 0) 0.0 else w * h / smaller
     }
 
     /**
@@ -324,7 +407,7 @@ class ProjectAnalyzer(
             out += NamedDimension(f.id, "Rzędna podłogi", f.floorElevation)
             out += NamedDimension(f.id, "Wysokość w świetle", f.clearHeight)
             f.rooms.forEach { r ->
-                val b = r.polygon.bounds
+                val b = r.polygon?.bounds ?: return@forEach
                 out += NamedDimension(r.id, "Wymiary obrysu pomieszczenia", Measured.derived(b.width, MeasureUnit.METER, "room bounding box width", emptyList(), note = "depth ${"%.2f".format(java.util.Locale.ROOT, b.depth)} m"))
             }
         }
@@ -334,3 +417,22 @@ class ProjectAnalyzer(
 
 /** Convenience for issues raised outside a stage. */
 internal fun issue(stage: String, message: String, severity: IssueSeverity = IssueSeverity.WARNING) = AnalysisIssue(severity, stage, null, message)
+
+/**
+ * The mid-point of an opening on its wall, in model metres.
+ *
+ * The opening records how far along the wall it starts and how wide it is;
+ * walking that distance from the wall's own start puts the label search where
+ * the drawing actually prints the leader.
+ */
+private fun openingCentre(opening: com.buildplan.app.analyzer.candidate.OpeningCandidate, walls: List<com.buildplan.app.analyzer.candidate.WallCandidate>): Pt? {
+    val wall = walls.firstOrNull { it.id == opening.wallId } ?: return null
+    val d = opening.distanceAlongWall.value ?: return null
+    val w = opening.width.value ?: 0.0
+    val a = wall.centreline.a
+    val b = wall.centreline.b
+    val length = a.distanceTo(b)
+    if (length < 1e-9) return null
+    val t = ((d + w / 2) / length).coerceIn(0.0, 1.0)
+    return Pt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)
+}

@@ -92,10 +92,23 @@ object CrossSourceValidator {
         val ground = floorsByOrder.firstOrNull()?.let { f -> quantities.floors.firstOrNull { it.floorId == f.id } }
         val upper = floorsByOrder.getOrNull(1)?.let { f -> quantities.floors.firstOrNull { it.floorId == f.id } }
         pkg.scalar(ScalarKey.EXTERNAL_WALL_AREA)?.let { s ->
-            val gross = quantities.floors.sumOf { it.exteriorWallsStructural.value ?: 0.0 }
-            val net = quantities.floors.sumOf { it.exteriorWallsNet.value ?: 0.0 }
-            out += compare("Powierzchnia ścian zewnętrznych (brutto)", gross, s.measured.value, "m2", "exterior wall centreline length × storey height, once per wall, all storeys, before openings; the cost page does not say whether its figure is net", FactFidelity.SOURCE_DERIVED)
-            out += compare("Powierzchnia ścian zewnętrznych (netto, wysokości otworów założone)", net, s.measured.value, "m2", "as above minus exterior openings with assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
+            // The cost page lists this among the things to *build*, so it is masonry: the wall
+            // material between the openings, which is what the traced wall pieces already are.
+            // There is deliberately no "net" line beside it any more — the previous one subtracted
+            // the openings from a figure they were never in, and reported Project A's exterior
+            // walls at 73 m2 when the traced masonry alone was 123 m2.
+            out += compare(
+                "Powierzchnia ścian zewnętrznych (mur między otworami)",
+                quantities.facadeWallMaterial.value, s.measured.value, "m2",
+                "traced exterior wall pieces × storey height, once per piece, all storeys; openings are gaps between pieces and are already absent, so this is not reduced by them again",
+                quantities.facadeWallMaterial.fidelity,
+            )
+            out += ValidationFinding(
+                "Powierzchnia zewnętrzna obwiedni (nad otworami)", quantities.floors.sumOf { it.exteriorEnvelopeGross.value ?: 0.0 }, s.measured.value, "m2", null, null,
+                ValidationStatus.NOT_COMPARABLE,
+                "the envelope run over the openings — a facade surface, not a masonry quantity, and not what a cost page's external-wall line prices; reported so the two readings of the envelope are both visible",
+                FactFidelity.SOURCE_DERIVED,
+            )
         }
         pkg.scalar(ScalarKey.INTERNAL_LOAD_BEARING_WALL_AREA)?.let { s ->
             out += compare("Powierzchnia ścian wewnętrznych nośnych", quantities.floors.sumOf { it.loadBearingWallsStructural.value ?: 0.0 }, s.measured.value, "m2", "internal walls ≥ 0.20 m thick, once each, all storeys", FactFidelity.SOURCE_DERIVED)
@@ -113,8 +126,24 @@ object CrossSourceValidator {
             out += compare("Powierzchnia stolarki zewnętrznej", quantities.exteriorJoinery.value, s.measured.value, "m2", "exterior openings: traced widths × assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
         }
         pkg.scalar(ScalarKey.FACADE_INSULATION_AREA)?.let { s ->
-            out += compare("Powierzchnia elewacji do ocieplenia (brutto)", quantities.facadeGross.value, s.measured.value, "m2", "exterior walls + gables before openings", quantities.facadeGross.fidelity)
-            out += compare("Powierzchnia elewacji do ocieplenia (netto, wysokości otworów założone)", quantities.facadeNet.value, s.measured.value, "m2", "as above minus exterior openings with assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
+            out += bracketed(
+                subject = "Powierzchnia elewacji do ocieplenia",
+                gross = quantities.facadeGross.value,
+                net = quantities.facadeNet.value,
+                sourceValue = s.measured.value,
+                grossSemantics = "storey footprint perimeter × storey height + gables, measured over the openings",
+                netSemantics = "the same envelope minus exterior openings at assumed heights",
+                whyAmbiguous = "the cost page does not say whether its facade figure is measured over the openings or net of them, " +
+                    "nor whether it includes the plinth below the ground-floor level and the garage",
+                fidelity = quantities.facadeGross.fidelity,
+            )
+            out += ValidationFinding(
+                "Powierzchnia zewnętrznych ścian murowanych (bez otworów)", quantities.facadeWallMaterial.value, s.measured.value, "m2", null, null,
+                ValidationStatus.NOT_COMPARABLE,
+                "traced exterior wall pieces only: openings are absent because an opening is not a wall piece, and so is any envelope the raster left oblique or unresolved. " +
+                    "It is the lower bracket on the envelope, never the facade area, and must not be compared with a facade figure",
+                quantities.facadeWallMaterial.fidelity,
+            )
         }
         pkg.scalar(ScalarKey.BUILDING_HEIGHT)?.let { s ->
             val ridge = candidate.levels.ridge.value
@@ -126,6 +155,58 @@ object CrossSourceValidator {
     }
 
     private fun firstScalar(pkg: SourcePackage, key: ScalarKey): PublishedScalar? = pkg.scalars.firstOrNull { it.key == key && it.measured.value != null }
+
+    /**
+     * Compares a published figure against a candidate quantity that the source
+     * leaves ambiguous between two readings.
+     *
+     * A facade figure measured over the openings and one measured net of them
+     * are different numbers for the same wall, and the cost page does not say
+     * which it prints. When the published value falls *between* the two, the
+     * geometry is not in dispute — the definition is — and saying so is worth
+     * more than picking whichever reading is nearer and calling the remainder
+     * an error. Only a value outside both readings is a real disagreement, and
+     * it is then reported against the nearer of them so the size of the gap is
+     * still visible.
+     */
+    private fun bracketed(
+        subject: String,
+        gross: Double?,
+        net: Double?,
+        sourceValue: Double?,
+        grossSemantics: String,
+        netSemantics: String,
+        whyAmbiguous: String,
+        fidelity: FactFidelity?,
+    ): ValidationFinding {
+        if (gross == null || net == null || sourceValue == null || sourceValue == 0.0) {
+            return ValidationFinding(subject, gross, sourceValue, "m2", null, null, ValidationStatus.INSUFFICIENT_SOURCE, "$grossSemantics; $whyAmbiguous", fidelity)
+        }
+        val low = minOf(gross, net)
+        val high = maxOf(gross, net)
+        if (sourceValue in low..high) {
+            return ValidationFinding(
+                subject, gross, sourceValue, "m2", null, null, ValidationStatus.NOT_COMPARABLE,
+                "the published figure falls between the two readings of this envelope — " +
+                    "${fmt(net)} m2 net ($netSemantics) and ${fmt(gross)} m2 gross ($grossSemantics) — so the difference is a definition, not geometry: $whyAmbiguous",
+                fidelity,
+            )
+        }
+        val nearer = if (abs(sourceValue - low) <= abs(sourceValue - high)) low else high
+        val rel = abs(nearer - sourceValue) / sourceValue
+        val status = when {
+            rel <= STRONG -> ValidationStatus.MATCH_STRONG
+            rel <= ACCEPTABLE -> ValidationStatus.MATCH_ACCEPTABLE
+            else -> ValidationStatus.MISMATCH
+        }
+        return ValidationFinding(
+            subject, nearer, sourceValue, "m2", abs(nearer - sourceValue), rel, status,
+            "outside both readings of this envelope (${fmt(net)}–${fmt(gross)} m2), compared against the nearer; $whyAmbiguous",
+            fidelity,
+        )
+    }
+
+    private fun fmt(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
 
     private fun compare(
         subject: String,
