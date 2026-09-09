@@ -11,6 +11,7 @@ import com.buildplan.app.analyzer.fidelity.MeasureUnit
 import com.buildplan.app.analyzer.fidelity.Measured
 import com.buildplan.app.analyzer.fidelity.Provenance
 import com.buildplan.app.analyzer.roof.RoofHeightField
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -110,8 +111,114 @@ data class ProjectQuantities(
      */
     val facadeWallMaterial: Measured,
     val floorsAndStairsArea: Measured,
+    /** The envelope broken into the scopes a published facade figure might or might not include. */
+    val facadeScope: FacadeScope,
     val notes: List<String>,
 )
+
+/**
+ * The envelope, itemised by the choices a published facade figure silently
+ * makes.
+ *
+ * A cost page prints one number under "facade" and never says whether it is
+ * measured over the openings or net of them, whether an unheated garage is
+ * inside the insulated envelope, or whether the plinth below the ground-floor
+ * level is counted. Those are not small differences — on these houses they
+ * span eighty square metres — so the analyzer states each of them separately
+ * and lets the comparison say which combination, if any, the published number
+ * could be. Naming the pieces is what turns "we are 38 % out" into "we do not
+ * know what they measured", which is the truth.
+ */
+data class FacadeScope(
+    /** Traced exterior masonry, openings absent by construction. */
+    val exteriorStructuralWall: Measured,
+    /** Storey footprint perimeter x storey height, measured over the openings. */
+    val finishGross: Measured,
+    /** [finishGross] less the exterior openings at their read or assumed heights. */
+    val finishNet: Measured,
+    val openingDeduction: Measured,
+    val gableFace: Measured,
+    /** The part of [finishGross] that belongs to rooms the site calls a garage. */
+    val garageExterior: Measured,
+    /** Walls of masses beside the main body (a garage or wing under its own roof). */
+    val secondaryMassExterior: Measured,
+    /** The band between terrain and the ground-floor level; unresolved while terrain is assumed. */
+    val plinth: Measured,
+) {
+    /**
+     * Every value the envelope takes under the scope choices the source leaves
+     * open, smallest first.
+     *
+     * The subtractable parts are the ones a facade figure plausibly excludes
+     * because they are not insulated: an unheated garage, and a mass under its
+     * own lower roof. Both are measured, so removing them is a scope the
+     * analyzer can name rather than a fudge to close a gap.
+     */
+    val scopes: List<Pair<String, Double>>
+        get() {
+            val gross = finishGross.value ?: return emptyList()
+            val net = finishNet.value ?: gross
+            val garage = garageExterior.value ?: 0.0
+            val secondary = secondaryMassExterior.value ?: 0.0
+            return buildList {
+                add("over the openings" to gross)
+                add("net of the openings" to net)
+                if (garage > 0.1) {
+                    add("over the openings, less the garage" to gross - garage)
+                    add("net of the openings, less the garage" to net - garage)
+                }
+                if (secondary > 0.1) {
+                    add("net of the openings, less a secondary mass" to net - secondary)
+                    if (garage > 0.1) add("net of the openings, less the garage and a secondary mass" to net - garage - secondary)
+                }
+            }.sortedBy { it.second }
+        }
+
+    val scopeValues: List<Double> get() = scopes.map { it.second }
+
+    /**
+     * Which scope a published figure was measured under — and whether that can
+     * be told at all.
+     *
+     * The scopes sit close together by construction: a garage is a fraction of
+     * an envelope, not a multiple of it. So a tolerance wide enough to absorb
+     * the trace's own error is often wide enough for two neighbouring scopes to
+     * fit the same published number, and picking the nearer one would report a
+     * definition the source never stated. [alternative] is that second scope
+     * when it also fits, and its presence is the signal that the attribution is
+     * undecided; the *numeric* agreement in [relative] is unaffected, because
+     * that part was actually measured.
+     */
+    data class ScopeAttribution(
+        val label: String,
+        val value: Double,
+        val relative: Double,
+        val alternative: String?,
+        val alternativeRelative: Double?,
+    ) {
+        val isDecided: Boolean get() = alternative == null
+    }
+
+    fun attribute(sourceValue: Double, tolerance: Double): ScopeAttribution? {
+        if (sourceValue <= 0.0) return null
+        val ranked = scopes.sortedBy { abs(it.second - sourceValue) }
+        val best = ranked.firstOrNull() ?: return null
+        val runnerUp = ranked.getOrNull(1)
+        val runnerUpRel = runnerUp?.let { abs(it.second - sourceValue) / sourceValue }
+        val ambiguous = runnerUpRel != null && runnerUpRel <= tolerance
+        return ScopeAttribution(
+            label = best.first,
+            value = best.second,
+            relative = abs(best.second - sourceValue) / sourceValue,
+            alternative = if (ambiguous) runnerUp.first else null,
+            alternativeRelative = if (ambiguous) runnerUpRel else null,
+        )
+    }
+
+    /** Lowest and highest the envelope could be, over every scope the source leaves open. */
+    val plausibleRange: ClosedFloatingPointRange<Double>
+        get() = scopeValues.let { (it.firstOrNull() ?: 0.0)..(it.lastOrNull() ?: 0.0) }
+}
 
 /**
  * The first quantity takeoff: per-room floors, individual wall faces with
@@ -322,6 +429,25 @@ class QuantityTakeoffEngine(
             facadeGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("storey footprint perimeters × storey heights + gables")),
             facadeNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
             facadeWallMaterial = Measured(wallMaterial, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("traced exterior wall pieces, openings and unresolved envelope excluded")),
+            facadeScope = FacadeScope(
+                exteriorStructuralWall = Measured(wallMaterial, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("traced exterior wall pieces")),
+                finishGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("storey footprint perimeters × storey heights + gables")),
+                finishNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+                openingDeduction = Measured(joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+                gableFace = Measured(gableArea(), MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("roof height field above the eave along the gable edges")),
+                garageExterior = Measured(
+                    garageExteriorArea(surfaces), MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED,
+                    Provenance.derived("outward-facing wall faces of rooms the site names a garage"),
+                ),
+                secondaryMassExterior = Measured(
+                    secondaryMassExteriorArea(), MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED,
+                    Provenance.derived("perimeter of each secondary roof mass × its height above the storey floor"),
+                ),
+                plinth = Measured.missing(
+                    MeasureUnit.SQUARE_METER,
+                    "the plinth runs from terrain to the ground-floor level, and terrain is an assumption while the section's levels stay unread",
+                ),
+            ),
             floorsAndStairsArea = Measured(floorsAndStairs, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("sum of all room polygons on all floors")),
             notes = notes,
         )
@@ -349,6 +475,33 @@ class QuantityTakeoffEngine(
             meanHeight = gone(MeasureUnit.METER),
             boundaryLengths = emptyList(),
         )
+    }
+
+    /**
+     * The envelope belonging to rooms the site names a garage.
+     *
+     * A garage is usually outside the insulated envelope and usually inside the
+     * built area, so whether a published facade figure counts it is exactly the
+     * kind of scope decision a cost page does not print. Measured from the
+     * outward-facing wall faces already computed per room, so it is the same
+     * geometry the rest of the takeoff uses rather than a second estimate.
+     */
+    private fun garageExteriorArea(surfaces: List<MeasuredSurfaceCandidate>): Double {
+        val garageRooms = candidate.rooms.filter { it.kind == com.buildplan.app.analyzer.site.RoomKind.GARAGE }.map { it.id }.toSet()
+        if (garageRooms.isEmpty()) return 0.0
+        return surfaces
+            .filter { it.type == SurfaceType.WALL_FACE && it.facesOutside && it.roomId in garageRooms }
+            .sumOf { it.grossArea.value ?: 0.0 }
+    }
+
+    /** Walls of masses beside the main body: each secondary roof's perimeter up to its own top. */
+    private fun secondaryMassExteriorArea(): Double {
+        val roof = candidate.roof ?: return 0.0
+        val groundLevel = candidate.floors.minByOrNull { it.order }?.floorElevation?.value ?: 0.0
+        return roof.secondaryMasses.sumOf { mass ->
+            val top = mass.topElevation.value ?: return@sumOf 0.0
+            mass.outline.perimeter * max(0.0, top - groundLevel)
+        }
     }
 
     /** Vertical area of the gable panels: along each gable edge, the roof rises above the eave. */

@@ -297,14 +297,33 @@ Analizator mieszka w osobnym, czysto-JVM module `analyzer/` (pakiet
   wysokości (100 % > 2,2 m, 50 % 1,4–2,2 m) jest osobną wielkością od
   powierzchni podłogi.
 - **Regresja na drugim domu jest obowiązkowa.** Każda zmiana w segmentacji
-  rzutu, solverze dachu, łańcuchu pionowym albo silniku przedmiaru ma być
-  uruchomiona na obu projektach ewaluacyjnych
+  rzutu, solverze dachu, łańcuchu pionowym, rozpoznawaniu tekstu albo silniku
+  przedmiaru ma być uruchomiona na obu projektach ewaluacyjnych
   (`BUILDPLAN_ANALYZER_EVIDENCE_DIR=<katalog poza repo> ./gradlew :analyzer:test`)
   i nie może naprawiać jednego domu kosztem drugiego bez zapisu w raporcie.
+  Poprawka, która poprawia jeden dom i psuje drugi, jest **odrzucana**, chyba
+  że źródło dowodzi, że dotychczasowe zachowanie było błędne. Nie dostrajaj
+  progów do wartości oczekiwanych benchmarku — filtr dopasowany do dziesięciu
+  przypadków z dwóch arkuszy jest dopasowaniem do benchmarku, nie regułą.
 - **Bez zdalnej AI w analizatorze.** Żadnych klientów LLM/wizji, embeddingów
   ani „zapytaj model". Deterministyczne parsowanie HTML (jsoup), własna
-  morfologia rastra, szkielet prostoliniowy. Lokalny OCR, jeśli kiedyś
-  dojdzie, jest narzędziem ekstrakcji, nie autorytetem.
+  morfologia rastra, szkielet prostoliniowy. Rozpoznawanie cyfr
+  (`text/GlyphRecogniser`) jest szablonowe i lokalne — jest narzędziem
+  ekstrakcji, nie autorytetem.
+- **Precyzja przed zasięgiem przy tekście ze źródła.** Odczyt, którego nie ma,
+  kosztuje pytanie; odczyt fałszywy wchodzi jako `SOURCE_EXACT` i nie ma
+  później etapu, który by go złapał. Rozpoznana cyfra **nigdy nie jest faktem
+  sama z siebie**: łańcuch wymiarowy staje się `SOURCE_EXACT` dopiero, gdy
+  potwierdzi go arytmetyka rozstawu (≥ 3 etykiety), skala rzutu albo
+  odrysowana rozpiętość — a samotna liczba dodatkowo musi być wydrukowana
+  **poza obrysem**, tam gdzie drukuje się wymiar całkowity. Nie luzuj bramek
+  (`MIN_SCORE`, `MIN_MARGIN`, próg czytelności 10 px), żeby „odczytać więcej".
+  Wymuszony odczyt jest błędem, nie postępem.
+- **Niejednoznaczność się nazywa, nie rozstrzyga.** Kiedy dwa odczyty pasują
+  równie dobrze — dwa pomieszczenia o tej samej powierzchni, dwa zakresy
+  elewacji w tolerancji, bieg schodów, który może być półką — wynik ma podać
+  **oba** i zostać nierozstrzygnięty. Wybranie bliższego jest definicją,
+  której źródło nie podało.
 - **Sieć tylko do publicznych stron obsługiwanej witryny.** Allowlista hostów,
   rewalidacja każdego przekierowania, odrzucenie adresów prywatnych,
   limity rozmiaru. Nie pobieraj niczego poza stroną projektu, jej rysunkami

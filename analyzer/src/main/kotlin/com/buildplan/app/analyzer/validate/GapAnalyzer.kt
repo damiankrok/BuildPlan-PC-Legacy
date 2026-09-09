@@ -15,6 +15,10 @@ import com.buildplan.app.analyzer.source.SourceResolution
  */
 object GapAnalyzer {
 
+    /** Ledger scope for lengths read off a drawing rather than out of the page text. */
+    const val SOURCE_TEXT_SCOPE = "source-text"
+
+
     data class Output(val gaps: GapAnalysis, val questions: List<ClarificationQuestion>)
 
     fun analyse(resolution: SourceResolution, pkg: SourcePackage?, candidate: ProjectAnalysisCandidate?): Output {
@@ -118,6 +122,23 @@ object GapAnalyzer {
         // Openings.
         val exteriorOpenings = candidate.openings.filter { it.exterior }
         status(Requirement.EXTERIOR_OPENINGS, if (exteriorOpenings.isNotEmpty()) RequirementState.SATISFIED else RequirementState.MISSING, FactFidelity.SOURCE_TRACED, "${exteriorOpenings.size} exterior openings with traced widths")
+        // Dimensions read off the drawing and corroborated by geometry that was traced without
+        // reading a character. Counted from the ledger, where each one carries what let it through.
+        val readDimensions = candidate.dimensions.filter { it.scope == SOURCE_TEXT_SCOPE }
+        status(
+            Requirement.DIMENSION_CHAINS,
+            if (readDimensions.isEmpty()) RequirementState.MISSING else RequirementState.PARTIAL,
+            if (readDimensions.isEmpty()) FactFidelity.MISSING else FactFidelity.SOURCE_EXACT,
+            if (readDimensions.isEmpty()) {
+                "no dimension chain could be read and corroborated; the plans print them but nothing survived both the reading gate and the geometry check"
+            } else {
+                "${readDimensions.size} corroborated dimension labels: ${readDimensions.joinToString { "${"%.2f".format(java.util.Locale.ROOT, it.measured.value ?: 0.0)} m" }}"
+            },
+        )
+        if (readDimensions.isEmpty()) {
+            ask(Requirement.DIMENSION_CHAINS, "Nie udało się odczytać i potwierdzić żadnego łańcucha wymiarowego z rzutów. Podaj wymiary zewnętrzne budynku.", null, "dimensions")
+        }
+
         val withHeight = candidate.openings.count { it.height.value != null }
         status(
             Requirement.OPENING_HEIGHTS,

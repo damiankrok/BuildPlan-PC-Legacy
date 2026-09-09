@@ -4,6 +4,7 @@ import com.buildplan.app.analyzer.candidate.OpeningCandidate
 import com.buildplan.app.analyzer.candidate.PlanCalibration
 import com.buildplan.app.analyzer.candidate.Pt
 import com.buildplan.app.analyzer.fidelity.MeasureUnit
+import com.buildplan.app.analyzer.raster.PixelBox
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -41,6 +42,63 @@ data class DrawingTextReading(
  * dimensioned".
  */
 object OpeningLabelMatcher {
+
+    /** Two halves of one label sit within this many glyph heights of each other. */
+    private const val STACK_GAP_IN_HEIGHTS = 1.2
+
+    /** And overlap this much of their width; the two lines are centred on each other. */
+    private const val STACK_OVERLAP = 0.5
+
+    /**
+     * Joins the two lines of an opening label into one reading.
+     *
+     * A drawing writes an opening as its width over its height inside a small
+     * ellipse — two lines, so the locator finds two runs and neither is a
+     * number the model can use on its own. Stacked, centred and close, they are
+     * one label, and the pair is emitted as `width/height` for the parser.
+     *
+     * Only pairs where *both* lines were read are joined: a label with one
+     * half unread is not half a fact, and the height that would be taken from
+     * it is exactly the value the analyzer is trying not to invent.
+     */
+    fun pairStackedLabels(observations: List<TextObservation>): List<TextObservation> {
+        val readable = observations.filter { it.legibility == TextLegibility.READ && it.text?.all(Char::isDigit) == true }
+        val used = HashSet<TextObservation>()
+        val paired = mutableListOf<TextObservation>()
+        readable.sortedWith(compareBy({ it.bounds.minY }, { it.bounds.minX })).forEach { top ->
+            if (top in used) return@forEach
+            val below = readable.firstOrNull { other ->
+                other !== top && other !in used &&
+                    other.orientation == top.orientation &&
+                    other.bounds.minY > top.bounds.maxY &&
+                    other.bounds.minY - top.bounds.maxY <= top.glyphHeightPx * STACK_GAP_IN_HEIGHTS &&
+                    horizontalOverlap(top.bounds, other.bounds) >= STACK_OVERLAP
+            } ?: return@forEach
+            used += top
+            used += below
+            paired += TextObservation(
+                sourceAsset = top.sourceAsset,
+                bounds = PixelBox(
+                    minOf(top.bounds.minX, below.bounds.minX), top.bounds.minY,
+                    maxOf(top.bounds.maxX, below.bounds.maxX), below.bounds.maxY,
+                ),
+                text = "${top.text}/${below.text}",
+                confidence = minOf(top.confidence, below.confidence),
+                method = "two lines of one opening label joined: \"${top.text}\" over \"${below.text}\"",
+                legibility = TextLegibility.READ,
+                glyphCount = top.glyphCount + below.glyphCount,
+                glyphHeightPx = top.glyphHeightPx,
+                orientation = top.orientation,
+            )
+        }
+        return paired
+    }
+
+    private fun horizontalOverlap(a: PixelBox, b: PixelBox): Double {
+        val overlap = minOf(a.maxX, b.maxX) - maxOf(a.minX, b.minX)
+        val smaller = minOf(a.width, b.width)
+        return if (smaller <= 0) 0.0 else overlap.toDouble() / smaller
+    }
 
     /** A label sits within this of the opening it dimensions; beyond it belongs to something else. */
     const val SEARCH_RADIUS_M = 2.5

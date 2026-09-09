@@ -34,6 +34,8 @@ class FloorPlanAnalysis(
     val exteriorPieceIndices: Set<Int>,
     val footprintPixelArea: Int,
     val footprintOutlinePx: List<Pt>,
+    /** The filled footprint in pixels, kept so storeys can be registered against each other. */
+    val footprintMask: BinaryMask,
     val roofBandOutlinePx: List<Pt>?,
     val regions: List<PixelRegion>,
     val regionLabelAt: (Int, Int) -> Int,
@@ -370,6 +372,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
             exteriorPieceIndices = exterior,
             footprintPixelArea = footprintPixelArea,
             footprintOutlinePx = footprintOutline,
+            footprintMask = footprintMask,
             roofBandOutlinePx = roofBandOutline,
             regions = regionsInFootprint,
             regionLabelAt = { x, y -> components.label(x, y) },
@@ -415,7 +418,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
     }
 
     private fun empty(assetUrl: String, image: RasterImage, issues: List<AnalysisIssue>) = FloorPlanAnalysis(
-        assetUrl, image, emptyList(), emptyList(), emptyList(), emptySet(), 0, emptyList(), null, emptyList(), { _, _ -> 0 }, emptyMap(), emptyList(), BinaryMask(image.width, image.height), null, null, 0, issues,
+        assetUrl, image, emptyList(), emptyList(), emptyList(), emptySet(), 0, emptyList(), BinaryMask(image.width, image.height), null, emptyList(), { _, _ -> 0 }, emptyMap(), emptyList(), BinaryMask(image.width, image.height), null, null, 0, issues,
     )
 }
 

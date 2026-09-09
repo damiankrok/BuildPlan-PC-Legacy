@@ -126,24 +126,7 @@ object CrossSourceValidator {
             out += compare("Powierzchnia stolarki zewnętrznej", quantities.exteriorJoinery.value, s.measured.value, "m2", "exterior openings: traced widths × assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
         }
         pkg.scalar(ScalarKey.FACADE_INSULATION_AREA)?.let { s ->
-            out += bracketed(
-                subject = "Powierzchnia elewacji do ocieplenia",
-                gross = quantities.facadeGross.value,
-                net = quantities.facadeNet.value,
-                sourceValue = s.measured.value,
-                grossSemantics = "storey footprint perimeter × storey height + gables, measured over the openings",
-                netSemantics = "the same envelope minus exterior openings at assumed heights",
-                whyAmbiguous = "the cost page does not say whether its facade figure is measured over the openings or net of them, " +
-                    "nor whether it includes the plinth below the ground-floor level and the garage",
-                fidelity = quantities.facadeGross.fidelity,
-            )
-            out += ValidationFinding(
-                "Powierzchnia zewnętrznych ścian murowanych (bez otworów)", quantities.facadeWallMaterial.value, s.measured.value, "m2", null, null,
-                ValidationStatus.NOT_COMPARABLE,
-                "traced exterior wall pieces only: openings are absent because an opening is not a wall piece, and so is any envelope the raster left oblique or unresolved. " +
-                    "It is the lower bracket on the envelope, never the facade area, and must not be compared with a facade figure",
-                quantities.facadeWallMaterial.fidelity,
-            )
+            out += facadeFinding(quantities.facadeScope, s.measured.value)
         }
         pkg.scalar(ScalarKey.BUILDING_HEIGHT)?.let { s ->
             val ridge = candidate.levels.ridge.value
@@ -155,6 +138,99 @@ object CrossSourceValidator {
     }
 
     private fun firstScalar(pkg: SourcePackage, key: ScalarKey): PublishedScalar? = pkg.scalars.firstOrNull { it.key == key && it.measured.value != null }
+
+    /**
+     * Compares a published facade figure against the envelope, scope by scope.
+     *
+     * A cost page prints one number and does not say what it measured. Three
+     * choices it silently makes move that number by tens of square metres:
+     * over the openings or net of them, garage inside the insulated envelope or
+     * out, plinth counted or not. So the candidate is not one value but a
+     * range, and the comparison reports which of three things is true:
+     *
+     * - the published figure sits inside the range, and the disagreement is a
+     *   definition rather than geometry — `NOT_COMPARABLE`, with the scopes
+     *   that bracket it named;
+     * - it sits outside, but within reach of the nearest scope — a real,
+     *   comparable difference, reported as a match or a mismatch on its size;
+     * - the plinth, which the analyzer cannot measure while terrain is
+     *   assumed, could account for the remainder — `NOT_COMPARABLE` again,
+     *   because a quantity we do not have is not a quantity we got wrong.
+     */
+    private fun facadeFinding(scope: com.buildplan.app.analyzer.quantity.FacadeScope, sourceValue: Double?): ValidationFinding {
+        val gross = scope.finishGross.value
+        if (gross == null || sourceValue == null || sourceValue == 0.0) {
+            return ValidationFinding(
+                "Powierzchnia elewacji do ocieplenia", gross, sourceValue, "m2", null, null,
+                ValidationStatus.INSUFFICIENT_SOURCE, "the envelope or the published figure is missing", scope.finishGross.fidelity,
+            )
+        }
+        val enumerated = scope.scopes.joinToString("; ") { "${it.first} ${fmt(it.second)} m2" } +
+            "; the plinth below the ground-floor level is not measured at all while terrain is assumed"
+        // Two claims are made here and only one of them is about geometry. That the envelope
+        // agrees with the published figure is measured. *Which* definition the page used is an
+        // attribution, and the scopes are close enough together that a wide tolerance lets
+        // several of them fit one number — at which point naming one is a guess dressed as a
+        // finding. So when a second scope also fits, both are named and the attribution is
+        // stated as undecided. The agreement keeps its own strength; it is the label that loses
+        // its certainty, which is the part that was never measured.
+        val attributed = scope.attribute(sourceValue, ACCEPTABLE)
+        val bestLabel = attributed?.label ?: "over the openings"
+        val bestValue = attributed?.value ?: gross
+        val rel = attributed?.relative ?: (abs(gross - sourceValue) / sourceValue)
+        val attribution = if (attributed != null && !attributed.isDecided) {
+            "the figure fits two of these scopes — $bestLabel to ${pctOf(rel)} and " +
+                "${attributed.alternative} to ${pctOf(attributed.alternativeRelative!!)} — " +
+                "so which one the page priced is not decided here"
+        } else {
+            "the published figure is this envelope $bestLabel, which is the scope an insulated envelope has"
+        }
+
+        // A scope that *matches* is a finding about what the page measured, and it outranks the
+        // observation that the figure also happens to lie somewhere inside the range. Naming it is
+        // the useful answer: on Project A the published facade turned out to be the envelope net
+        // of its openings with the garage left out — which is what an insulated envelope is.
+        if (rel <= ACCEPTABLE) {
+            return ValidationFinding(
+                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
+                if (rel <= STRONG) ValidationStatus.MATCH_STRONG else ValidationStatus.MATCH_ACCEPTABLE,
+                "$attribution; every scope enumerated — $enumerated",
+                scope.finishGross.fidelity,
+            )
+        }
+        if (sourceValue in scope.plausibleRange) {
+            return ValidationFinding(
+                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", null, null,
+                ValidationStatus.NOT_COMPARABLE,
+                "the published figure falls between the scopes this envelope spans without matching any of them, so what it measured is undetermined — $enumerated",
+                scope.finishGross.fidelity,
+            )
+        }
+        // Short of the published figure by less than a plinth could account for: the gap is a
+        // quantity the analyzer does not have, not one it measured wrongly.
+        if (bestValue < sourceValue && rel <= PLINTH_EXPLAINS) {
+            return ValidationFinding(
+                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
+                ValidationStatus.NOT_COMPARABLE,
+                "the published figure is ${fmt(sourceValue - bestValue)} m2 above the widest scope measured, which the unmeasured plinth could account for — $enumerated",
+                scope.finishGross.fidelity,
+            )
+        }
+        return ValidationFinding(
+            "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel, ValidationStatus.MISMATCH,
+            "outside every scope this envelope spans, so no combination of the choices the cost page leaves open reaches it; compared against the nearest ($bestLabel) — $enumerated",
+            scope.finishGross.fidelity,
+        )
+    }
+
+    /**
+     * How much of a shortfall a plinth can explain.
+     *
+     * A metre of plinth around a fifty-metre perimeter is fifty square metres,
+     * a quarter of a house's facade; below this a shortfall is not evidence of
+     * a geometry error.
+     */
+    private const val PLINTH_EXPLAINS = 0.30
 
     /**
      * Compares a published figure against a candidate quantity that the source
@@ -207,6 +283,8 @@ object CrossSourceValidator {
     }
 
     private fun fmt(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+
+    private fun pctOf(v: Double) = String.format(java.util.Locale.ROOT, "%.1f %%", v * 100)
 
     private fun compare(
         subject: String,

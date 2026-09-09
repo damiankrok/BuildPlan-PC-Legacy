@@ -19,8 +19,27 @@ enum class TextLegibility {
     /** A text run was located, but its glyphs are too few pixels tall to recognise without guessing. */
     TOO_SMALL_TO_READ,
 
+    /**
+     * Big enough, looked at, and refused: at least one glyph did not clear the
+     * score or the margin over its runner-up.
+     *
+     * A distinct answer from [TOO_SMALL_TO_READ] because it is a different
+     * fact about the source — the raster *can* carry this text and this
+     * particular run still could not be read — and a distinct answer from
+     * [READ] because a number with one uncertain digit is not a number.
+     */
+    AMBIGUOUS,
+
     /** Glyphs are large enough, but no recogniser is wired in to read them. */
     NO_RECOGNISER,
+}
+
+/** Which way a run of characters reads on the sheet. */
+enum class TextOrientation {
+    HORIZONTAL,
+
+    /** Rotated a quarter turn — how every drawing sets the dimensions up its own side. */
+    VERTICAL,
 }
 
 /**
@@ -40,6 +59,7 @@ data class TextObservation(
     val legibility: TextLegibility,
     val glyphCount: Int,
     val glyphHeightPx: Int,
+    val orientation: TextOrientation = TextOrientation.HORIZONTAL,
 ) {
     init {
         require(text == null || legibility == TextLegibility.READ) { "text is only allowed on a READ observation" }

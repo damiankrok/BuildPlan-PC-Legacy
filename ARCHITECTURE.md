@@ -1603,7 +1603,7 @@ podstawić generyczny domyślny kształt: dom bez tej cechy jest innym domem.
 Prezentacja (co jest szkłem, co jest przygaszone) pozostaje metadaną obok
 modelu, po identyfikatorze, i nigdy nie wchodzi do domeny.
 
-## Analizator projektów — prototyp (STAGE-023A, utwardzony w STAGE-023B)
+## Analizator projektów — prototyp (STAGE-023A, utwardzony w STAGE-023B i 023C)
 
 Pierwsza implementacja kontraktu spisanego wyżej: z adresu publicznej strony
 projektu (dziś: ARCHON) do kandydata bryły, przedmiaru i listy pytań — bez
@@ -1775,6 +1775,68 @@ Rdzeń nie zna czcionki ani biblioteki; implementacja może mieszkać w adapterz
   i fizycznie możliwej wartości. `OpeningLabelMatcher` wiąże etykiety
   z otworami i odrzuca etykietę, której szerokość kłóci się z odrysowaną.
 
+### Rozpoznawanie cyfr: szablony, a nie model (STAGE-023C)
+
+`GlyphRecogniser` to interfejs; `TemplateDigitRecogniser` jest jedyną
+implementacją i jest w całości deterministyczny — bez sieci, bez wag, bez
+biblioteki. Glif normalizuje się do siatki 8 × 12 po **prostowaniu pochylenia**,
+a decyduje suma dopasowania kresek i cech **oczek** (liczba, położenie
+w pionie, udział powierzchni). Dwie bramki, obie konieczne: `MIN_SCORE = 0,80`
+i `MIN_MARGIN = 0,045` — przewaga nad drugim kandydatem. Bez marginesu
+rozstrzygnięcie 9 vs 4 byłoby rzutem monetą podanym jako wynik.
+
+Trzy rzeczy wymusił raster, każda zmierzona, nie założona:
+
+- **Pochylenie liczy się na przebiegu, nie na glifie.** Prostowanie mierzone
+  osobno dla każdej cyfry zamienia przekątną siódemki w pionową kreskę i „7"
+  czyta się jako „1". Pochylenie jest cechą kroju, więc `estimateShear` bierze
+  cały przebieg.
+- **Szerokość mierzy się po wyprostowaniu.** Pochylenie dokłada kolumny, które
+  należą do kroju, a nie do cyfry, i wąska „1" wygląda wtedy jak „7".
+- **Domykanie tylko w pionie** (`close(0, 1)`). Kreski mają jeden piksel i gubią
+  wiersze, więc cyfra przychodzi w kawałkach; domykanie symetryczne skleiłoby
+  sąsiednie cyfry w jedną plamę.
+
+### Łańcuch wymiarowy jako własny dowód (STAGE-023C)
+
+Rozpoznana cyfra **nigdy nie jest faktem sama z siebie**. `DimensionChain`
+rozstrzyga, czy odczyt może stać się `SOURCE_EXACT`, i robi to geometrią, nie
+pewnością rozpoznawania — bo przy jedenastu pikselach żadna pewność nie
+wyklucza pomylenia 5 z 6:
+
+- `SELF_CONSISTENT` — **trzy albo więcej** etykiet, których rozstaw zgadza się
+  z drukowanymi wartościami. Trzy to próg celowy: para zostawia jedną przerwę,
+  a jedna przerwa zawsze da się wyjaśnić jedną skalą, więc para jest
+  samozgodna z definicji i werdykt nic by nie znaczył.
+- `AGREES_WITH_PLAN_SCALE` — skala z rozstawu etykiet zgadza się z kalibracją
+  rzutu wyprowadzoną zupełnie inną drogą (powierzchnia zabudowy przez
+  odrysowany obrys).
+- `AGREES_WITH_TRACED_SPAN` — suma łańcucha równa się rozpiętości odrysowanej
+  z rzutu. **Dodatkowo** etykieta musi być wydrukowana *poza* obrysem, tak jak
+  drukuje się wymiar całkowity: to jedyne sprawdzenie, jakie dostaje samotna
+  liczba, a arkusz jest pełen liczb, które wymiarami nie są (powierzchnie
+  pomieszczeń, numer rysunku). Zgodność co do kilku procent bez właściwego
+  miejsca to zbieg okoliczności, nie wymiar.
+- `UNCORROBORATED` / `INCONSISTENT` — odczytane, **niezaufane**; trafiają do
+  dziennika i nigdzie indziej.
+
+Osobna bramka pilnuje **separatora dziesiętnego**: przecinek ma przy tym
+stopniu pisma dwa–trzy piksele, więc nigdy nie jest glifem i nigdy nie wchodzi
+do przebiegu. Gdyby przerwę uznać za pustą, „12,05" przeczytałoby się jako
+„1205" — błąd stukrotny, przychodzący jako całkowicie zwyczajny wymiar rzutu,
+którego żadne dalsze sprawdzenie by nie zauważyło. Dlatego pas przy linii
+bazowej między glifami jest **oglądany**, a atrament tam oznacza odmowę
+odczytu całego przebiegu.
+
+### Rejestracja kondygnacji (STAGE-023C)
+
+`FloorRegistration` szuka przesunięcia, przy którym obrys ścian piętra najlepiej
+pokrywa się z parterem — zgrubnie co 4 px, potem dokładnie. Zgrubny przebieg
+porównuje z **rozmytym** celem (`dilate` o połowę kroku), bo obrys ma jeden
+piksel i krok co cztery przechodzi nad maksimum, trafiając kilka metrów obok.
+Wynik (`FloorAlignment` z `confidence`) jest tym, co pozwala uznać strefę
+schodów nad strefą schodów za ten sam bieg — `CROSS_FLOOR_ALIGNMENT`.
+
 ### Schody: dwa niezależne świadectwa (STAGE-023B)
 
 `StairCandidate` niesie `evidence: Set<StairEvidence>` —
@@ -1824,32 +1886,97 @@ widełkami porównanie idzie do bliższego odczytu i pozostaje `MISMATCH`.
 Pozycję „ściany zewnętrzne" ze strony kosztów porównujemy z **murem** (to
 wielkość do wybudowania), a nie z obwiednią.
 
-### Znane ograniczenia prototypu (po STAGE-023B)
+### Zakres elewacji: sześć odczytów jednej ściany (STAGE-023C)
 
-- **Tekst rysunku pozostaje nieodczytany.** Rzuty wymiarują każdy otwór,
-  a przekrój drukuje każdą rzędną — przy 4–6 px na glif, poniżej bramki
-  10 px. Etykiety są **lokalizowane i liczone** (Projekt A: 43 + 25 przebiegów
-  na rzutach, 6 na przekroju; 19 z 31 i 13 z 19 otworów ma etykietę w zasięgu
-  2,5 m), ale żadna nie jest czytana, więc wysokości otworów i rzędne zostają
-  `MISSING`/`DISPLAY_ASSUMPTION` z pytaniem. Łańcuchy wymiarowe obrysu są
-  drukowane przy 10–13 px — **są nad bramką** i pozostają nieodczytane tylko
-  dlatego, że nie ma podpiętego rozpoznawania glifów. To pierwszy krok
-  następnego etapu.
+Widełki brutto/netto okazały się za wąskie. Jedna liczba pod „elewacją" może
+znaczyć sześć różnych pomiarów tej samej ściany, a rozpiętość między nimi to
+połowa jej wartości. `FacadeScope` wylicza je **wszystkie** i każdy nazywa: nad
+otworami / netto, z garażem / bez, z bryłą poboczną pod własnym dachem / bez.
+Odejmowane są wyłącznie części, które analizator **zmierzył** — nieogrzewany
+garaż i bryła poboczna — więc odjęcie jest zakresem do nazwania, a nie
+poprawką domykającą różnicę. Cokół poniżej poziomu parteru zostaje
+**niezmierzony**, dopóki teren jest założeniem, i tak jest raportowany.
+
+Porównanie robi dwa **osobne** twierdzenia i tylko jedno z nich jest o geometrii:
+
+- że obwiednia zgadza się z liczbą ze strony — to jest zmierzone i zachowuje
+  swoją siłę (`MATCH_STRONG` ≤ 5 %);
+- **który** zakres strona wyceniła — to jest atrybucja. Zakresy leżą blisko
+  siebie, więc tolerancja dość szeroka, by unieść błąd odrysu, bywa dość
+  szeroka, by objąć dwa sąsiednie zakresy naraz. Wtedy `FacadeScope.attribute`
+  zwraca oba i atrybucja jest raportowana jako **nierozstrzygnięta** —
+  nazwanie bliższego byłoby definicją, której źródło nigdy nie podało.
+
+Nazwany zakres, który pasuje, wygrywa z samą przynależnością do widełek:
+„to jest obwiednia netto bez garażu (1,5 %)" jest odpowiedzią, a „liczba mieści
+się gdzieś w przedziale" nie jest.
+
+### Znane ograniczenia prototypu (po STAGE-023C)
+
+- **Wysokości otworów i rzędne przekroju pozostają nieodczytane.** Etykiety
+  otworów drukują się przy **4–6 px na glif**, rzędne przekroju przy 7–8 px —
+  poniżej bramki 10 px. Są **lokalizowane i liczone** (Projekt A: 16 z 31
+  i 12 z 19 otworów ma etykietę w zasięgu 2,5 m), ale żadna nie jest czytana,
+  więc wysokości zostają `MISSING` z pytaniem. Strona linkuje **jeden** raster
+  na rysunek — bez `srcset`, bez większego wariantu — więc większego źródła nie
+  da się pobrać. To ograniczenie źródła, nie rozpoznawania.
+- **Łańcuchy wymiarowe obrysu są odczytywane, ale rzadko potwierdzone.**
+  Drukowane przy 10–13 px, więc nad bramką: Projekt A czyta 5 przebiegów
+  i potwierdza 1 (12,05 m przez odrysowaną rozpiętość), Projekt B czyta 3
+  i potwierdza 1 łańcuch dwuelementowy (4,91 + 9,21 m przez skalę rzutu).
+  Reszta zostaje `UNCORROBORATED` i nie wchodzi do modelu.
+- **Przebiegi glifów bywają znajdowane w kresce, nie w tekście.** Kreskowanie,
+  końcówki linii wymiarowych i pojedyncze znaki trafiają czasem do przebiegu
+  i dostają odczyt (Projekt A: „44", „15"; Projekt B: „00"). Broni przed tym
+  **korespondencja**, nie rozpoznawanie: żaden z nich nie ma czym się
+  potwierdzić, więc żaden nie staje się wymiarem. Filtr, który odróżniłby je
+  po samym kształcie, dostrojony na dziesięciu przypadkach z dwóch arkuszy
+  byłby dopasowaniem do benchmarku — świadomie go nie ma.
 - Szkielet o jednym spadku przeszacowuje wzniesienie dachu kopertowego ze
   skrzydłami; łańcuch pionowy ma przez to bramkę wiarygodności.
-- Poddasze Projektu B odzyskuje 14 z 20 pomieszczeń. Trzy pokoje przegrywają
-  z **prawdziwą** niejednoznacznością powierzchni (Łazienka 15,36 m²
-  i Pokój 15,60 m² — 1,5 % różnicy), którą matcher zgłasza jako
-  niejednoznaczność z alternatywami, i to kaskaduje na trzy kolejne. Suma
-  kondygnacji jest przez to o 33 % za mała i tak jest raportowana.
-- Schody: po jednym kandydacie `SOURCE_DERIVED` z pomieszczenia schodowego na
-  każdy projekt; liczba stopni i kierunek wejścia nieodczytane.
-- Elewacja Projektu B pozostaje `MISMATCH` (236 m² obwiedni przy 171,6 m²
-  ze strony) — poza widełkami, więc to nie jest sama definicja; podejrzenie
-  pada na zakres (garaż, cokół), którego strona nie precyzuje.
+- **Poddasze Projektu B: prawdziwa niejednoznaczność, nie błąd.** Trzy pokoje
+  mają powierzchnie 15,36 / 15,60 / 15,01 m² — 4 % rozrzutu na trzy pozycje.
+  Matcher zgłasza to jako niejednoznaczność z alternatywami i to kaskaduje.
+  Poprawka, która „naprawia" B (przypisanie globalnie zachłanne, kolejność
+  według wskazówek), była mierzona na obu domach i **odrzucona**: B zyskiwał
+  jedno pomieszczenie, A tracił Kuchnię i dwie sypialnie. Suma kondygnacji jest
+  o 33 % za mała i tak jest raportowana.
+- **Parter Projektu A: dwa pomieszczenia o identycznej powierzchni.**
+  Niedomiar 16,5 % to dokładnie `2. Hol` i `7. Pokój`, obie po **9,18 m²**.
+  Powierzchnia ich nie rozróżnia, wolne regiony nie starczają na obie, a unia
+  otwartej przestrzeni wybrała lepiej dopasowaną kombinację. Bez odczytu nazw
+  z rzutu to jest nierozstrzygalne i zostaje pytaniem.
+- Schody: po dwie strefy na projekt. Bieg `f1-s2` w Projekcie A zostaje
+  `TRACE_UNCERTAIN` i **nazywa konkurencyjny odczyt** — jedenaście równo
+  rozstawionych linii co 0,20 m leży wewnątrz „Garderoby", gdzie są to
+  najpewniej półki, nie stopnie. Liczba stopni i kierunek wejścia nieodczytane.
+- Kamera podglądu 3D w trybie „Całość" kadruje kandydata zbyt blisko przy
+  wysokim dachu; pozostałe tryby kadrują poprawnie. To wada harnessu Lab,
+  nie kandydata.
 - Lab jest surowym harnessem debugowym (listy tekstu), a na emulatorze
   z 2 GB RAM pierwsze uruchomienie po instalacji trwa 1–2 minuty
   (weryfikacja bajtkodu), co system zgłasza jako ANR do przeczekania.
+
+### Co znalazł audyt kontradyktoryjny (STAGE-023C)
+
+Iteracja audytowa była pisana po to, żeby **zepsuć** czytnik, i cztery rzeczy
+się udały. Każda jest naprawiona i przykryta testem:
+
+- **Wywrotka na najczystszym wejściu.** Suma dopasowania z premiami za oczka
+  przekracza 1,0 przy niemal idealnym glifie, a `TextObservation` wymaga
+  `confidence ∈ 0..1` — cała analiza kończyła się wyjątkiem. Ocena dopasowania
+  jest w swojej skali; pewność jest wielkością ograniczoną i tam się ją nasyca.
+- **Samotna liczba bez miejsca.** Zgodność z odrysowaną rozpiętością
+  wystarczała, gdziekolwiek liczba stała na arkuszu (wyżej: wymiar całkowity
+  drukuje się poza obrysem).
+- **Połknięty przecinek dziesiętny** — patrz wyżej; przy okazji zniknął fałszywy
+  przebieg „44" w Projekcie B, bo przez jego linię bazową biegła kreska.
+- **Atrybucja zakresu elewacji podawana jako pewna**, gdy pasowały dwa zakresy.
+
+Determinizm sprawdzany przez powtórzenie: dwa przebiegi obu projektów różnią się
+**wyłącznie** wierszem czasów. Zgodność JVM ↔ urządzenie sprawdzana przez
+porównanie migawek: po odjęciu czasów i metadanych pobrania **zero** różniących
+się wierszy na 24 475 (A) i 30 893 (B).
 
 ## Czego jeszcze nie ustalono
 

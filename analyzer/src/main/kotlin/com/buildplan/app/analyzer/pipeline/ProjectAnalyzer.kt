@@ -17,7 +17,9 @@ import com.buildplan.app.analyzer.fidelity.FactFidelity
 import com.buildplan.app.analyzer.fidelity.MeasureUnit
 import com.buildplan.app.analyzer.fidelity.Measured
 import com.buildplan.app.analyzer.fidelity.Provenance
+import com.buildplan.app.analyzer.plan.FloorAlignment
 import com.buildplan.app.analyzer.plan.FloorCandidateBuilder
+import com.buildplan.app.analyzer.plan.FloorRegistration
 import com.buildplan.app.analyzer.plan.FloorPlanAnalysis
 import com.buildplan.app.analyzer.plan.PlanAnalyzer
 import com.buildplan.app.analyzer.plan.PlanDebugSink
@@ -25,6 +27,7 @@ import com.buildplan.app.analyzer.plan.Regions
 import com.buildplan.app.analyzer.quantity.ProjectQuantities
 import com.buildplan.app.analyzer.quantity.QuantityTakeoffEngine
 import com.buildplan.app.analyzer.raster.BinaryMask
+import com.buildplan.app.analyzer.raster.PixelBox
 import com.buildplan.app.analyzer.raster.RasterCodec
 import com.buildplan.app.analyzer.roof.RoofHeightField
 import com.buildplan.app.analyzer.roof.RoofSolver
@@ -32,9 +35,14 @@ import com.buildplan.app.analyzer.site.ScalarKey
 import com.buildplan.app.analyzer.site.SiteAdapter
 import com.buildplan.app.analyzer.site.SourcePackage
 import com.buildplan.app.analyzer.site.archon.ArchonSiteAdapter
+import com.buildplan.app.analyzer.text.ChainVerdict
+import com.buildplan.app.analyzer.text.DimensionChain
+import com.buildplan.app.analyzer.text.DimensionChains
 import com.buildplan.app.analyzer.text.DrawingTextReading
 import com.buildplan.app.analyzer.text.GlyphRunLocator
 import com.buildplan.app.analyzer.text.OpeningLabelMatcher
+import com.buildplan.app.analyzer.text.TemplateDigitRecogniser
+import com.buildplan.app.analyzer.text.TextOrientation
 import com.buildplan.app.analyzer.text.TextLegibility
 import com.buildplan.app.analyzer.snapshot.ProjectAnalysisSnapshot
 import com.buildplan.app.analyzer.source.ProjectInput
@@ -242,13 +250,35 @@ class ProjectAnalyzer(
         // question attached. Locating them is still worth the pass: "the source states this and
         // the published image is too small to carry it" is a different answer for the reader than
         // "the source does not state it", and only one of them is fixed by a bigger drawing.
-        val textExtractor = GlyphRunLocator()
+        val textExtractor = GlyphRunLocator(TemplateDigitRecogniser())
         val readings = mutableListOf<DrawingTextReading>()
+        val chains = mutableListOf<DimensionChain>()
         analyses.forEachIndexed { index, a ->
             val reading = DrawingTextReading(a.assetUrl, textExtractor.extract(a.assetUrl, a.image))
             readings += reading
             log += "text plan ${index + 1}: ${reading.summary()}"
+
+            // Dimension chains, checked against geometry that was traced without reading a
+            // character: the plan's own calibration and the extent of its footprint. A reading
+            // that cannot survive both is reported and dropped, never averaged in.
+            val footprint = a.footprintOutlinePx.takeIf { it.isNotEmpty() }?.let { px -> a.calibration?.let { cal -> Regions.toPolygon(px.map(cal::toMeters)) } }
+            val spans = footprint?.let {
+                mapOf(TextOrientation.HORIZONTAL to it.bounds.width, TextOrientation.VERTICAL to it.bounds.depth)
+            }.orEmpty()
+            val footprintBoundsPx = a.footprintOutlinePx.takeIf { it.isNotEmpty() }?.let { px ->
+                PixelBox(px.minOf { it.x }.toInt(), px.minOf { it.z }.toInt(), px.maxOf { it.x }.toInt(), px.maxOf { it.z }.toInt())
+            }
+            val planned = DimensionChains.assemble(
+                reading.observations, a.calibration?.pixelsPerMeter?.value, spans, footprintBoundsPx,
+            )
+            chains += planned
+            planned.forEach { c ->
+                log += "  dimension chain ${c.orientation} ${c.verdict}: ${c.parts.joinToString(" + ") { p -> "${p.centimetres} cm" }} = ${c.totalCentimetres} cm — ${c.note}"
+            }
         }
+        val trustedChains = chains.filter { it.isTrusted }
+        log += "dimensions: ${chains.size} chains, ${trustedChains.size} corroborated, " +
+            "${chains.count { it.verdict == ChainVerdict.INCONSISTENT }} rejected as inconsistent"
         assets.manifest.firstWithRole(AssetRole.SECTION)?.let { record ->
             assets.image(record)?.let { image ->
                 val reading = DrawingTextReading(record.url, textExtractor.extract(record.url, image))
@@ -262,26 +292,68 @@ class ProjectAnalyzer(
             val calibration = analysis?.calibration
             val reading = readings.getOrNull(index)
             if (calibration == null || reading == null) return@mapIndexed b.openings to emptyList<String>()
+            // An opening label is two lines; joined, it is a width over a height, and the width is
+            // what lets the height be trusted (or refused) against the traced opening.
+            val withPairs = DrawingTextReading(reading.assetUrl, reading.observations + OpeningLabelMatcher.pairStackedLabels(reading.observations))
             val associations = OpeningLabelMatcher.associate(
                 b.openings,
                 { o -> openingCentre(o, b.walls) },
-                reading,
+                withPairs,
                 calibration,
             )
             val (updated, notes) = OpeningLabelMatcher.applyHeights(b.openings, associations)
             val labelled = associations.size
             val readable = associations.count { it.observation.legibility == TextLegibility.READ }
-            log += "text plan ${index + 1}: $labelled of ${b.openings.size} openings have a label within ${OpeningLabelMatcher.SEARCH_RADIUS_M} m, $readable readable"
+            val pairs = withPairs.observations.size - reading.observations.size
+            log += "text plan ${index + 1}: $labelled of ${b.openings.size} openings have a label within ${OpeningLabelMatcher.SEARCH_RADIUS_M} m, " +
+                "$readable readable, $pairs width-over-height labels joined, ${updated.count { o -> o.height.value != null }} heights taken from the drawing"
             notes.forEach { log += "  $it" }
             updated to notes
         }
 
+        // Storeys share a building but not a frame: each plan is calibrated against its own
+        // footprint corner and the sheets do not draw the house in the same place. Registering
+        // the wall outlines is what makes "above" mean anything between two storeys.
+        val alignments = analyses.indices.associateWith { index ->
+            val lower = analyses.firstOrNull()
+            val here = analyses[index]
+            if (index == 0 || lower?.calibration == null || here.calibration == null) {
+                FloorAlignment.NONE
+            } else {
+                FloorRegistration.register(lower.footprintMask, lower.calibration, here.footprintMask, here.calibration)
+            }
+        }
+        alignments.filterKeys { it > 0 }.forEach { (index, a) ->
+            log += "registration f$index vs f0: offset (${"%.2f".format(java.util.Locale.ROOT, a.offset.x)}, ${"%.2f".format(java.util.Locale.ROOT, a.offset.z)}) m, " +
+                "confidence ${"%.2f".format(java.util.Locale.ROOT, a.confidence)}${if (a.isReliable) "" else " — not reliable, cross-floor relations withheld"}; ${a.note}"
+        }
+
         val issues = built.flatMap { it.issues }.toMutableList()
-        val stairs = linkStairsAcrossFloors(built.map { it.floor }, built.flatMap { it.stairs })
+        val stairs = linkStairsAcrossFloors(built.map { it.floor }, built.flatMap { it.stairs }, alignments.mapKeys { "f${it.key}" })
         if (stairs.isNotEmpty()) {
             log += "stairs: " + stairs.joinToString { "${it.id} on ${it.floorId} (${it.evidence.joinToString("+") { e -> e.name }})" }
         }
-        val dimensions = dimensions(built.map { it.floor }, roof, levels, groundFootprint)
+        // Dimensions the drawing states in its own hand, and only the corroborated ones. These
+        // are the analyzer's only SOURCE_EXACT lengths that came off a raster rather than out of
+        // the page's text, so what let each one through is written into its provenance.
+        val readDimensions = trustedChains.flatMap { chain ->
+            val axis = if (chain.orientation == TextOrientation.HORIZONTAL) "szerokość" else "głębokość"
+            chain.parts.mapIndexed { i, part ->
+                NamedDimension(
+                    GapAnalyzer.SOURCE_TEXT_SCOPE,
+                    if (chain.parts.size == 1) "Wymiar całkowity ($axis) z rysunku" else "Wymiar cząstkowy ${i + 1}/${chain.parts.size} ($axis) z rysunku",
+                    Measured(
+                        part.metres, MeasureUnit.METER, FactFidelity.SOURCE_EXACT,
+                        Provenance(
+                            part.observation.sourceAsset,
+                            "dimension label at (${part.observation.bounds.minX}, ${part.observation.bounds.minY})",
+                            "read as \"${part.observation.text}\" cm at ${"%.2f".format(java.util.Locale.ROOT, part.observation.confidence)} confidence; ${chain.verdict}: ${chain.note}",
+                        ),
+                    ),
+                )
+            }
+        }
+        val dimensions = dimensions(built.map { it.floor }, roof, levels, groundFootprint) + readDimensions
         val candidate = ProjectAnalysisCandidate(
             floors = built.map { it.floor },
             walls = built.flatMap { it.walls },
@@ -314,28 +386,57 @@ class ProjectAnalyzer(
      * linked pair says *which storeys are connected* and still leaves "up or
      * down" to the question list.
      */
-    private fun linkStairsAcrossFloors(floors: List<FloorCandidate>, stairs: List<com.buildplan.app.analyzer.candidate.StairCandidate>): List<com.buildplan.app.analyzer.candidate.StairCandidate> {
+    private fun linkStairsAcrossFloors(
+        floors: List<FloorCandidate>,
+        stairs: List<com.buildplan.app.analyzer.candidate.StairCandidate>,
+        alignments: Map<String, FloorAlignment>,
+    ): List<com.buildplan.app.analyzer.candidate.StairCandidate> {
         val order = floors.associate { it.id to it.order }
         return stairs.map { s ->
             val myOrder = order[s.floorId] ?: return@map s
-            val above = stairs.firstOrNull { other ->
-                order[other.floorId] == myOrder + 1 && overlapFraction(s.zone, other.zone) > 0.25
-            }
+            // Both zones are put into the ground storey's frame before they are compared; without
+            // that they are metres apart by construction and no shaft ever lined up with itself.
+            val mine = alignments[s.floorId] ?: FloorAlignment.NONE
+            if (s.floorId != "f0" && !mine.isReliable) return@map s
+            val here = shift(s.zone, mine)
+            // A flight's two ends are not stacked: the storey below holds the run and the storey
+            // above holds the landing it arrives at, so the two zones meet end to end rather than
+            // overlapping. Registered, Project B's pair sit 0.16 m apart — which is a flight, not
+            // a coincidence. Inflating by half a metre before the test is what recognises that,
+            // and the measured separation goes into the note so a reader can judge it.
+            val above = stairs
+                .filter { other ->
+                    val theirs = alignments[other.floorId] ?: FloorAlignment.NONE
+                    order[other.floorId] == myOrder + 1 && (other.floorId == "f0" || theirs.isReliable)
+                }
+                .map { other -> other to shift(other.zone, alignments[other.floorId] ?: FloorAlignment.NONE) }
+                .map { (other, box) -> Triple(other, box, FloorRegistration.overlapFraction(here.inflate(STAIR_LINK_TOLERANCE_M), box.inflate(STAIR_LINK_TOLERANCE_M), FloorAlignment.NONE)) }
+                .filter { it.third > 0.0 }
+                .maxByOrNull { it.third }
             if (above == null) s else s.copy(
-                toFloorId = above.floorId,
+                toFloorId = above.first.floorId,
                 evidence = s.evidence + com.buildplan.app.analyzer.candidate.StairEvidence.CROSS_FLOOR_ALIGNMENT,
-                note = s.note + "; aligned with ${above.id} on the storey above",
+                note = s.note + "; meets ${above.first.id} on the storey above once the storeys are registered (${"%.2f".format(java.util.Locale.ROOT, separation(here, above.second))} m apart in plan)",
             )
         }
     }
 
-    private fun overlapFraction(a: com.buildplan.app.analyzer.candidate.Box, b: com.buildplan.app.analyzer.candidate.Box): Double {
-        val w = kotlin.math.min(a.maxX, b.maxX) - max(a.minX, b.minX)
-        val h = kotlin.math.min(a.maxZ, b.maxZ) - max(a.minZ, b.minZ)
-        if (w <= 0 || h <= 0) return 0.0
-        val smaller = kotlin.math.min(a.area, b.area)
-        return if (smaller <= 0) 0.0 else w * h / smaller
+    /** Half a metre: less than any flight's run, enough to bridge the seam between its two ends. */
+    private val STAIR_LINK_TOLERANCE_M = 0.5
+
+    /** Gap between two boxes in plan, 0 when they overlap. */
+    private fun separation(a: com.buildplan.app.analyzer.candidate.Box, b: com.buildplan.app.analyzer.candidate.Box): Double {
+        val dx = max(0.0, max(a.minX - b.maxX, b.minX - a.maxX))
+        val dz = max(0.0, max(a.minZ - b.maxZ, b.minZ - a.maxZ))
+        return kotlin.math.hypot(dx, dz)
     }
+
+    private fun shift(box: com.buildplan.app.analyzer.candidate.Box, alignment: FloorAlignment) = com.buildplan.app.analyzer.candidate.Box(
+        box.minX + alignment.offset.x,
+        box.minZ + alignment.offset.z,
+        box.maxX + alignment.offset.x,
+        box.maxZ + alignment.offset.z,
+    )
 
     /**
      * The eaves overhang: for each edge of the roof outline, the distance to the

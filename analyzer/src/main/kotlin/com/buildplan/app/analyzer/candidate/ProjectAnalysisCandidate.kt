@@ -2,6 +2,7 @@ package com.buildplan.app.analyzer.candidate
 
 import com.buildplan.app.analyzer.fidelity.FactFidelity
 import com.buildplan.app.analyzer.fidelity.Measured
+import com.buildplan.app.analyzer.site.RoomKind
 
 /**
  * The analyzer's proposal for a building: floors, rooms, walls, openings,
@@ -89,6 +90,8 @@ data class RoomCandidate(
     val name: String,
     /** The printed ordinal in the source table, when it had one. */
     val sourceOrdinal: Int?,
+    /** What the site's own name for the room says it is; [RoomKind.OTHER] when it says nothing. */
+    val kind: RoomKind = RoomKind.OTHER,
     /**
      * The room's outline, or null when no simple ring could be proved for it.
      *

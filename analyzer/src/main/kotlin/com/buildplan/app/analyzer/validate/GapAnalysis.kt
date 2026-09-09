@@ -32,6 +32,7 @@ enum class Requirement(val category: RequirementCategory, val description: Strin
     EXTERIOR_OPENINGS(RequirementCategory.OPENINGS, "Położenia i szerokości otworów zewnętrznych", 2),
     OPENING_HEIGHTS(RequirementCategory.OPENINGS, "Wysokości i parapety otworów", 2),
     STAIR_ZONE(RequirementCategory.OPENINGS, "Strefa i kierunek schodów", 1),
+    DIMENSION_CHAINS(RequirementCategory.PLAN_GEOMETRY, "Łańcuchy wymiarowe odczytane z rysunku i potwierdzone geometrią", 1),
     DOOR_TOPOLOGY(RequirementCategory.OPENINGS, "Drzwi wewnętrzne łączące pomieszczenia", 1),
 
     GARAGE_RELATION(RequirementCategory.RECOGNIZABILITY, "Relacja garażu do bryły głównej", 1),

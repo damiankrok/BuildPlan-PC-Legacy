@@ -117,7 +117,7 @@ object FloorCandidateBuilder {
                 recordGeometry(id, room.name, resolved)
                 match.regionIndices.forEach { regionToRooms.getOrPut(it) { mutableListOf() } += id }
                 roomMasks[id] = mask
-                rooms += roomCandidate(id, floorId, room.name, room.ordinal, resolved, calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note, match.alternatives.map { alt -> "${alt.roomName} (${"%.2f".format(java.util.Locale.ROOT, alt.publishedArea)} m2, ${"%.1f".format(java.util.Locale.ROOT, alt.relativeError * 100)} %): ${alt.why}" })
+                rooms += roomCandidate(id, floorId, room.name, room.ordinal, room.kind, resolved, calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note, match.alternatives.map { alt -> "${alt.roomName} (${"%.2f".format(java.util.Locale.ROOT, alt.publishedArea)} m2, ${"%.1f".format(java.util.Locale.ROOT, alt.relativeError * 100)} %): ${alt.why}" })
             } else {
                 // Open plan: one region, several rooms. Split proportionally to published areas
                 // along the region's longer axis, in table order.
@@ -133,7 +133,7 @@ object FloorCandidateBuilder {
                     match.regionIndices.forEach { regionToRooms.getOrPut(it) { mutableListOf() } += id }
                     roomMasks[id] = partMask
                     rooms += roomCandidate(
-                        id, floorId, room.name, room.ordinal, resolved, calibration, url, room.usableArea, room.floorArea,
+                        id, floorId, room.name, room.ordinal, room.kind, resolved, calibration, url, room.usableArea, room.floorArea,
                         FactFidelity.DISPLAY_ASSUMPTION,
                         "open-plan region shared with ${ordered.filter { it != ri }.joinToString { published.rooms[it].name }}; boundary is a proportional split by published area, not a drawn wall",
                     )
@@ -292,9 +292,14 @@ object FloorCandidateBuilder {
                 },
             )
         }
+        // Storage rooms line their walls with shelves, and a run of shelves is a run of evenly
+        // spaced parallel lines — the same thing a flight of steps is. Where a tread run has no
+        // published stair room behind it and sits in one of those, the competing reading is named.
+        val shelvingKinds = setOf(RoomKind.WARDROBE, RoomKind.STORAGE, RoomKind.ATTIC_STORAGE, RoomKind.PANTRY)
         analysis.stairs.forEachIndexed { i, zone ->
             if (i in zonesInRooms) return@forEachIndexed
             val box = zone.box.toMeters(calibration)
+            val shelvingRoom = rooms.firstOrNull { it.kind in shelvingKinds && it.polygon?.contains(box.center) == true }
             stairs += StairCandidate(
                 id = "$floorId-s${stairRoomBoxes.size + i + 1}",
                 floorId = floorId,
@@ -307,11 +312,19 @@ object FloorCandidateBuilder {
                 roomId = rooms.firstOrNull { it.polygon?.contains(box.center) == true }?.id,
                 evidence = setOf(StairEvidence.TREAD_LINES),
                 fidelity = FactFidelity.TRACE_UNCERTAIN,
-                note = "run of ${zone.treadLines} parallel lines spaced like treads at ${"%.2f".format(java.util.Locale.ROOT, zone.spacingPx / ppm)} m; no published stair room encloses it",
-                unresolved = listOf(
-                    "Nie ma pomieszczenia „schody” obejmującego ten bieg; to może być bieg zewnętrzny albo inny wzór linii.",
-                    "Liczba stopni i kierunek wejścia nie są odczytywane z rzutu.",
-                ),
+                note = "run of ${zone.treadLines} parallel lines spaced like treads at ${"%.2f".format(java.util.Locale.ROOT, zone.spacingPx / ppm)} m; no published stair room encloses it" +
+                    (shelvingRoom?.let { "; it lies inside ${it.name}, where evenly spaced lines are more likely shelving than steps" } ?: ""),
+                unresolved = buildList {
+                    if (shelvingRoom != null) {
+                        // Not dropped: the geometry really is a regular run of parallel lines, and
+                        // deleting it would hide that. Named for what it most likely is instead,
+                        // so the reader is told the competing reading rather than sold a stair.
+                        add("Ten bieg leży w pomieszczeniu „${shelvingRoom.name}”; równo rozstawione linie to tam najpewniej półki, nie stopnie. Potwierdź, czy to schody.")
+                    } else {
+                        add("Nie ma pomieszczenia „schody” obejmującego ten bieg; to może być bieg zewnętrzny albo inny wzór linii.")
+                    }
+                    add("Liczba stopni i kierunek wejścia nie są odczytywane z rzutu.")
+                },
             )
         }
 
@@ -339,13 +352,14 @@ object FloorCandidateBuilder {
     }
 
     private fun roomCandidate(
-        id: String, floorId: String, name: String, ordinal: Int?, resolved: ResolvedRing, calibration: PlanCalibration, url: String,
+        id: String, floorId: String, name: String, ordinal: Int?, kind: RoomKind, resolved: ResolvedRing, calibration: PlanCalibration, url: String,
         usable: Measured, floorArea: Measured, fidelity: FactFidelity, note: String, alternatives: List<String> = emptyList(),
     ) = RoomCandidate(
         id = id,
         floorId = floorId,
         name = name,
         sourceOrdinal = ordinal,
+        kind = kind,
         polygon = resolved.polygon,
         geometryState = resolved.state,
         geometryNote = resolved.note,

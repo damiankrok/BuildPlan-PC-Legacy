@@ -36,6 +36,7 @@ import com.buildplan.app.analyzer.fidelity.FactFidelity
 import com.buildplan.app.analyzer.fidelity.MeasureUnit
 import com.buildplan.app.analyzer.fidelity.Measured
 import com.buildplan.app.analyzer.fidelity.Provenance
+import com.buildplan.app.analyzer.quantity.FacadeScope
 import com.buildplan.app.analyzer.quantity.FloorQuantities
 import com.buildplan.app.analyzer.quantity.MeasuredSurfaceCandidate
 import com.buildplan.app.analyzer.quantity.ProjectQuantities
@@ -276,7 +277,7 @@ object SnapshotCodec {
         "floorElevation" to measuredJson(f.floorElevation); "clearHeight" to measuredJson(f.clearHeight)
         "rooms" toArray f.rooms.map { r ->
             json {
-                "id" to r.id; "floorId" to r.floorId; "name" to r.name; "sourceOrdinal" to r.sourceOrdinal; "polygon" to r.polygon?.let(::polygonJson)
+                "id" to r.id; "floorId" to r.floorId; "name" to r.name; "sourceOrdinal" to r.sourceOrdinal; "kind" to r.kind; "polygon" to r.polygon?.let(::polygonJson)
                 "geometryState" to r.geometryState; "geometryNote" to r.geometryNote
                 "perimeter" to measuredJson(r.perimeter); "plannedArea" to measuredJson(r.plannedArea); "sourceUsableArea" to measuredJson(r.sourceUsableArea); "sourceFloorArea" to measuredJson(r.sourceFloorArea)
                 "boundary" toArray r.boundary.map { b -> json { "segment" to segJson(b.segment); "wallId" to b.wallId; "neighbourRoomId" to b.neighbourRoomId; "faceOutside" to b.faceOutside } }
@@ -298,7 +299,7 @@ object SnapshotCodec {
         roofOutline = o.arr("roofOutline")?.let(::polygonFrom),
         floorElevation = m(o, "floorElevation"), clearHeight = m(o, "clearHeight"),
         rooms = o.arr("rooms")?.objects?.map { r ->
-            RoomCandidate(r.str("id")!!, r.str("floorId")!!, r.str("name")!!, r.int("sourceOrdinal"), r.arr("polygon")?.let(::polygonFrom),
+            RoomCandidate(r.str("id")!!, r.str("floorId")!!, r.str("name")!!, r.int("sourceOrdinal"), r.str("kind")?.let(RoomKind::valueOf) ?: RoomKind.OTHER, r.arr("polygon")?.let(::polygonFrom),
                 RoomGeometryState.valueOf(r.str("geometryState") ?: RoomGeometryState.VALID_SIMPLE_RING.name), r.str("geometryNote") ?: "",
                 m(r, "perimeter"), m(r, "plannedArea"), m(r, "sourceUsableArea"), m(r, "sourceFloorArea"),
                 r.arr("boundary")?.objects?.map { b -> RoomBoundarySegment(segFrom(b.obj("segment")!!), b.str("wallId"), b.str("neighbourRoomId"), b.bool("faceOutside") ?: false) }.orEmpty(),
@@ -306,6 +307,17 @@ object SnapshotCodec {
         }.orEmpty(),
         unmatchedRegions = o.arr("unmatchedRegions")?.objects?.map { u -> RegionCandidate(u.str("id")!!, polygonFrom(u.arr("polygon")!!), u.num("areaM2")!!, strings(u, "boundaryWallIds")) }.orEmpty(),
         planAssetUrl = o.str("planAssetUrl"),
+    )
+
+    private fun facadeScopeJson(s: FacadeScope) = json {
+        "exteriorStructuralWall" to measuredJson(s.exteriorStructuralWall); "finishGross" to measuredJson(s.finishGross); "finishNet" to measuredJson(s.finishNet)
+        "openingDeduction" to measuredJson(s.openingDeduction); "gableFace" to measuredJson(s.gableFace); "garageExterior" to measuredJson(s.garageExterior)
+        "secondaryMassExterior" to measuredJson(s.secondaryMassExterior); "plinth" to measuredJson(s.plinth)
+    }
+
+    private fun facadeScopeFrom(o: JsonValue.Obj) = FacadeScope(
+        m(o, "exteriorStructuralWall"), m(o, "finishGross"), m(o, "finishNet"), m(o, "openingDeduction"),
+        m(o, "gableFace"), m(o, "garageExterior"), m(o, "secondaryMassExterior"), m(o, "plinth"),
     )
 
     private fun facetJson(f: RoofFacetCandidate) = json { "id" to f.id; "vertices" toArray f.vertices.map(::pt3Json); "areaM2" to f.areaM2; "eaveEdge" to segJson(f.eaveEdge) }
@@ -370,7 +382,7 @@ object SnapshotCodec {
         }
         "roofFacetAreas" toArray q.roofFacetAreas.map { (id, a) -> json { "id" to id; "areaM2" to a } }
         "roofTotal" to measuredJson(q.roofTotal); "ridgeLength" to measuredJson(q.ridgeLength); "hipLength" to measuredJson(q.hipLength); "eaveLength" to measuredJson(q.eaveLength)
-        "exteriorJoinery" to measuredJson(q.exteriorJoinery); "facadeGross" to measuredJson(q.facadeGross); "facadeNet" to measuredJson(q.facadeNet); "facadeWallMaterial" to measuredJson(q.facadeWallMaterial); "floorsAndStairsArea" to measuredJson(q.floorsAndStairsArea)
+        "exteriorJoinery" to measuredJson(q.exteriorJoinery); "facadeGross" to measuredJson(q.facadeGross); "facadeNet" to measuredJson(q.facadeNet); "facadeWallMaterial" to measuredJson(q.facadeWallMaterial); "facadeScope" to facadeScopeJson(q.facadeScope); "floorsAndStairsArea" to measuredJson(q.floorsAndStairsArea)
         "notes" toStrings q.notes
     }
 
@@ -387,7 +399,7 @@ object SnapshotCodec {
         }.orEmpty(),
         roofFacetAreas = o.arr("roofFacetAreas")?.objects?.map { it.str("id")!! to it.num("areaM2")!! }.orEmpty(),
         roofTotal = m(o, "roofTotal"), ridgeLength = m(o, "ridgeLength"), hipLength = m(o, "hipLength"), eaveLength = m(o, "eaveLength"),
-        exteriorJoinery = m(o, "exteriorJoinery"), facadeGross = m(o, "facadeGross"), facadeNet = m(o, "facadeNet"), facadeWallMaterial = m(o, "facadeWallMaterial"), floorsAndStairsArea = m(o, "floorsAndStairsArea"),
+        exteriorJoinery = m(o, "exteriorJoinery"), facadeGross = m(o, "facadeGross"), facadeNet = m(o, "facadeNet"), facadeWallMaterial = m(o, "facadeWallMaterial"), facadeScope = facadeScopeFrom(o.obj("facadeScope")!!), floorsAndStairsArea = m(o, "floorsAndStairsArea"),
         notes = strings(o, "notes"),
     )
 

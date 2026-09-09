@@ -144,10 +144,14 @@ object RoomMatcher {
             return if (cued.isEmpty()) candidates else cued
         }
 
-        // One room at a time, largest first: the best fit among single free regions and
-        // connected groups of free regions, so a room split by a wall-line gap is not lost
-        // to a loose single match on one of its halves. A garage goes first when the plan
-        // shows a gate, so that the room beside the gate is claimed by the room that owns it.
+        // One room at a time, and rooms that structural evidence can *place* go first.
+        //
+        // Ordering by area alone lets a room matched on nothing but its number take the very
+        // region another room can prove it belongs to: on a storey with a 7.78 m2 wardrobe and a
+        // 7.05 m2 hall, the wardrobe was settled first and took the region every other room opens
+        // onto — leaving the hall, which that region demonstrably is, with nothing. A cue is still
+        // never a veto and never overrides an area that does not fit; it only decides who chooses
+        // first among rooms that all fit.
         val gateCueExists = cues.values.any { RegionCue.GATE in it }
 
         // Pass 0: mutually unique singles. A region that fits exactly one room, when that room
@@ -180,6 +184,16 @@ object RoomMatcher {
             }
         }
 
+        // One room at a time, largest first: the best fit among single free regions and connected
+        // groups of free regions, so a room split by a wall-line gap is not lost to a loose single
+        // match on one of its halves. A garage goes first when the plan shows a gate.
+        //
+        // Two alternatives were tried against both houses and both reverted. Letting rooms with a
+        // structural cue choose first cost Project A a bathroom, and choosing the globally
+        // cheapest (room, region) pair each round recovered one room on B while losing a kitchen
+        // and two bedrooms on A. Both are still greedy — they only move the bias — and neither
+        // earned the regression, so the ordering stays as it is and the ambiguity B's attic
+        // really has is reported as ambiguity rather than reshuffled.
         val roomOrder = targets.sortedWith(
             compareByDescending<Target> { gateCueExists && rooms[it.index].kind == RoomKind.GARAGE }.thenByDescending { it.area },
         )
@@ -271,6 +285,10 @@ object RoomMatcher {
             ambiguities = ambiguities,
         )
     }
+
+    /** A cue found where a room's kind expects one is worth this much off the cost; missing, this much on. */
+    private const val CUE_BONUS = 0.03
+    private const val CUE_PENALTY = 0.02
 
     /** A group must fit this much better (in log-ratio) than a single to be preferred over it. */
     private const val GROUP_PENALTY = 0.02

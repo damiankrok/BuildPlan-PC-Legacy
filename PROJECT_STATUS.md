@@ -543,6 +543,79 @@
   niejednoznacznością 15,36 vs 15,60 m² (P1), zakres elewacji B (P1).
   Wynik: `PARTIAL_STAGE_023B_ANALYZER_HARDENING`.
 
+- STAGE-023C dimension glyphs, attic disambiguation & facade scope —
+  **PARTIAL** (nadal prototyp badawczy). Sześć iteracji plus audyt
+  kontradyktoryjny; bez zmiany architektury, bez nowych zależności, bez
+  zdalnej AI, bez chmurowego OCR.
+
+  **Rozpoznawanie cyfr, deterministyczne.** Nowe `text/GlyphRecogniser.kt`,
+  `GlyphTemplates.kt`, `GlyphHoles.kt`: szablony 8 × 12, prostowanie
+  pochylenia **na przebiegu** (per glif niszczy „7"), cechy oczek (liczba,
+  położenie, udział powierzchni — bez nich margines 9 vs 4 wynosił 0,040 przy
+  bramce 0,045), bramki `MIN_SCORE = 0,80` i `MIN_MARGIN = 0,045`. Arkusz jest
+  skanowany **dwa razy**, raz przez ćwierć obrotu, bo obrócona cyfra jest
+  szersza niż wyższa i filtr glifu wyrzucał każdy pionowy łańcuch.
+
+  **Łańcuch jako dowód, nie pewność.** Nowe `text/DimensionChain.kt`:
+  `SELF_CONSISTENT` (≥ 3 etykiety, rozstaw zgodny z wartościami),
+  `AGREES_WITH_PLAN_SCALE`, `AGREES_WITH_TRACED_SPAN` (+ wymóg wydrukowania
+  poza obrysem), `UNCORROBORATED`, `INCONSISTENT`. Wynik zmierzony: A czyta
+  5 przebiegów i potwierdza **12,05 m** odrysowaną rozpiętością (+0,8 %);
+  B czyta 3 i potwierdza łańcuch **4,91 + 9,21 = 14,12 m** skalą rzutu
+  (+1,4 %); fałszywy kandydat `610 + 100` odrzucony przy +190 %. Potwierdzone
+  wchodzą jako `SOURCE_EXACT`, niepotwierdzone **nigdzie**.
+
+  **Rejestracja kondygnacji.** Nowe `plan/FloorRegistration.kt` (zgrubnie co
+  4 px z rozmyciem celu o połowę kroku — bez rozmycia obrys jednopikselowy
+  gubił maksimum i wynik był 5 m obok). Pewność 0,95–0,99 na obu domach;
+  daje `CROSS_FLOOR_ALIGNMENT` i po **dwie** strefy schodów na projekt.
+
+  **Zakres elewacji.** `FacadeScope` wylicza i nazywa sześć odczytów jednej
+  ściany (nad otworami / netto × garaż in/out × bryła poboczna in/out).
+  A: **MATCH_STRONG 1,5 %** (229,4 vs 225,9 m²) — atrybucja
+  **nierozstrzygnięta**, bo dwa zakresy mieszczą się w tolerancji, i tak jest
+  napisane. B: **MATCH_STRONG 2,7 %** (176,2 vs 171,6 m²) jako obwiednia netto
+  bez garażu i bez bryły pobocznej — to była ostatnia duża pozycja
+  `MISMATCH` z 023B.
+
+  **Poddasze B i parter A: nazwana niejednoznaczność, nie poprawka.** Dwie
+  zmiany, które „naprawiały" B (przypisanie globalnie zachłanne, kolejność
+  według wskazówek), zmierzono na obu domach i **odrzucono** — A tracił
+  Kuchnię i dwie sypialnie. Niedomiar parteru A to dokładnie `2. Hol`
+  i `7. Pokój`, obie po **9,18 m²**: powierzchnia ich nie rozróżnia. Bieg
+  `f1-s2` w A nazywa teraz konkurencyjny odczyt (jedenaście linii co 0,20 m
+  wewnątrz „Garderoby" to najpewniej półki).
+
+  **Audyt kontradyktoryjny (iteracja 6).** Nowy `GlyphAdversarialTest`
+  pisany po to, żeby zepsuć czytnik; znalazł i naprawił cztery defekty:
+  (1) **wywrotkę na najczystszym wejściu** — premie za oczka wypychały ocenę
+  ponad 1,0, a `TextObservation` wymaga `confidence ∈ 0..1`, więc cała
+  analiza kończyła się `IllegalArgumentException`; (2) samotną liczbę uznawaną
+  za wymiar całkowity **gdziekolwiek** stała na arkuszu; (3) **połknięty
+  przecinek dziesiętny** — „12,05" czytane jako „1205", błąd stukrotny
+  wyglądający na zwyczajny wymiar (przy okazji zniknął fałszywy przebieg
+  „44" w B); (4) atrybucję zakresu elewacji podawaną jako pewną, gdy pasowały
+  dwa zakresy.
+
+  **Bilans.** A: 15 pomieszczeń, 15/15 pierścieni, 0 samoprzecięć, dach
+  −1,50 %, kalibracja 0,41 % / 0,99 %, kompletność **71,4 %**, 13 STRONG /
+  10 ACCEPTABLE / 1 MISMATCH. B: 14 pomieszczeń, 14/14 pierścieni, dach
+  **+0,69 %**, kalibracja 0,72 % / 0,37 %, kompletność **74,3 %**,
+  12 STRONG / 6 ACCEPTABLE / 5 MISMATCH. Determinizm: dwa przebiegi różnią
+  się **wyłącznie** wierszem czasów. Oba projekty przebiegnięte **na żywo**
+  w Lab na `emulator-5570`; po odjęciu czasów i metadanych pobrania migawka
+  z urządzenia i z JVM różnią się na **zero** wierszy z 24 475 (A)
+  i 30 893 (B). `:analyzer:test` (147 testów), `lintDebug` (0 błędów),
+  `testDebugUnitTest` (195), `assembleDebug`, `assembleRelease` zielone;
+  release nadal bez `INTERNET`, bez Lab, bez modułu analizatora i jsoup
+  (zweryfikowane w dex z kontrolą dodatnią: `domain` 113, `geometry` 47).
+
+  Pozostaje otwarte: wysokości otworów (4–6 px na glif — ograniczenie
+  źródła, nie rozpoznawania), niejednoznaczność poddasza B i parteru A
+  (nierozstrzygalna bez odczytu nazw z rzutu), przebiegi glifów znajdowane
+  w kresce (broni korespondencja, nie rozpoznawanie).
+  Wynik: `PARTIAL_STAGE_023C_FINAL_RESEARCH_HARDENING`.
+
 ## Następny krok
 
 GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń
