@@ -73,6 +73,12 @@ dependencies {
     debugImplementation(libs.filament.android)
     debugImplementation(libs.filamat.android)
 
+    // STAGE-023A project analyzer: a pure-JVM module, so its core cannot import
+    // Android by construction and its raster evaluation runs on a plain JDK.
+    // Debug only: its sole consumer is the Analyzer Lab, so release ships
+    // neither the module nor jsoup.
+    debugImplementation(project(":analyzer"))
+
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)

@@ -67,7 +67,7 @@ internal enum class SpikeVisibility(val labelRes: Int) {
  */
 @Stable
 internal class ModelScene(
-    val model: DebugModel,
+    val model: SceneModel,
     val bounds: LocalBounds,
     val cameraState: OrbitCameraState,
     private val scope: CoroutineScope,
@@ -214,7 +214,7 @@ internal class ModelScene(
  * its own.
  */
 @Composable
-internal fun rememberModelScene(model: DebugModel): ModelScene? {
+internal fun rememberModelScene(model: SceneModel): ModelScene? {
     val bounds = remember(model) { model.geometry.bounds } ?: return null
     val cameraState = rememberOrbitCameraState(bounds)
     val scope = rememberCoroutineScope()

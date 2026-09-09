@@ -493,12 +493,21 @@ class Stage013DFidelityTest {
 
     @Test
     fun `C013D-13 no generic analyzer implementation was added`() {
-        val analyzerish = Regex("""(?i)\b(ocr|tesseract|analyzer|analizator|opencv|imageproc|mlkit|tflite)\b""")
+        // STAGE-023A authorised a research prototype with a bounded footprint
+        // (core in `:analyzer`, in-app consumer only the debug Lab and the
+        // `SceneModel` seam); OCR, vision and ML libraries stay forbidden.
+        val forbidden = Regex("""(?i)\b(ocr|tesseract|opencv|imageproc|mlkit|tflite)\b""")
+        val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
+        val authorised = Regex("""app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""")
         val offenders = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }
             .filter { it.isFile && it.extension == "kt" }
-            .filter { analyzerish.containsMatchIn(it.readText()) || analyzerish.containsMatchIn(it.name) }
-        assertTrue("The analyzer must not exist yet: $offenders", offenders.isEmpty())
+            .filter { file ->
+                val text = file.readText()
+                forbidden.containsMatchIn(text) || forbidden.containsMatchIn(file.name) ||
+                    ((analyzerish.containsMatchIn(text) || analyzerish.containsMatchIn(file.name)) && !authorised.containsMatchIn(file.path))
+            }
+        assertTrue("Analyzer code outside its authorised footprint: $offenders", offenders.isEmpty())
 
         // No network, image-decoding or ML dependency arrived either.
         val appBuild = repositoryFile("app/build.gradle.kts").readText()

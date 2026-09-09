@@ -233,6 +233,56 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
   ma najwyżej trzy fazy audyt→poprawka z limitem poprawek na fazę; po ostatniej
   wynik wraca do OWNER-a. Zieleń techniczna nigdy nie oznacza „to jest mój dom".
 
+## Analizator projektów (`:analyzer`) — reguły twarde
+
+Analizator mieszka w osobnym, czysto-JVM module `analyzer/` (pakiet
+`com.buildplan.app.analyzer`), a jego debugowy harness w
+`app/src/debug/java/com/buildplan/app/analyzer/lab/`. Prototyp ze STAGE-023A.
+
+- **Rdzeń nie zna żadnego projektu.** Żadnych nazw, sloganów, kluczy,
+  współrzędnych ani wartości oczekiwanych konkretnego domu w `analyzer/src/main`.
+  Wartości referencyjne Projektu A i B żyją wyłącznie w testach ewaluacyjnych
+  (`analyzer/src/test/.../evaluation/`). Pilnuje tego `AnalyzerPurityTest` —
+  nie obchodź go.
+- **Każda liczba ma proweniencję.** Wynik analizatora to `Measured` z
+  `FactFidelity` (`SOURCE_EXACT` / `SOURCE_TRACED` / `SOURCE_DERIVED` /
+  `DISPLAY_ASSUMPTION` / `TRACE_UNCERTAIN` / `MISSING` / `CONFLICTING`)
+  i `Provenance` (adres, lokator, metoda). Nagie `Double` w wyniku to błąd.
+- **Brak wygrywa ze zgadywaniem.** Czego źródło nie podaje, to `MISSING`
+  z pytaniem do użytkownika; jeżeli coś trzeba przyjąć, żeby domknąć bryłę,
+  to jest `DISPLAY_ASSUMPTION` z powodem i pytaniem — nigdy „typowa wartość"
+  wyglądająca na zmierzoną. Nie kalibruj rzutu przez dopasowanie powierzchni
+  pomieszczeń; powierzchnie są sprawdzeniem, nie kotwicą.
+- **Kandydat nigdy nie staje się prawdą kanoniczną bez weryfikacji.**
+  `ProjectAnalysisCandidate` i `ProjectAnalysisSnapshot` nie zapisują nic do
+  `domain/`. Podgląd w Lab buduje ulotny `Building` z identyfikatorami `cand-`
+  i nie dotyka `MarcowkiReferenceProject` ani `MarcowkiVisualModelV1`.
+- **Dwie semantyki ścian.** Powierzchnia lica pomieszczenia (tynk, malowanie —
+  osobno dla każdej strony) i powierzchnia konstrukcyjna ściany (raz na ścianę)
+  to różne wielkości. Ściana dzielona to jeden `WallCandidate` i dwie
+  `MeasuredSurfaceCandidate`. Nie porównuj dwustronnej sumy lic z agregatem
+  konstrukcyjnym ze strony i nie nazywaj tego niezgodnością.
+- **Sufit to nie podłoga.** W pomieszczeniach poddasza rozróżniaj sufit
+  płaski i skosy (powierzchnia po połaci); powierzchnia użytkowa wg reguły
+  wysokości (100 % > 2,2 m, 50 % 1,4–2,2 m) jest osobną wielkością od
+  powierzchni podłogi.
+- **Regresja na drugim domu jest obowiązkowa.** Każda zmiana w segmentacji
+  rzutu, solverze dachu, łańcuchu pionowym albo silniku przedmiaru ma być
+  uruchomiona na obu projektach ewaluacyjnych
+  (`BUILDPLAN_ANALYZER_EVIDENCE_DIR=<katalog poza repo> ./gradlew :analyzer:test`)
+  i nie może naprawiać jednego domu kosztem drugiego bez zapisu w raporcie.
+- **Bez zdalnej AI w analizatorze.** Żadnych klientów LLM/wizji, embeddingów
+  ani „zapytaj model". Deterministyczne parsowanie HTML (jsoup), własna
+  morfologia rastra, szkielet prostoliniowy. Lokalny OCR, jeśli kiedyś
+  dojdzie, jest narzędziem ekstrakcji, nie autorytetem.
+- **Sieć tylko do publicznych stron obsługiwanej witryny.** Allowlista hostów,
+  rewalidacja każdego przekierowania, odrzucenie adresów prywatnych,
+  limity rozmiaru. Nie pobieraj niczego poza stroną projektu, jej rysunkami
+  i podstroną kosztów. Cudzych rysunków nie commituj — trafiają do pamięci
+  aplikacji albo do katalogu dowodów poza worktree.
+- **Formatowanie liczb w rdzeniu jest niezależne od locale** (`Locale.ROOT`),
+  bo migawka ma być bajt w bajt taka sama na każdym urządzeniu.
+
 ## Urządzenia i emulatory
 
 - Projekt używa **wyłącznie serialu `emulator-5570`**. Każde polecenie do
@@ -300,21 +350,19 @@ Zostaw czysty worktree.
 
 ## Czego na tym etapie NIE ma
 
-Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych, parsera
-rzutów, **analizatora projektów** i **produkcyjnego** renderera 3D.
+Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych,
+**produktowego** analizatora projektów i **produkcyjnego** renderera 3D.
 
-Analizator — automatyczne czytanie cudzych rzutów i budowanie z nich modelu — to
-przyjęty pomysł na później, a nie zadanie tego etapu. Pozostaje osobnym etapem
-także po STAGE-013D: praca nad wiernością Marcówek tylko doprecyzowuje jego
-kontrakt (elewacje i wizualizacje jako źródło kompozycji; brak cechy
-rozpoznawczej kończy się pytaniem do użytkownika), nie zaczyna implementacji. Dopóki OWNER nie zleci go
-wprost, nie zaczynaj OCR, wizji komputerowej ani obsługi wielu domów: model
-Marcówek ma najpierw ustalić poprzeczkę jakości, którą taki analizator musiałby
-osiągać. Jego kontrakt — wymagane wejścia, cechy do odzyskania i sytuacje,
-w których ma **dopytać użytkownika** zamiast podstawić wartość domyślną — jest
-spisany w `ARCHITECTURE.md` i jest dokumentacją, nie zadaniem. Brak danych ma
-kończyć się pytaniem; odpowiedź wchodzi do modelu jako `DISPLAY_ASSUMPTION`
-z podanym powodem, a nierozstrzygnięta niepewność zostaje `TRACE_UNCERTAIN`. Model domenowy i kontrakt geometrii
+Analizator istnieje od STAGE-023A wyłącznie jako **prototyp badawczy**
+w module `analyzer/` z debugowym Lab (reguły w sekcji „Analizator projektów"
+wyżej). Nie ma wejścia w produkcie, nie zapisuje nic do domeny i nie czyta
+tekstu z rysunków. Jego kontrakt — wymagane wejścia, cechy do odzyskania
+i sytuacje, w których ma **dopytać użytkownika** zamiast podstawić wartość
+domyślną — jest spisany w `ARCHITECTURE.md`. Nie rozszerzaj go (OCR, drugi
+adapter witryny, przejście kandydata do modelu, UI produktowe) bez wyraźnego
+zlecenia OWNER-a. Brak danych ma kończyć się pytaniem; odpowiedź wchodzi do
+modelu jako `DISPLAY_ASSUMPTION` z podanym powodem, a nierozstrzygnięta
+niepewność zostaje `TRACE_UNCERTAIN`. Model domenowy i kontrakt geometrii
 istnieją, ale nic ich jeszcze nie zapisuje. Rysuje je wyłącznie debugowy spike
 na Filamencie (STAGE-012) — dowód wykonalności i wybór kandydata, a nie docelowa
 architektura renderera; ta należy do STAGE-013.

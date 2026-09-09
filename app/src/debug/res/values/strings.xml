@@ -55,4 +55,24 @@
     <string name="model_fidelity_traced">Wartości odrysowane: %1$d</string>
     <string name="model_fidelity_assumed">Założenia wizualizacyjne: %1$d</string>
     <string name="model_fidelity_rooms">Odrysowane pomieszczenia: %1$d, w tym niepewnych: %2$d</string>
+
+    <!-- Analyzer Lab (STAGE-023A): debugowe narzędzie dowodowe, nie UX produktu -->
+    <string name="lab_launcher_label">BuildPlan Analyzer Lab</string>
+    <string name="lab_title">Analyzer Lab</string>
+    <string name="lab_subtitle">Prototyp analizatora projektu: adres strony → fakty, rzuty, kandydat, przedmiar, porównanie ze źródłem. Wynik jest kandydatem, nie prawdą projektu.</string>
+    <string name="lab_url_label">Adres strony projektu (https)</string>
+    <string name="lab_quick_project">Projekt %1$s</string>
+    <string name="lab_run">Analizuj</string>
+    <string name="lab_starting">Start…</string>
+    <string name="lab_exported">Zapisano migawkę: %1$s</string>
+    <string name="lab_tab_summary">Podsumowanie</string>
+    <string name="lab_tab_rooms">Pomieszczenia</string>
+    <string name="lab_tab_quantities">Przedmiar</string>
+    <string name="lab_tab_validation">Porównanie</string>
+    <string name="lab_tab_questions">Pytania</string>
+    <string name="lab_tab_assets">Rysunki</string>
+    <string name="lab_tab_log">Dziennik</string>
+    <string name="lab_tab_preview">Podgląd 3D</string>
+    <string name="lab_preview_unavailable">Kandydat nie ma geometrii do podglądu.</string>
+    <string name="lab_preview_hint">Podgląd kandydata na rendererze: dotknij element, aby zobaczyć jego nazwę. To nie jest model kanoniczny.</string>
 </resources>

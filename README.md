@@ -52,9 +52,22 @@ albo użyj przycisku **Run** w Android Studio.
 | `./gradlew installDebug`       | instalacja na urządzeniu      |
 | `./gradlew lintDebug`          | Android Lint                  |
 | `./gradlew testDebugUnitTest`  | testy jednostkowe (JVM)       |
+| `./gradlew :analyzer:test`     | testy modułu analizatora      |
 | `./gradlew clean`              | czyszczenie artefaktów builda |
 
 Na Windows użyj `gradlew.bat`.
+
+Testy ewaluacyjne analizatora (dwa realne projekty ARCHON) są opcjonalne:
+uruchamiają się tylko, gdy `BUILDPLAN_ANALYZER_EVIDENCE_DIR` wskazuje katalog
+**poza** repozytorium; pierwszy bieg pobiera źródła i buforuje je tam,
+kolejne odtwarzają bufor (`BUILDPLAN_ANALYZER_LIVE=1` wymusza sieć).
+Pobranych rysunków nie commituj.
+
+**Analyzer Lab** (tylko debug) to osobna ikona launchera obok aplikacji:
+adres strony projektu → fakty, rzuty, kandydat, przedmiar, porównanie ze
+źródłem, pytania i podgląd 3D kandydata; migawka JSON ląduje w pamięci
+aplikacji (`files/analyzer/<klucz>/snapshot.json`). Wariant debug ma przez to
+uprawnienie `INTERNET`; release nie.
 
 ## Struktura
 
@@ -87,6 +100,19 @@ app/src/debug/java/com/buildplan/app/
                      dekompozycja widoku i pokrycie dachu (tylko debug)
   render/filament/   debugowy renderer, kanwa Filamenta i scena modelu
   ui/screens/        debugowa kanwa przestrzeni roboczej: narzędzia i inspektor
+  analyzer/lab/      Analyzer Lab: debugowy harness prototypu analizatora
+
+analyzer/src/main/kotlin/com/buildplan/app/analyzer/
+  source/            bezpieczeństwo adresu, pobieranie, rozpoznanie strony
+  site/              pakiet źródłowy i adapter witryny (archon/)
+  asset/             manifest i pobieranie rysunków do pamięci aplikacji
+  raster/ plan/      maski binarne, kawałki ścian, regiony, kalibracja, matcher
+  roof/ vertical/    szkielet prostoliniowy dachu, łańcuch rzędnych
+  candidate/         kandydat analizy (nigdy nie jest modelem kanonicznym)
+  quantity/          przedmiar: lica pomieszczeń, ściany, sufity, dach
+  validate/          porównanie ze źródłem, braki, pytania
+  snapshot/          deterministyczna migawka JSON
+  pipeline/          ProjectAnalyzer — złożenie etapów
 ```
 
 Ekran startowy **Dom** jest przestrzenią roboczą: w wariancie debug model

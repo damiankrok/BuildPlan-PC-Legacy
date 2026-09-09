@@ -1603,6 +1603,157 @@ podstawić generyczny domyślny kształt: dom bez tej cechy jest innym domem.
 Prezentacja (co jest szkłem, co jest przygaszone) pozostaje metadaną obok
 modelu, po identyfikatorze, i nigdy nie wchodzi do domeny.
 
+## Analizator projektów — prototyp (STAGE-023A)
+
+Pierwsza implementacja kontraktu spisanego wyżej: z adresu publicznej strony
+projektu (dziś: ARCHON) do kandydata bryły, przedmiaru i listy pytań — bez
+zdalnej AI, bez OCR, deterministycznie. To prototyp badawczy w osobnym module,
+nie funkcja produktu.
+
+### Moduł i granice
+
+- `analyzer/` — czysto-JVM moduł Gradle (`kotlin-jvm`, Java 17), pakiet
+  `com.buildplan.app.analyzer`. Jedyna zależność produkcyjna: jsoup 1.23.2
+  (MIT) do parsowania HTML. Nie zna Androida, Compose, `domain/`,
+  `geometry/` ani renderera — pilnuje tego `AnalyzerPurityTest`, który
+  odrzuca także każdy token konkretnego projektu (nazwy, klucze, wartości
+  oczekiwane) w `analyzer/src/main`.
+- `:app` zależy od `:analyzer` wyłącznie w wariancie debug
+  (`debugImplementation`), więc release nie zawiera ani modułu, ani jsoup;
+  jedyny konsument to debugowy **Analyzer Lab**
+  (`app/src/debug/java/com/buildplan/app/analyzer/lab/`), osobny wpis
+  launchera w `app/src/debug/AndroidManifest.xml` razem z uprawnieniem
+  `INTERNET` — oba tylko w wariancie debug.
+- Wynik analizy (`ProjectAnalysisCandidate`, `ProjectAnalysisSnapshot`) nigdy
+  nie trafia do `domain/`. Podgląd 3D w Lab buduje ulotny `Building`
+  i `BuildingGeometry` z identyfikatorami `cand-` przez nowy szew
+  `render/filament/SceneModel` (interfejs, który `DebugModel` dotąd realizował
+  implicite); `MarcowkiReferenceProject` i `MarcowkiVisualModelV1` nie są
+  dotykane.
+
+### Potok
+
+```
+ProjectInput ─► UrlSafety ─► SourceResolver ─► SiteAdapter (ARCHON) ─► SourcePackage
+   ─► AssetFetcher ─► PlanAnalyzer (rzut po rzucie) ─► RoofSolver ─► VerticalAnalyzer
+   ─► FloorCandidateBuilder ─► QuantityTakeoffEngine ─► CrossSourceValidator ─► GapAnalyzer
+   ─► ProjectAnalysisSnapshot (JSON, deterministyczny)
+```
+
+1. **Bezpieczeństwo adresu.** Tylko `https`, allowlista hostów
+   (`www.archon.pl`, `archon.pl`, `assets.archon.pl`), normalizacja IDN, bez
+   poświadczeń i portów, odrzucenie adresów rozwiązujących się do zakresów
+   prywatnych, ręczne śledzenie przekierowań z ponowną kontrolą każdego skoku,
+   limit 8 MB na odpowiedź. Żadnego crawlowania: strona projektu, jej rysunki
+   i podstrona kosztów.
+2. **Rozpoznanie strony.** Klucz ARCHON to `m[0-9a-f]{13}`. Adres ze
+   zdezaktualizowanym sufiksem (Projekt B) jest rozwiązywany po rdzeniu sluga
+   i przyjmowany tylko wtedy, gdy strona docelowa potwierdza klucz linkiem
+   kanonicznym; każdy krok trafia do `SourceResolution.steps`.
+3. **Adapter witryny** czyta fakty tekstowe do `Measured` z `SOURCE_EXACT`
+   i proweniencją (adres, lokator CSS, metoda): powierzchnie, wysokość,
+   kąt i rodzaj dachu, ścianka kolankowa, tabele pomieszczeń po kondygnacji,
+   role rysunków (rzuty, przekrój, elewacje, wizualizacje), benchmarki
+   z podstrony kosztów. Polskie słownictwo pomieszczeń żyje wyłącznie
+   w `site/archon/` i `validate/`.
+4. **Rzut** (`plan/`): klasyfikacja pikseli (tusz = ciemny i nienasycony,
+   więc ściany pod kolorowym znakiem wodnym zostają, a niebieski pas dachu
+   odpada), otwarcie morfologiczne do struktury, osiowe kawałki ścian
+   z przerwami na ich końcach, zalanie „zewnętrza" od krawędzi obrazu i od
+   pasa dachu (przez jego własną kreskę obrysu), obrys jako największy
+   składnik nie-zewnętrza, kawałki mające zewnętrze po obu stronach
+   odrzucone (krawędź dachu, obrzeże tarasu), przesegmentowanie po liniach
+   ścian, regiony przez 4-spójność i śledzenie konturu. Cały przebieg idzie
+   dwa razy: z prowizoryczną skalą z rozpiętości struktury (tylko do
+   wymiarowania jąder), potem ze skalą skalibrowaną. Progi są w metrach,
+   nigdy w pikselach dobranych pod jeden rysunek.
+5. **Kalibracja** (`PlanCalibrator`): kotwica to opublikowana powierzchnia
+   zabudowy (`ppm = √(px/m²)`); suma powierzchni pomieszczeń jest wyłącznie
+   sprawdzeniem (`residual`), rzuty wyższe dziedziczą skalę parteru
+   (`SHARED_PLAN_SCALE`). Residuum ≤ 3 % → `SOURCE_DERIVED`, > 8 % →
+   `CONFLICTING`.
+6. **Dopasowanie pomieszczeń** (`RoomMatcher`): jedyny sygnał to
+   powierzchnia, więc matcher mówi wprost, czego nią nie rozstrzygnie:
+   jednoznaczne pary najpierw, potem grupy regionów spójne przez uszczelnione
+   przerwy, na końcu unie otwartych planów dzielone proporcjonalnie
+   (`DISPLAY_ASSUMPTION` + pytanie). Cechy strukturalne (brama ≥ 2,2 m,
+   bieg schodów) są preferencją, nie wetem. Dwie równe powierzchnie to
+   jawna niejednoznaczność, nie cichy wybór.
+7. **Dach** (`roof/`): prostoliniowy szkielet z prędkościami krawędzi
+   (1 = okap, 0 = szczyt) — zdarzenia zapadania i podziału, łuki → połacie —
+   wspólny dla dachu dwuspadowego i kopertowego; płytkie wnęki obrysu
+   (≤ 1,5 m) wypełniane, orientacja szczytów wybierana po opublikowanej
+   powierzchni dachu, remis → dłuższa oś jako `DISPLAY_ASSUMPTION`
+   z pytaniem. Bryły poza obrysem dachu (garaż) dostają dach płaski jako
+   „masę wtórną". `RoofHeightField` daje wysokość połaci w punkcie.
+8. **Pion** (`VerticalAnalyzer`): kalenica = wysokość budynku + teren
+   (założone −0,30), okap = kalenica − wzniesienie szkieletu·tg, strop
+   poddasza = okap + okap·tg − kolankowa − t·tg, parter w świetle = strop
+   − 0,30 płyty. Łańcuch, który daje parter poniżej 2,30 m albo powyżej
+   4,20 m, jest odrzucany jako niewiarygodny (szkielet o jednym spadku
+   szczytuje na złączu skrzydeł) i zastępowany jawnym założeniem
+   z pytaniem, a nie liczbą wyglądającą na zmierzoną.
+9. **Przedmiar** (`QuantityTakeoffEngine`): na pomieszczenie podłoga, lica
+   ścian po odcinkach obwodu (całka wysokości wzdłuż odcinka), otwory
+   odejmowane z założonymi wysokościami (drzwi 2,05, okno 1,50, brama 2,20
+   → `DISPLAY_ASSUMPTION`), sufit płaski i skosy na siatce 5 cm, kubatura,
+   powierzchnia użytkowa wg reguły wysokości (100 % > 2,2 m, 50 % 1,4–2,2 m).
+   Osobno ściany konstrukcyjne raz na ścianę wg klasy (`EXTERIOR`,
+   `INTERNAL_LOAD_BEARING` ≥ 0,20 m, `PARTITION`; `LIGHT_EXTERIOR` — cienka
+   linia na obrysie: balustrada, obrzeże — i `PIER` — słupek, komin, szacht
+   krótszy niż 2× grubość — nie sumują się jako ściany), połacie, kalenice,
+   naroża, okapy, stolarka, elewacja brutto/netto.
+10. **Porównanie ze źródłem** (`CrossSourceValidator`): ≤ 5 % `MATCH_STRONG`,
+    ≤ 15 % `MATCH_ACCEPTABLE`, dalej `MISMATCH`; powierzchnia zabudowy jest
+    `NOT_COMPARABLE` (to kotwica), wielkości oparte na założeniach
+    `INSUFFICIENT_SOURCE`.
+11. **Braki i pytania** (`GapAnalyzer`): wymagania z wagami, stan
+    (`SATISFIED`/`PARTIAL`/`ASSUMED`/`MISSING`), wskaźnik kompletności
+    i lista `ClarificationQuestion` z tym, co analizator tymczasem założył.
+12. **Migawka**: własny zapis i odczyt JSON (`snapshot/Json.kt`),
+    `schemaVersion 1`, `analyzerVersion 0.1.0-stage023a`, `Locale.ROOT`
+    w każdym formatowaniu, obieg zapis→odczyt→zapis identyczny co do bajtu.
+
+### Dwie semantyki ścian i dwie semantyki powierzchni
+
+Lico pomieszczenia (tynk, malowanie; osobno dla każdej strony ściany
+dzielonej) i ściana konstrukcyjna (raz, po osi, na wysokość kondygnacji albo
+do spodu połaci) to różne wielkości i różne encje: jeden `WallCandidate`,
+dwie `MeasuredSurfaceCandidate`. Podobnie sufit płaski, skosy i powierzchnia
+użytkowa wg reguły wysokości są trzema liczbami obok powierzchni podłogi.
+Porównania ze stroną używają tylko wielkości tej samej semantyki.
+
+### Ewaluacja poza repozytorium
+
+Testy w `analyzer/src/test/.../evaluation/` uruchamiają się tylko, gdy
+`BUILDPLAN_ANALYZER_EVIDENCE_DIR` wskazuje katalog poza worktree; pierwszy
+przebieg pobiera źródła na żywo i buforuje je pod `cache/`, kolejne odtwarzają
+bufor (`BUILDPLAN_ANALYZER_LIVE=1` wymusza sieć). Do katalogu trafiają maski
+pośrednie, raporty i migawki obu projektów. Cudze rysunki nie wchodzą do
+repozytorium — w kodzie są wyłącznie adresy, klucze i liczby oczekiwane,
+i to tylko w testach.
+
+### Znane ograniczenia prototypu
+
+- Wysokości otworów, rzędne z przekroju i teren nie są czytane (to tekst na
+  rysunku) — wszędzie `MISSING` albo `DISPLAY_ASSUMPTION` z pytaniem.
+- Szkielet o jednym spadku przeszacowuje wzniesienie dachu kopertowego ze
+  skrzydłami; łańcuch pionowy ma przez to bramkę wiarygodności.
+- Skrzydło pod niższym dachem na rzucie poddasza Projektu B jest odzyskiwane
+  tylko częściowo (14 z 20 pomieszczeń); kalibracja tego rzutu jest
+  `CONFLICTING` i tak jest raportowana.
+- Schody nie są wykrywane na żadnym z dwóch projektów (0 stref).
+- Pojedyncze wielokąty pomieszczeń po wygładzeniu uskoków bywają
+  samoprzecinające; wtedy sufit i kubatura liczone po siatce wychodzą
+  mniejsze niż podłoga liczona z pikseli (na urządzeniu: pokój 5 parteru
+  Projektu B, 4,2 m² sufitu przy 14,65 m² podłogi). Liczby nie są ukrywane,
+  rozbieżność jest widoczna w Lab.
+- Elewacja brutto ze strony obejmuje elementy, których kandydat nie ma
+  (okapy, przybudówki), więc pozostaje `MISMATCH` na obu projektach.
+- Lab jest surowym harnessem debugowym (listy tekstu), a na emulatorze
+  z 2 GB RAM pierwsze uruchomienie po instalacji trwa 1–2 minuty
+  (weryfikacja bajtkodu), co system zgłasza jako ANR do przeczekania.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
@@ -1610,8 +1761,10 @@ renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
 odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
 rozpoznawcze, STAGE-013D poprawiło wierność elewacji, STAGE-013G dołożyło
 ramy okien i pełnoekranowy host, STAGE-013H zrobiło z hosta immersyjną
-przestrzeń roboczą — nie produkcjonizację renderera), izolacja pomieszczenia w UI, analizator rzutów (kontrakt spisany wyżej,
-implementacji nie ma), wycinanie otworów w połaci dachu, grubość połaci,
+przestrzeń roboczą — nie produkcjonizację renderera), izolacja pomieszczenia w UI, docelowy kształt analizatora (STAGE-023A dało
+prototyp badawczy w `analyzer/` i debugowy Lab; produktowe wejście, odczyt
+tekstu z rysunków, drugi adapter witryny i przejście kandydata do modelu po
+weryfikacji użytkownika są otwarte), wycinanie otworów w połaci dachu, grubość połaci,
 picking przez szkło, klasy rozmiaru okna (tablet, poziom) dla przestrzeni
 roboczej, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji

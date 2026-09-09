@@ -11,6 +11,7 @@ navigationCompose = "2.9.5"
 junit = "4.13.2"
 desugarJdkLibs = "2.1.5"
 filament = "1.75.1"
+jsoup = "1.23.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,8 +28,10 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
 filamat-android = { group = "com.google.android.filament", name = "filamat-android", version.ref = "filament" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

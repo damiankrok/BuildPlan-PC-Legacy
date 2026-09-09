@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only additions. The analyzer's network access and its Lab activity
+  live here so that a release build gains neither a permission nor a second
+  launcher entry; the analyzer core in :analyzer is inert without a caller.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <activity
+            android:name=".analyzer.lab.AnalyzerLabActivity"
+            android:exported="true"
+            android:label="@string/lab_launcher_label"
+            android:theme="@style/Theme.BuildPlan">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

@@ -387,6 +387,75 @@
   audit1,audit2,final}`, z klipami `screenrecord` dla przejść, których
   `screencap` nie łapie). Wynik: `PASS_STAGE_013H_READY_FOR_OWNER_REVIEW` —
   nie jest akceptacją OWNER-a.
+
+- STAGE-023A multi-project analyzer prototype — **PARTIAL** (prototyp
+  badawczy, nie produkt). Nowy czysto-JVM moduł `analyzer/` (jsoup 1.23.2)
+  i debugowy **Analyzer Lab** (osobny wpis launchera w wariancie debug,
+  uprawnienie `INTERNET` tylko debug): adres strony ARCHON → bezpieczne
+  pobranie (allowlista hostów, rewalidacja przekierowań, blokada adresów
+  prywatnych, limit 8 MB, bez crawlowania) → adapter witryny (fakty
+  `SOURCE_EXACT` z proweniencją, tabele pomieszczeń, role rysunków, benchmarki
+  kosztów) → pobranie rysunków do pamięci aplikacji (nigdy do repo) →
+  analiza rzutu (tusz/struktura/kawałki ścian/przerwy/zewnętrze/obrys/
+  regiony, dwa przebiegi, progi w metrach) → kalibracja po powierzchni
+  zabudowy (pomieszczenia tylko sprawdzeniem) → dopasowanie pomieszczeń po
+  powierzchni z jawną niejednoznacznością → szkielet prostoliniowy dachu
+  (dwuspadowy i kopertowy jednym solverem, masy wtórne płaskie) → łańcuch
+  pionowy z bramką wiarygodności → kandydat (kondygnacje, pomieszczenia
+  z obwodem po odcinkach, ściany w pięciu klasach, otwory z `MISSING`
+  wysokością, schody) → przedmiar (lica pomieszczeń osobno od ścian
+  konstrukcyjnych, sufit płaski/skosy/użytkowa wg reguły wysokości,
+  kubatura, połacie, kalenice, okapy, stolarka, elewacja) → porównanie ze
+  stroną → braki, kompletność i pytania → deterministyczna migawka JSON
+  (`Locale.ROOT`, obieg bajt w bajt). Żadnej zdalnej AI, żadnego OCR, żadnego
+  tokenu konkretnego projektu w rdzeniu (`AnalyzerPurityTest`); kandydat nie
+  dotyka `domain/` ani modelu Marcówek.
+
+  **Projekt A** (`…-marcowkach-ge-m2fa281446a8ca`, dwuspadowy 40°, kolankowa
+  130): adres bezpośredni; 24 fakty; oba rzuty 38,21 px/m `SOURCE_DERIVED`
+  (residua 1,8 % i 0,8 %); 15 z 18 pomieszczeń z wielokątem (bez wiatrołapu,
+  jednego pokoju i schodów); dach GABLE 148,3 m² vs 150,57 (−1,5 %); kalenica
+  7,97, okap 4,68, strop poddasza 2,98 (źródło +3,06), parter 2,68 w świetle —
+  wszystko `DISPLAY_ASSUMPTION`, bo teren i płyta są założone; porównanie:
+  12 × STRONG, 10 × ACCEPTABLE, 2 × MISMATCH (suma pomieszczeń poddasza przez
+  3 niedopasowane; elewacja brutto 148,6 vs 225,9); kompletność 65 %,
+  14 pytań. **Projekt B** (adres OWNER-a z nieaktualnym sufiksem `…to`
+  → przekierowanie → katalog → rdzeń sluga → strona kanoniczna
+  `…-md6a1fa1493ad8`, każdy krok w migawce; kopertowy 38°, kolankowa 98,
+  garaż dwustanowiskowy): 25 faktów; parter 36,60 px/m `TRACE_UNCERTAIN`
+  (6,9 %), poddasze `CONFLICTING` (14,8 %) i tak zgłoszone; 14 z 20
+  pomieszczeń; dach HIP, 10 połaci, 271,7 m² vs 246,7 (+10,2 %); okap
+  odmierzony 1,09 m; strop poddasza 2,88, parter 2,58 (założenia z pytaniem);
+  porównanie: 2 × STRONG, 15 × ACCEPTABLE, 6 × MISMATCH (sumy pomieszczeń,
+  działowe, podłogi, elewacja); kompletność 63 %, 14 pytań. Oba biegi
+  odtwarzalne z bufora źródeł poza repozytorium
+  (`BUILDPLAN_ANALYZER_EVIDENCE_DIR=D:\TRAVELAPPS\_stage023a_evidence`),
+  oba uruchomione też na żywo w Lab na `emulator-5570` (zrzuty w `device/`,
+  migawki JSON w pamięci aplikacji). Uruchomienie na urządzeniu wykryło błąd,
+  którego JVM nie pokazywała (nieucieczkowany `}` w wyrażeniu regularnym,
+  odrzucany przez silnik Androida) — naprawiony.
+
+  Iteracje (8, bez dziewiątej): 1 potok i adapter; 2 tusz pod znakiem
+  wodnym, cienkie okna, tracer konturu; 3 przesegmentowanie i matcher grup;
+  4 szkielet dachu (szczyty, podziały zerowe, wnęki, remis orientacji);
+  5 łańcuch pionowy z okapem; 6 audyt generalizacji (test czystości,
+  brak stałych pikselowych); 7 audyt przedmiaru i proweniencji (pytania
+  o otwarte plany z nazwami pomieszczeń, otwór zewnętrzny tylko z zewnętrzem
+  po jednej stronie, bramka wiarygodności pionu, klasy `LIGHT_EXTERIOR`
+  i `PIER`, kreska obrysu pasa dachu przepuszczalna dla zalania, kawałki
+  z zewnętrzem po obu stronach odrzucone, krótkie grube kawałki ścian od
+  0,15 m); 8 regresja obu domów po każdej poprawce, dokumentacja.
+  Testy `:analyzer:test` zielone: 35 offline i 8 ewaluacyjnych opt-in, lint,
+  `testDebugUnitTest`, `assembleDebug` i `assembleRelease` zielone; release
+  bez Lab, bez `INTERNET`, bez modułu analizatora i jsoup
+  (`debugImplementation`), bez nowych `.so` (12 bibliotek Filamenta w debug
+  bez zmian). Trzy strażnicze testy STAGE-013C/D/E („analizator nie może
+  jeszcze istnieć") przestawione na nową granicę: rdzeń tylko w `:analyzer`,
+  w aplikacji tylko `analyzer/lab/` i szew `SceneModel`, OCR/wizja/ML nadal
+  zakazane. Znane ograniczenia w `ARCHITECTURE.md` (skrzydło poddasza B,
+  schody 0 stref, wysokości otworów `MISSING`, elewacja brutto
+  nieporównywalna). Wynik: `PARTIAL_STAGE_023A_MULTI_PROJECT_ANALYZER` —
+  prototyp do oceny OWNER-a, nie funkcja produktu.
 ## Następny krok
 
 GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń
@@ -395,15 +464,19 @@ roboczą ze STAGE-013H: dom jako kanwa ekranu bez karty, chrom przy krawędziach
 bloków, szkło i ruch; do tego nadal dwa warunki ze STAGE-013F (okna z ramami,
 schody bez kolizji ze ścianą — bez zmian od STAGE-013G). Dopiero po tej
 ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013H
-**nie jest** akceptacją wizualną. Analizatora nie zaczynamy — jego
-kontrakt jest spisany w `ARCHITECTURE.md` i czeka na osobne zlecenie OWNER-a.
+**nie jest** akceptacją wizualną. Równolegle OWNER ocenia prototyp
+analizatora ze STAGE-023A w debugowym Lab (oba projekty, pytania,
+podgląd 3D kandydata); STAGE-023B, STAGE-024 ani STAGE-014 nie startują
+automatycznie — wracają do koordynatora.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, klas rozmiaru okna (tablet, poziom)
 w przestrzeni roboczej, prawdziwego rozmycia tła pod szkłem, śledzenia palca
-przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **analizatora projektów** (spisany jest tylko
-jego kontrakt), wycinania otworów w połaci dachu, grubości połaci, gąsiora
+przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **produktowego
+analizatora projektów** (STAGE-023A to prototyp badawczy w `analyzer/`
+i debugowym Lab: bez wejścia w produkcie, bez odczytu tekstu z rysunków,
+bez przejścia kandydata do modelu), wycinania otworów w połaci dachu, grubości połaci, gąsiora
 na kalenicy, drugiego stylu pokrycia dachu, animacji dachówek, pickingu przez
 szkło, profilu ramy okiennej i pochwytu balustrady, danych na osi czasu
 i w księdze kosztów, ikon w szufladzie, persystencji i danych rzeczywistych.
@@ -428,7 +501,8 @@ kominowych, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 
 ## PARKED
 
-- parser projektu
+- parser projektu (prototyp badawczy ze STAGE-023A istnieje; produktyzacja
+  i drugi adapter witryny zaparkowane)
 - OCR
 - benchmarki
 - PRO

@@ -28,7 +28,7 @@ import com.buildplan.app.reference.visual.VisualSurfaceRole
  *
  * Marcówki is first, so it is what the screen opens on.
  */
-internal enum class DebugModel(val labelRes: Int) {
+internal enum class DebugModel(val labelRes: Int) : SceneModel {
 
     MARCOWKI(R.string.model_debug_source_marcowki) {
         override val building: Building get() = MarcowkiVisualModelV1.building
@@ -64,76 +64,11 @@ internal enum class DebugModel(val labelRes: Int) {
     },
     ;
 
-    abstract val building: Building
-    abstract val geometry: BuildingGeometry
-
-    /** The upper storey, which "hide the upper floor" names. */
-    abstract val atticId: FloorId
-
-    /**
-     * The presentation roles of this model's elements, for the renderer. The
-     * synthetic fixture has none: it is invented, and has no glass to read as
-     * glass.
-     */
-    abstract val surfaceRoles: Map<BuildingElementId, VisualSurfaceRole>
-
-    /**
-     * What this model's presentation takes away beyond the domain's answer
-     * when a layer is removed. The synthetic fixture has nothing to add: its
-     * roof is its roof and nothing else is seen as part of it.
-     */
-    abstract val decomposition: DecompositionProfile
-
-    /**
-     * Which of this model's roofs are drawn with a covering, and what the
-     * covering avoids. Presentation beside the model, like the roles and the
-     * decomposition: the synthetic fixture declares none and stays the plain
-     * planes the renderer's regression tests know.
-     */
-    abstract val roofCover: RoofCoverProfile
-
-    /**
-     * Which of this model's panes are drawn with a frame, and how. Presentation
-     * beside the model like the roof cover: the synthetic fixture declares
-     * none and keeps its bare panes.
-     */
-    abstract val openingFrames: OpeningFrameProfile
-
-    /**
-     * The one decision path for what is on screen: the domain says which
-     * elements survive [visibility], the presentation profile narrows that to
-     * what the view is meant to expose, and the geometry's single bridge says
-     * which shapes draw them. The renderer receives the ids and nothing else.
-     */
-    fun visibleElementIds(visibility: BuildingVisibility): Set<BuildingElementId> =
-        geometry
-            .primitivesOf(decomposition.visibleElements(building, visibility))
-            .mapTo(LinkedHashSet()) { it.elementId }
-
-    /**
-     * The element a focused preset frames, or null when this model has nothing
-     * to frame for it. The synthetic fixture has no stair, no balcony and no
-     * frame, so every focus on it is the whole model.
-     */
-    abstract fun focusElementId(focus: PresetFocus): BuildingElementId?
-
-    /** The stair, when this model has one. The synthetic fixture does not. */
-    val stairId: BuildingElementId? get() = focusElementId(PresetFocus.STAIR)
-
-    /**
-     * The box a focused preset frames, or the whole model when this model has
-     * nothing for that focus.
-     *
-     * Falling back rather than refusing, because the preset list is one list for
-     * both models: a stair view on a model without a stair should be the general
-     * view, not a camera pointed at the origin.
-     */
-    fun focusBounds(focus: PresetFocus, modelBounds: LocalBounds): LocalBounds =
-        focusElementId(focus)
-            ?.let { id -> geometry.primitivesFor(id) }
-            ?.map { it.bounds }
-            ?.reduceOrNull { total, next -> total.encompass(next) }
-            ?: modelBounds
+    // The members every scene model has — building, geometry, upper storey,
+    // presentation profiles, focus lookup and the single visibility decision
+    // path — live on [SceneModel], which this enum implements. The synthetic
+    // fixture answers the presentation questions with "none": it is invented,
+    // has no glass to read as glass, no stair, no balcony and no frame.
 }
 
 /** What a preset is a view *of*. */

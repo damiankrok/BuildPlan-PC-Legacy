@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BuildPlan"
 include(":app")
+include(":analyzer")

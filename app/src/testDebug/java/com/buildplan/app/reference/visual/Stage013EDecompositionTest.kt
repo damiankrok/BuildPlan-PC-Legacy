@@ -405,11 +405,19 @@ class Stage013EDecompositionTest {
         val rasters = setOf("gif", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "html", "htm", "pdf", "png")
         assertTrue(repositoryFiles().none { it.extension.lowercase() in rasters })
 
-        val analyzerish = Regex("""(?i)\b(ocr|tesseract|analyzer|analizator|opencv|mlkit|tflite)\b""")
-        assertTrue(
-            listOf("app/src/main", "app/src/debug").flatMap { File(repositoryRoot(), it).walkTopDown().toList() }
-                .none { it.isFile && it.extension == "kt" && analyzerish.containsMatchIn(it.readText()) },
-        )
+        // STAGE-023A authorised a research prototype with a bounded footprint
+        // (core in `:analyzer`, in-app consumer only the debug Lab and the
+        // `SceneModel` seam); OCR, vision and ML libraries stay forbidden.
+        val forbidden = Regex("""(?i)\b(ocr|tesseract|opencv|mlkit|tflite)\b""")
+        val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
+        val authorised = Regex("""app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""")
+        val analyzerOffenders = listOf("app/src/main", "app/src/debug").flatMap { File(repositoryRoot(), it).walkTopDown().toList() }
+            .filter { it.isFile && it.extension == "kt" }
+            .filter { file ->
+                val text = file.readText()
+                forbidden.containsMatchIn(text) || (analyzerish.containsMatchIn(text) && !authorised.containsMatchIn(file.path))
+            }
+        assertTrue("Analyzer code outside its authorised footprint: $analyzerOffenders", analyzerOffenders.isEmpty())
 
         val serials = Regex("""emulator-(\d{4})""")
         repositoryFiles()

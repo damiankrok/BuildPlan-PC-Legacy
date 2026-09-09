@@ -545,12 +545,25 @@ class Stage013CSignatureTest {
         // would otherwise report itself, which would make the guard useless in
         // the one direction that matters: it has to fail when somebody starts
         // writing one, not when somebody writes down that they must not.
-        val analyzerish = Regex("""(?i)\b(ocr|tesseract|analyzer|analizator|opencv|imageproc)\b""")
-        val offenders = listOf("app/src/main", "app/src/debug", "app/src/release")
+        //
+        // STAGE-023A later authorised a research prototype with a bounded
+        // footprint: the core lives in the separate `:analyzer` module and its
+        // only in-app consumer is the debug Lab. Inside the app the boundary
+        // still holds — nothing analyzer-like in main or release sources, in
+        // debug only under `analyzer/lab/` plus the `SceneModel` seam the Lab
+        // renders through, and no OCR, vision or ML library anywhere.
+        val forbidden = Regex("""(?i)\b(ocr|tesseract|opencv|imageproc)\b""")
+        val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
+        val authorised = Regex("""app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""")
+        val sources = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }
             .filter { it.isFile && it.extension == "kt" }
-            .filter { analyzerish.containsMatchIn(it.readText()) || analyzerish.containsMatchIn(it.name) }
-        assertTrue("The analyzer must not exist yet: $offenders", offenders.isEmpty())
+        val offenders = sources.filter { file ->
+            val text = file.readText()
+            forbidden.containsMatchIn(text) || forbidden.containsMatchIn(file.name) ||
+                ((analyzerish.containsMatchIn(text) || analyzerish.containsMatchIn(file.name)) && !authorised.containsMatchIn(file.path))
+        }
+        assertTrue("Analyzer code outside its authorised footprint: $offenders", offenders.isEmpty())
     }
 
     // --- helpers -----------------------------------------------------
