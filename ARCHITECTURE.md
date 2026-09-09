@@ -1618,12 +1618,14 @@ nie funkcja produktu.
   `geometry/` ani renderera — pilnuje tego `AnalyzerPurityTest`, który
   odrzuca także każdy token konkretnego projektu (nazwy, klucze, wartości
   oczekiwane) w `analyzer/src/main`.
-- `:app` zależy od `:analyzer` wyłącznie w wariancie debug
-  (`debugImplementation`), więc release nie zawiera ani modułu, ani jsoup;
-  jedyny konsument to debugowy **Analyzer Lab**
-  (`app/src/debug/java/com/buildplan/app/analyzer/lab/`), osobny wpis
-  launchera w `app/src/debug/AndroidManifest.xml` razem z uprawnieniem
-  `INTERNET` — oba tylko w wariancie debug.
+- **Od STAGE-024 `:app` zależy od `:analyzer` produkcyjnie**
+  (`implementation`), bo import projektu jest funkcją produktu. Do release
+  wchodzą: moduł analizatora, jsoup, `kotlinx-coroutines-core` i uprawnienie
+  `INTERNET` (w `app/src/main/AndroidManifest.xml`). **Nie wchodzą**: Analyzer
+  Lab, jego wpis launchera i zasoby, fikstury ewaluacyjne, wartości
+  benchmarkowe ani spike renderera. Pilnują tego `ReleaseBoundaryTest`
+  i `AnalyzerApiSurfaceTest` w `app/src/test/`, a potwierdza kontrola dexa na
+  zbudowanym APK (§ „Granica release" niżej).
 - Wynik analizy (`ProjectAnalysisCandidate`, `ProjectAnalysisSnapshot`) nigdy
   nie trafia do `domain/`. Podgląd 3D w Lab buduje ulotny `Building`
   i `BuildingGeometry` z identyfikatorami `cand-` przez nowy szew
@@ -1910,6 +1912,296 @@ Porównanie robi dwa **osobne** twierdzenia i tylko jedno z nich jest o geometri
 Nazwany zakres, który pasuje, wygrywa z samą przynależnością do widełek:
 „to jest obwiednia netto bez garażu (1,5 %)" jest odpowiedzią, a „liczba mieści
 się gdzieś w przedziale" nie jest.
+
+### Granica produkcyjna: usługa analizatora (STAGE-024)
+
+STAGE-023A/B/C dowiodły, że deterministyczne podejście wystarcza; STAGE-024
+zamienia je w **usługę o stabilnym kontrakcie**, z której korzysta aplikacja,
+nie zmiękczając żadnego z zabezpieczeń. Rdzeń badawczy się nie zmienił —
+zmieniło się to, przez co się do niego mówi.
+
+#### Publiczne API: `analyzer/.../service/`
+
+```
+AnalyzeProjectRequest(url, cachePolicy)
+        │
+        ▼
+ProjectAnalyzerService.analyze(request): Flow<AnalysisEvent>
+        │                                  ├─ Progress(AnalysisPhase, detail)
+        │                                  └─ Completed(AnalysisOutcome)  ← dokładnie jeden
+        ▼
+AnalysisOutcome = Success | Partial | UnsupportedSource | UnsafeUrl
+                | FetchFailed | SourceChanged | AssetFailure
+                | AnalysisFailed | Cancelled
+```
+
+- **`ProjectAnalyzerService`** — jedyne wejście. `analyze` jest zimne: nic się
+  nie dzieje bez kolektora, anulowanie kolekcji anuluje bieg, a praca nigdy nie
+  idzie na wątku kolektora.
+- **`AnalyzerPlatform`** — dwa szwy, których analizator nie ma sam: dekodowanie
+  bajtów na piksele i klient sieci (plus wstrzykiwalne rozwiązywanie nazw, żeby
+  regułę adresów prywatnych dało się sprawdzić bez DNS). Na urządzeniu
+  `AndroidAnalyzerPlatform` (`BitmapFactory` + `HttpResourceFetcher`),
+  w testach ImageIO i atrapa. Dzięki temu **cała** usługa — anulowanie, cache
+  i bezpieczeństwo adresu — jest testowana na czystym JVM.
+- **`AnalyzerServices.create(platform, cacheRoot, …)`** — aplikacja nie nazywa
+  adaptera witryny; katalog cache musi być nazwany wersjami tego, co decyduje
+  o odpowiedzi, a jedną z nich jest wersja adaptera, więc jedno i drugie
+  powstaje razem.
+
+**Czego aplikacja nie widzi.** `plan/`, `roof/`, `raster/`, `text/`,
+`vertical/`, `site/archon/` i fikstury ewaluacyjne to wnętrze prototypu i będą
+przepisywane. `AnalyzerApiSurfaceTest` sprawdza, że `app/src/main` importuje
+wyłącznie `service/`, `cache/` i typy wartości, z których zrobiony jest raport
+(`Measured`, `FactFidelity`, `Provenance`, model kandydata i przedmiaru).
+Granica, której nikt nie musi używać, jest ozdobą.
+
+#### Rodziny wyniku: co znaczy „częściowo"
+
+Reguła jest jedna i mieszka w `DefaultProjectAnalyzerService.classify`:
+
+> Bieg jest **niepełny, gdy czegoś, co miał odczytać, nie odczytał** — a nie
+> dlatego, że odpowiedź jest niepewna.
+
+Niejednoznaczność i brak wysokości otworów to normalny, uczciwy stan tych
+źródeł. Gdyby czyniły bieg niepełnym, każdy bieg na prawdziwym domu byłby
+niepełny i słowo przestałoby cokolwiek znaczyć.
+
+| Sytuacja | Rodzina |
+|---|---|
+| host spoza allowlisty, strona nie jest stroną projektu | `UnsupportedSource` |
+| nie-`https`, poświadczenia, port, adres prywatny | `UnsafeUrl` |
+| strona nie dała się pobrać | `FetchFailed` |
+| brak **wymaganego** sygnału adaptera (tabele, parametry, rzuty) | `SourceChanged` |
+| rzuty nazwane przez stronę, żaden nie dał się zdekodować | `AssetFailure` |
+| sygnał zdegradowany, część rzutów, brak dachu, `BLOCKING` | `Partial` |
+| wszystko odczytane (z pytaniami i niejednoznacznościami) | `Success` |
+| kolektor anulował | `Cancelled` (bez raportu) |
+
+`SourceChanged` i `AssetFailure` **niosą raport**, bo strona, która straciła
+tabele pomieszczeń, mogła nadal opublikować parametry, a to warto pokazać obok
+ostrzeżenia. Czego być nie może, to prawie pustego kandydata zwróconego jako
+`Success`: dom bez pomieszczeń wygląda jak wynik, a jest ciszą.
+
+#### Zdrowie adaptera: `AdapterHealth`
+
+Sześć sygnałów (`TITLE`, `SCALARS`, `ROOM_TABLES`, `PLAN_ASSETS`, `COST_PAGE`,
+`SITE_TAGS`), każdy `PRESENT` / `DEGRADED` / `ABSENT` z dowodem w słowach.
+Trzy są wymagane; brak któregokolwiek to `BROKEN`. To odpowiedź na tryb awarii,
+który scraper ma, a człowiek nie: selektor, który nic nie trafia, zwraca nic,
+a warstwy wyżej składają z tej ciszy schludny, pusty dom. `AdapterDriftTest`
+przechodzi przez przemianowany selektor wartości, przemianowany wrapper tabeli,
+znikające rzuty, brakującą podstronę kosztów, podstronę kosztów z błędem HTTP
+i zepsuty `dataLayer`.
+
+Adapter deklaruje `adapterId` i `adapterVersion`; obie trafiają do migawki
+(`schemaVersion` podniesiony do **2**, `analyzerVersion` do
+**`0.2.0-stage024`**) i do klucza cache.
+
+#### Kontrakt kandydata: `ProjectAnalysisReport`
+
+Trwałą częścią jest **`snapshot`** — ta sama wersjonowana migawka, którą
+`SnapshotCodec` pisze i czyta, i jedyna rzecz, którą cache przechowuje.
+Wszystko inne na raporcie jest z niej **wyprowadzone czystą funkcją**, i to
+właśnie sprawia, że bieg z cache i bieg świeży są dla wywołującego nie do
+odróżnienia — oraz że ta granica nie stała się drugą kopią modelu kandydata,
+utrzymywaną obok pierwszej.
+
+- `identity` — `schemaVersion`, `analyzerVersion`, `adapterId`,
+  `adapterVersion`, witryna, klucz projektu, adres kanoniczny i adres **wpisany
+  przez użytkownika** obok niego.
+- `generation` — czas, czasy etapów, kroki rozwiązywania i to, czy bajty
+  przyszły z cache. Trzymane **osobno** od danych o domu: znacznik czasu
+  wewnątrz kandydata sprawiłby, że żadne dwa biegi nie dałyby się porównać.
+  `deterministicJson()` usuwa czasy, dziennik i ścieżki plików — dwa biegi na
+  tych samych bajtach dają identyczne bajty, i to jest forma, którą można
+  wkleić do zgłoszenia błędu, bo nie wychodzi przez nią żadna ścieżka
+  z urządzenia.
+- `quantityVerification` — **płaska** lista wszystkiego, co dałoby się wycenić:
+  po pokojach (podłoga, obwód, lica ścian brutto/otwory/netto, sufit płaski,
+  skos, razem, kubatura, powierzchnia wg reguły wysokości), po kondygnacjach
+  (mur zewnętrzny, nośny, działowy, obwiednia brutto/netto), po projekcie
+  (dach, kalenice, okapy, stolarka, elewacja, rzędne) oraz **po otworach**
+  (szerokość, wysokość, parapet). Płaska celowo: ekran kosztów pyta „co wolno
+  wycenić", a odpowiadanie na to chodzeniem po drzewie kondygnacji, pokojów,
+  ścian i połaci to sposób, w jaki nieweryfikowane założenie trafia do budżetu,
+  bo ktoś przeoczył gałąź.
+- `ambiguities`, `adapterHealth`, `questions`, `validations`, `gaps`, `issues`.
+
+Każda `ValidationFinding` ma teraz stabilny, maszynowy `key`
+(`project:roofArea`, `floor:f0:roomFloorAreaSum`, `room:f1-r3:floorArea`) obok
+polskiego `subject`. Prozę ktoś kiedyś poprawi; konsument, który chce położyć
+porównanie obok wielkości, którą ono ocenia, potrzebuje czegoś, co się nie
+ruszy.
+
+#### Stan weryfikacji ilości
+
+`FactFidelity` odpowiada „skąd ta liczba"; `VerificationState` odpowiada „czy
+wolno na niej oprzeć pieniądze". To bliskie, ale nie te same pytania, a ekran
+budżetu zadaje drugie.
+
+| `FactFidelity` | `VerificationState` |
+|---|---|
+| `SOURCE_EXACT` | `SOURCE_VERIFIED` |
+| `SOURCE_TRACED`, `SOURCE_DERIVED` | `DERIVED_VERIFIED` |
+| `DISPLAY_ASSUMPTION` | `ASSUMED` |
+| `TRACE_UNCERTAIN`, `MISSING`, `CONFLICTING` | `UNRESOLVED` |
+| `USER_CONFIRMED` | `USER_CONFIRMED` |
+
+**Analizator nigdy nie emituje `USER_CONFIRMED`.** To stan, w który człowiek
+wprowadza wielkość w STAGE-025; bieg, który mógłby go wybić sam, uczyniłby
+weryfikację ozdobną. `ReportContractTest` sprawdza to na całym raporcie i na
+całej migawce, a `safeForCosting` odmawia każdej wielkości opartej na
+założeniu. Do żadnego kosztu ani budżetu nic z tego jeszcze nie wchodzi —
+`app/src/main/.../analyzer/` nie może nawet nazwać typu z `domain/`
+(`ReleaseBoundaryTest`).
+
+#### Niejednoznaczność: nazwać, nie rozstrzygnąć
+
+`CandidateAmbiguity` niesie **każdy** odczyt, na który źródło pozwala:
+`ROOM_IDENTITY` (dwa wiersze tabeli pasujące do jednego regionu),
+`ROOM_UNCLAIMED`, `ROOM_GEOMETRY` (brak pierścienia prostego),
+`STAIR_INTERPRETATION` (bieg czy półki), `FACADE_SCOPE` (dwa zakresy
+w tolerancji). Kandydat zachowuje **jedno** przypisanie — musi, inaczej nie ma
+geometrii — i mówi obok, że jest ono wyborem, oraz jakie były pozostałe.
+
+Dlatego `RoomCandidate.matchAlternatives` przestało być listą zdań i jest listą
+`RoomMatchAlternative(sourceRowIndex, roomName, publishedAreaM2, relativeError,
+why)`. Proza czyta się dobrze i nie da się jej podać jako wyboru, a to jedyny
+użytek, jaki ma. W `CandidateAmbiguities` nie ma **żadnego progu**: każda
+liczba tutaj byłaby drugą opinią o tym, co jest niepewne, a potok ma już
+jedyną.
+
+#### Braki, których nie wolno wypełnić
+
+Wysokości otworów nie ma w żadnym publicznym rastrze ARCHON (etykiety przy
+4–6 px na glif, poniżej bramki 10 px). W raporcie widać obok siebie
+`opening:<id>:width` odrysowaną i `opening:<id>:height` jako `MISSING`
+z powodem, `UNRESOLVED` i pytaniem. Wielkości, które muszą coś odjąć, mówią
+wprost, że odliczenie stoi na założeniu.
+
+#### Cache: `analyzer/.../cache/AnalysisCache`
+
+Cztery własności, każda odpowiadająca na inny sposób, w jaki cache produkuje
+pewną złą odpowiedź zamiast chybienia:
+
+1. **Wersjonowany wszystkim, co zmienia odpowiedź.** Katalog najwyższego
+   poziomu nazywa się `s<schema>-a<analyzer>-<adapter><wersja>`. Build, który
+   zmienił którąkolwiek, nie widzi starego katalogu w ogóle i kasuje go po
+   drodze. Odtworzenie wyniku starego parsera jako bieżącego to jedyny błąd
+   cache, który daje pewne złe liczby zamiast błędu.
+2. **Nic nie jest zapisywane tam, skąd będzie czytane, zanim będzie
+   kompletne.** Każdy plik idzie przez `.part` i `rename`; każdy bieg pisze do
+   prywatnego katalogu sesji, który trafia na miejsce dopiero po zakończeniu.
+   Bieg anulowany albo zabity zostawia katalog sesji, który następne otwarcie
+   zamiata.
+3. **Kluczowany projektem, osiągany adresem.** Projekt leży pod kluczem
+   witryny; adresy, które się do niego rozwiązały, są zapisane obok, bo link
+   użytkownika i link kanoniczny rzadko są tym samym napisem.
+4. **Ograniczony.** Domyślnie 96 MB / 8 projektów, kasowane **całymi
+   projektami** wg najdawniejszego użycia — projekt bez połowy rysunków
+   odtworzyłby się jako projekt, któremu rysunki nie doszły, a to gorsze niż
+   chybienie.
+
+`CachePolicy`: `PREFER_CACHE` (domyślna), `REFRESH` (pomija cache i odświeża),
+`CACHE_ONLY` (nie otwiera gniazda; `network = null` czyni to wymuszalnym,
+a nie tylko zamierzonym).
+
+**Nie zapisuje się bieg, który nie odczytał tego, po co szedł.** `AssetFailure`
+i `SourceChanged` nie trafiają do cache: rzeczą, którą człowiek robi po
+„rysunki nie doszły", jest ponowna próba, a odpowiedzenie na nią natychmiast tą
+samą porażką z dysku jest gorsze niż powrót do sieci.
+
+Ścieżki oddawane przez `AnalysisStorage` w produkcji są **względne**
+(`assets/…`), więc ścieżka z urządzenia nie podróżuje w raporcie; Lab zostaje
+przy bezwzględnych, bo jego zadaniem jest zostawić dowód do `adb pull`.
+Katalog to `cacheDir/project-analyzer` — nigdy pamięć zewnętrzna, żadnego
+uprawnienia, i system może go odzyskać pod presją miejsca, co jest właściwym
+kompromisem dla rzeczy odtwarzalnej z sieci.
+
+#### Anulowanie i współbieżność
+
+- Rdzeń dostał **`CancellationSignal`** — kooperatywny, sprawdzany na każdej
+  granicy etapu i między rysunkami. Celowo nie jest typem korutynowym: rdzeń
+  zostaje zwykłym obliczeniem na bajtach, a `service/` mostkuje na to
+  strukturalną współbieżność. `AnalyzerPurityTest` pilnuje, że
+  `kotlinx.coroutines` nie pojawia się poza `service/`.
+- Bieg anulowany **nie publikuje nic** i kasuje swoją sesję. Połowicznie
+  zanalizowany kandydat nie jest kandydatem częściowym, tylko niedokończonym,
+  a różnica jest istotna, bo `Partial` to wynik produktowy, na którym
+  użytkownik może działać.
+- **Jeden mutex na projekt** (po znormalizowanym adresie, bo klucz projektu
+  jest znany dopiero po pobraniu strony — czyli już wewnątrz części, która nie
+  może wykonać się dwa razy). Dwa dotknięcia tego samego linku są szeregowane:
+  drugie znajduje wpis pierwszego zamiast się z nim ścigać. Różne projekty
+  biegną równolegle.
+- W aplikacji bieg żyje w `viewModelScope`, nie w kompozycji: obrót ekranu nie
+  restartuje pobierania, a wyjście z ekranu je anuluje.
+
+#### Model postępu
+
+`AnalysisPhase` ma dwanaście wartości i **każda z nich naprawdę się pojawia**.
+Brief etapu wymieniał kilka drobniejszych („pobieranie strony", „wykrywanie
+rysunków", „dekodowanie rzutów", „odczyt wymiarów") i nie ma ich jako osobnych
+pozycji, bo potok ich osobno nie sygnalizuje: pobranie strony jest częścią
+rozpoznawania projektu, wykrycie rysunków częścią odczytu strony, dekodowanie
+dzieje się w pobieraniu, a odczyt wymiarów w odtwarzaniu rzutów. Faza, która
+nigdy nie nadchodzi, jest gorsza od zgrubnej, która nadchodzi — UI siedziałby
+na niej i czekał. Wewnątrz `DOWNLOADING_ASSETS` szczegół liczy pojedyncze
+rysunki, bo tam naprawdę jest czekanie.
+
+`fraction` jest zadeklarowany jako „ile faz zaczęto z ilu istnieje" i nic nie
+udaje, że śledzi czas; odtwarzanie rzutów zjada większość zegara. Etykiety są
+sprawą wywołującego — enum jest stabilny, a polskie napisy są w `strings.xml`.
+
+#### Sieć: co wolno, sprawdzane bez sieci
+
+`HttpResourceFetcher` dostał szew `HttpTransport` (domyślnie
+`UrlConnectionTransport`), bo rewalidacja przekierowań, budżet skoków i limity
+ciała to zachowanie **bezpieczeństwa**, a dopóki nie dało się ich oddzielić od
+gniazda, jedynym sposobem sprawdzenia było wycelowanie aplikacji w prawdziwy
+host i nadzieja. `NetworkPolicyTest` przechodzi przez: przekierowanie poza
+allowlistę, przekierowanie na adres prywatny (rebind na drugim skoku), zejście
+na `http`, dorzucenie poświadczeń i portu, pętlę przekierowań, ciało
+deklarujące ponad limit, ciało **kłamiące** o długości (nieskończony strumień
+ucinany na limicie), przekierowanie bez `Location` oraz to, że jeden adres na
+wejściu daje dokładnie jedno otwarcie na wyjściu — nie ma tu crawla do
+ograniczania.
+
+Usługa sprawdza adres **zanim** cokolwiek otworzy, więc niewspierany host jest
+odpowiedzią typu, a nie błędem sieci z mylącym komunikatem; test dowodzi, że
+atrapa fetchera nie dostała ani jednego żądania.
+
+#### Granica release
+
+| W release **jest** | W release **nie ma** |
+|---|---|
+| `:analyzer` (`analyzer/service`, `analyzer/cache`) | Analyzer Lab (`analyzer/lab/AnalyzerLabActivity`) |
+| jsoup (`org/jsoup/Jsoup`) | Filament (`com/google/android/filament`) |
+| `kotlinx-coroutines-core` | `MarcowkiVisualModelV1`, `MarcowkiReferenceProject` |
+| `lifecycle-viewmodel-compose` | `SyntheticDemoHouse` |
+| uprawnienie `INTERNET` | klucze projektów, `EvaluationProjects`, `BUILDPLAN_ANALYZER_EVIDENCE_DIR` |
+
+Inwentarz `.so` w release **nie zmienił się**: nadal wyłącznie
+`libandroidx.graphics.path.so` w czterech ABI. `:analyzer`, jsoup, korutyny
+i `lifecycle-viewmodel-compose` są czysto bajtkodowe, więc badania 16 KB nie
+trzeba powtarzać; `zipalign -c -P 16 -v 4` na APK release przechodzi.
+Uprawnienia release to dokładnie `INTERNET` (plus generowane przez AndroidX
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) i jeden wpis launchera.
+
+#### Szew produktowy
+
+`AppSection.Import` („Import projektu", grupa Projekt) → `ProjectImportScreen`
++ `ProjectImportViewModel`. Pole adresu, `Analizuj` / `Przerwij` / `Pobierz
+ponownie`, lista faz z detalem, a po biegu **podsumowanie tylko do odczytu**:
+liczby kondygnacji, pomieszczeń, otworów i wielkości, ile wymaga potwierdzenia,
+pytania, niejednoznaczności z ich odczytami i czego zabrakło. Plus zdanie
+wprost: to propozycja, nic nie zostało zapisane w modelu ani w kosztach.
+
+Wybieranie między dwoma pomieszczeniami tej samej powierzchni, potwierdzanie
+wysokości otworu i przenoszenie czegokolwiek do modelu to praca weryfikacyjna
+i należy do STAGE-025. Jej połowiczna wersja tutaj byłaby tym, czego ludzie by
+używali, i wpuściłaby nieweryfikowane liczby do budżetu.
 
 ### Znane ograniczenia prototypu (po STAGE-023C)
 

@@ -85,10 +85,14 @@ class AnalysisRun(
     val log: List<String>,
     val timingsMillis: Map<String, Long>,
     val roomMasks: Map<String, BinaryMask>,
+    val adapterId: String,
+    val adapterVersion: String,
 ) {
     fun snapshot(now: Long = System.currentTimeMillis()): ProjectAnalysisSnapshot = ProjectAnalysisSnapshot(
         schemaVersion = ProjectAnalysisSnapshot.SCHEMA_VERSION,
         analyzerVersion = ProjectAnalysisSnapshot.ANALYZER_VERSION,
+        adapterId = adapterId,
+        adapterVersion = adapterVersion,
         createdAtEpochMillis = now,
         inputUrl = input.rawUrl,
         resolutionSteps = resolution.steps,
@@ -121,12 +125,14 @@ class ProjectAnalyzer(
     private val assetPolicy: AssetPolicy = AssetPolicy(),
     private val planDebug: PlanDebugSink = PlanDebugSink.NONE,
     private val listener: AnalysisListener = AnalysisListener.NONE,
+    private val cancellation: CancellationSignal = CancellationSignal.NONE,
 ) {
 
     fun analyze(input: ProjectInput): AnalysisRun {
         val log = mutableListOf<String>()
         val timings = LinkedHashMap<String, Long>()
         fun <T> timed(stage: AnalysisStage, message: String, block: () -> T): T {
+            cancellation.checkpoint(stage)
             listener.onStage(stage, message)
             val start = System.nanoTime()
             val result = block()
@@ -138,17 +144,25 @@ class ProjectAnalyzer(
         resolution.steps.forEach { log += "${it.kind}: ${it.detail}" }
         if (!resolution.isResolved) {
             val gaps = GapAnalyzer.analyse(resolution, null, null)
-            return AnalysisRun(input, resolution, null, null, emptyList(), null, null, emptyList(), gaps.gaps, gaps.questions, log, timings, emptyMap())
+            return AnalysisRun(input, resolution, null, null, emptyList(), null, null, emptyList(), gaps.gaps, gaps.questions, log, timings, emptyMap(), adapter.adapterId, adapter.adapterVersion)
         }
         val identity = resolution.identity!!
         val page = resolution.page!!
 
-        val source = timed(AnalysisStage.READ_PAGE, "Odczyt strony projektu") { adapter.read(identity, page, fetcher) }
-        log += "page: ${source.title}, ${source.scalars.count { it.measured.value != null }} numeric facts, ${source.floors.size} storeys, ${source.assets.assets.size} assets"
+        val readSource = timed(AnalysisStage.READ_PAGE, "Odczyt strony projektu") { adapter.read(identity, page, fetcher) }
+        log += "page: ${readSource.title}, ${readSource.scalars.count { it.measured.value != null }} numeric facts, ${readSource.floors.size} storeys, ${readSource.assets.assets.size} assets"
 
         val assets = timed(AnalysisStage.FETCH_ASSETS, "Pobieranie rysunków") {
-            AssetFetcher(fetcher, codec, storage, assetPolicy).fetchAll(source.assets, "${identity.projectKey}/assets")
+            AssetFetcher(fetcher, codec, storage, assetPolicy).fetchAll(readSource.assets, "${identity.projectKey}/assets", cancellation) { done, total, record ->
+                listener.onStage(AnalysisStage.FETCH_ASSETS, "Pobieranie rysunków ${done + 1}/$total: ${record.role.name.lowercase()}")
+            }
         }
+        // The manifest the adapter produced says what the page *refers to*; the one the fetcher
+        // returns says what actually arrived, with byte counts, checksums, pixel sizes and
+        // failures. It is the second one that belongs in the record of the run — a snapshot that
+        // kept only the discovery manifest would describe every drawing as still pending, and a
+        // reader would have no way to tell a decoded plan from one that never downloaded.
+        val source = readSource.copy(assets = assets.manifest)
         log += "assets: ${assets.manifest.assets.count { it.retrieval == com.buildplan.app.analyzer.asset.RetrievalState.DECODED }} decoded of ${source.assets.assets.size}"
 
         // ---- plans, lowest storey first as the page prints them
@@ -373,7 +387,7 @@ class ProjectAnalyzer(
         log += "completeness ${"%.0f".format(java.util.Locale.ROOT, gapOutput.gaps.completenessScore * 100)} %, ${gapOutput.questions.size} questions"
         listener.onStage(AnalysisStage.SNAPSHOT, "Gotowe")
 
-        return AnalysisRun(input, resolution, source, assets, analyses, candidate, quantities, validations, gapOutput.gaps, gapOutput.questions, log, timings, built.flatMap { it.roomMasks.entries }.associate { it.key to it.value })
+        return AnalysisRun(input, resolution, source, assets, analyses, candidate, quantities, validations, gapOutput.gaps, gapOutput.questions, log, timings, built.flatMap { it.roomMasks.entries }.associate { it.key to it.value }, adapter.adapterId, adapter.adapterVersion)
     }
 
     /**

@@ -498,7 +498,12 @@ class Stage013DFidelityTest {
         // `SceneModel` seam); OCR, vision and ML libraries stay forbidden.
         val forbidden = Regex("""(?i)\b(ocr|tesseract|opencv|imageproc|mlkit|tflite)\b""")
         val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
-        val authorised = Regex("""app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""")
+        // Widened in STAGE-024 for the same reason as in Stage013CSignatureTest: the analyzer's
+        // platform bindings and its one product screen are authorised; everything else is not.
+        val authorised = Regex(
+            """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
+                """|app[\\/]src[\\/]main[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/]ProjectImport[A-Za-z]*)\.kt$""",
+        )
         val offenders = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }
             .filter { it.isFile && it.extension == "kt" }

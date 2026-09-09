@@ -38,6 +38,7 @@ enum class AppSection(
     val group: AppSectionGroup?,
 ) {
     Home("home", R.string.section_home, R.string.section_home_summary, AppSectionGroup.Project),
+    Import("import", R.string.section_import, R.string.section_import_summary, AppSectionGroup.Project),
     Timeline("timeline", R.string.section_timeline, R.string.section_timeline_summary, AppSectionGroup.Project),
     Costs("costs", R.string.section_costs, R.string.section_costs_summary, AppSectionGroup.Finance),
     Budget("budget", R.string.section_budget, R.string.section_budget_summary, AppSectionGroup.Finance),

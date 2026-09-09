@@ -1,5 +1,8 @@
 package com.buildplan.app.analyzer.asset
 
+import com.buildplan.app.analyzer.pipeline.AnalysisStage
+import com.buildplan.app.analyzer.pipeline.CancellationSignal
+import com.buildplan.app.analyzer.pipeline.checkpoint
 import com.buildplan.app.analyzer.raster.RasterCodec
 import com.buildplan.app.analyzer.raster.RasterImage
 import com.buildplan.app.analyzer.source.FetchException
@@ -11,7 +14,7 @@ import java.security.MessageDigest
  * directory in tests. Never the repository. The analyzer sees only the path
  * string it gets back, for the manifest.
  */
-interface AnalysisStorage {
+fun interface AnalysisStorage {
     /** Stores [bytes] under [relativePath] (slashes allowed) and returns a printable location. */
     fun store(relativePath: String, bytes: ByteArray): String
 }
@@ -52,10 +55,21 @@ class AssetFetcher(
     private val policy: AssetPolicy = AssetPolicy(),
 ) {
 
-    fun fetchAll(manifest: AssetManifest, storagePrefix: String): FetchedAssets {
+    fun fetchAll(
+        manifest: AssetManifest,
+        storagePrefix: String,
+        cancellation: CancellationSignal = CancellationSignal.NONE,
+        /** Called before each wanted asset is fetched: how many are done, how many are wanted, and which one is next. */
+        progress: (done: Int, total: Int, record: AssetRecord) -> Unit = { _, _, _ -> },
+    ): FetchedAssets {
         val images = LinkedHashMap<String, RasterImage>()
+        val wanted = manifest.assets.count { it.role in policy.wantedRoles }
+        var done = 0
         val records = manifest.assets.map { record ->
+            cancellation.checkpoint(AnalysisStage.FETCH_ASSETS)
             if (record.role !in policy.wantedRoles) return@map record.copy(retrieval = RetrievalState.SKIPPED)
+            progress(done, wanted, record)
+            done++
             fetchOne(record, storagePrefix, images)
         }
         return FetchedAssets(AssetManifest(records), images)

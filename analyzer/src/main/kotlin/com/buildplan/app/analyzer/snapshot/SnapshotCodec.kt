@@ -25,6 +25,7 @@ import com.buildplan.app.analyzer.candidate.RoofFamily
 import com.buildplan.app.analyzer.candidate.RoomBoundarySegment
 import com.buildplan.app.analyzer.candidate.RoomCandidate
 import com.buildplan.app.analyzer.candidate.RoomGeometryState
+import com.buildplan.app.analyzer.candidate.RoomMatchAlternative
 import com.buildplan.app.analyzer.candidate.SecondaryRoofMass
 import com.buildplan.app.analyzer.candidate.Segment
 import com.buildplan.app.analyzer.candidate.Segment3
@@ -74,6 +75,9 @@ import com.buildplan.app.analyzer.validate.ValidationStatus
 data class ProjectAnalysisSnapshot(
     val schemaVersion: Int,
     val analyzerVersion: String,
+    /** Which site adapter read the page, and at which revision of its selectors. */
+    val adapterId: String,
+    val adapterVersion: String,
     val createdAtEpochMillis: Long,
     val inputUrl: String,
     val resolutionSteps: List<ResolutionStep>,
@@ -87,8 +91,8 @@ data class ProjectAnalysisSnapshot(
     val timingsMillis: Map<String, Long>,
 ) {
     companion object {
-        const val SCHEMA_VERSION = 1
-        const val ANALYZER_VERSION = "0.1.0-stage023a"
+        const val SCHEMA_VERSION = 2
+        const val ANALYZER_VERSION = "0.2.0-stage024"
     }
 }
 
@@ -102,6 +106,8 @@ object SnapshotCodec {
     fun toJson(s: ProjectAnalysisSnapshot): JsonValue.Obj = json {
         "schemaVersion" to s.schemaVersion
         "analyzerVersion" to s.analyzerVersion
+        "adapterId" to s.adapterId
+        "adapterVersion" to s.adapterVersion
         "createdAtEpochMillis" to s.createdAtEpochMillis
         "inputUrl" to s.inputUrl
         "resolutionSteps" toArray s.resolutionSteps.map { json { "kind" to it.kind; "detail" to it.detail } }
@@ -122,6 +128,8 @@ object SnapshotCodec {
     fun fromJson(o: JsonValue.Obj): ProjectAnalysisSnapshot = ProjectAnalysisSnapshot(
         schemaVersion = o.int("schemaVersion") ?: 0,
         analyzerVersion = o.str("analyzerVersion") ?: "",
+        adapterId = o.str("adapterId") ?: "",
+        adapterVersion = o.str("adapterVersion") ?: "",
         createdAtEpochMillis = o.num("createdAtEpochMillis")?.toLong() ?: 0L,
         inputUrl = o.str("inputUrl") ?: "",
         resolutionSteps = o.arr("resolutionSteps")?.objects?.map { ResolutionStep(ResolutionStep.Kind.valueOf(it.str("kind")!!), it.str("detail") ?: "") }.orEmpty(),
@@ -281,7 +289,8 @@ object SnapshotCodec {
                 "geometryState" to r.geometryState; "geometryNote" to r.geometryNote
                 "perimeter" to measuredJson(r.perimeter); "plannedArea" to measuredJson(r.plannedArea); "sourceUsableArea" to measuredJson(r.sourceUsableArea); "sourceFloorArea" to measuredJson(r.sourceFloorArea)
                 "boundary" toArray r.boundary.map { b -> json { "segment" to segJson(b.segment); "wallId" to b.wallId; "neighbourRoomId" to b.neighbourRoomId; "faceOutside" to b.faceOutside } }
-                "matchConfidence" to r.matchConfidence; "matchNote" to r.matchNote; "matchAlternatives" toStrings r.matchAlternatives
+                "matchConfidence" to r.matchConfidence; "matchNote" to r.matchNote
+                "matchAlternatives" toArray r.matchAlternatives.map { a -> json { "sourceRowIndex" to a.sourceRowIndex; "roomName" to a.roomName; "publishedAreaM2" to a.publishedAreaM2; "relativeError" to a.relativeError; "why" to a.why } }
             }
         }
         "unmatchedRegions" toArray f.unmatchedRegions.map { u -> json { "id" to u.id; "polygon" to polygonJson(u.polygon); "areaM2" to u.areaM2; "boundaryWallIds" toStrings u.boundaryWallIds } }
@@ -303,7 +312,8 @@ object SnapshotCodec {
                 RoomGeometryState.valueOf(r.str("geometryState") ?: RoomGeometryState.VALID_SIMPLE_RING.name), r.str("geometryNote") ?: "",
                 m(r, "perimeter"), m(r, "plannedArea"), m(r, "sourceUsableArea"), m(r, "sourceFloorArea"),
                 r.arr("boundary")?.objects?.map { b -> RoomBoundarySegment(segFrom(b.obj("segment")!!), b.str("wallId"), b.str("neighbourRoomId"), b.bool("faceOutside") ?: false) }.orEmpty(),
-                FactFidelity.valueOf(r.str("matchConfidence")!!), r.str("matchNote") ?: "", strings(r, "matchAlternatives"))
+                FactFidelity.valueOf(r.str("matchConfidence")!!), r.str("matchNote") ?: "",
+                r.arr("matchAlternatives")?.objects?.map { a -> RoomMatchAlternative(a.int("sourceRowIndex") ?: -1, a.str("roomName") ?: "", a.num("publishedAreaM2") ?: 0.0, a.num("relativeError") ?: 0.0, a.str("why") ?: "") }.orEmpty())
         }.orEmpty(),
         unmatchedRegions = o.arr("unmatchedRegions")?.objects?.map { u -> RegionCandidate(u.str("id")!!, polygonFrom(u.arr("polygon")!!), u.num("areaM2")!!, strings(u, "boundaryWallIds")) }.orEmpty(),
         planAssetUrl = o.str("planAssetUrl"),
@@ -404,12 +414,12 @@ object SnapshotCodec {
     )
 
     private fun validationJson(v: ValidationFinding) = json {
-        "subject" to v.subject; "candidateValue" to v.candidateValue; "sourceValue" to v.sourceValue; "unit" to v.unit
+        "key" to v.key; "subject" to v.subject; "candidateValue" to v.candidateValue; "sourceValue" to v.sourceValue; "unit" to v.unit
         "absoluteDifference" to v.absoluteDifference; "relativeDifference" to v.relativeDifference; "status" to v.status; "semantics" to v.semantics; "candidateFidelity" to v.candidateFidelity
     }
 
     private fun validationFrom(o: JsonValue.Obj) = ValidationFinding(
-        o.str("subject")!!, o.num("candidateValue"), o.num("sourceValue"), o.str("unit") ?: "", o.num("absoluteDifference"), o.num("relativeDifference"),
+        o.str("key") ?: "", o.str("subject")!!, o.num("candidateValue"), o.num("sourceValue"), o.str("unit") ?: "", o.num("absoluteDifference"), o.num("relativeDifference"),
         ValidationStatus.valueOf(o.str("status")!!), o.str("semantics") ?: "", o.str("candidateFidelity")?.let(FactFidelity::valueOf),
     )
 }

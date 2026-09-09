@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.buildplan.app.ui.screens.ProjectImportScreen
 import com.buildplan.app.ui.screens.SectionPlaceholderScreen
 import com.buildplan.app.ui.screens.WorkspaceScreen
 import com.buildplan.app.ui.workspace.LocalMotionPolicy
@@ -37,7 +38,10 @@ fun BuildPlanNavHost(
         composable(AppSection.Home.route) {
             WorkspaceScreen(onOpenDrawer = onOpenDrawer, onOpenSection = onNavigateToSection)
         }
-        AppSection.entries.filter { it != AppSection.Home }.forEach { section ->
+        composable(AppSection.Import.route) {
+            ProjectImportScreen(onOpenDrawer = onOpenDrawer)
+        }
+        AppSection.entries.filter { it != AppSection.Home && it != AppSection.Import }.forEach { section ->
             composable(section.route) {
                 SectionPlaceholderScreen(section = section, onOpenDrawer = onOpenDrawer)
             }

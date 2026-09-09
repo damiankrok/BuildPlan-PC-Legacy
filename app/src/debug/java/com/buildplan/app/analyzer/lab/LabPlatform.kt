@@ -1,30 +1,21 @@
 package com.buildplan.app.analyzer.lab
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import com.buildplan.app.analyzer.asset.AnalysisStorage
-import com.buildplan.app.analyzer.raster.RasterCodec
-import com.buildplan.app.analyzer.raster.RasterImage
 import java.io.File
 
 /**
- * The Android side of the analyzer's two platform seams: decoding an asset
- * into pixels, and keeping downloaded assets and snapshots in app-private
- * storage. Nothing here interprets anything.
+ * The Lab's own storage.
+ *
+ * Decoding is the product's [com.buildplan.app.analyzer.AndroidRasterCodec] —
+ * the Lab must exercise the same code the app ships, or it stops being
+ * evidence about the product.
+ *
+ * What is different here is where things land: the Lab writes under `filesDir`
+ * with absolute paths, because its whole job is to leave evidence a person can
+ * pull off the device with `adb`. The product writes into `cacheDir` and hands
+ * back relative paths, so a device path never travels in a report.
  */
-internal object AndroidRasterCodec : RasterCodec {
-    override fun decode(bytes: ByteArray): RasterImage? {
-        val options = BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
-        val argb = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val image = RasterImage(bitmap.width, bitmap.height, argb)
-        bitmap.recycle()
-        return image
-    }
-}
-
-/** App-private analysis storage under `filesDir/analyzer`. Never external, never the repository. */
 internal class LabStorage(context: Context) : AnalysisStorage {
     val root: File = File(context.filesDir, "analyzer").apply { mkdirs() }
 

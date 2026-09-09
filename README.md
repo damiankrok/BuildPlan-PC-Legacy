@@ -3,11 +3,13 @@
 Natywna aplikacja **Android** do organizowania i analizowania kosztów budowy domu.
 
 > **Bardzo wczesny etap.** Repozytorium zawiera powłokę aplikacji (App Shell,
-> nawigacja, puste ekrany modułów), kanoniczny model domenowy oraz kontrakt
-> geometrii budynku. Nie ma jeszcze renderera 3D, parsera rzutów,
-> persystencji, backendu ani logiki biznesowej — nic nie zapisuje
-> i nie odczytuje danych. Wszystkie wartości widoczne w interfejsie to
-> placeholdery (`—`), a nie dane.
+> nawigacja, puste ekrany modułów), kanoniczny model domenowy, kontrakt
+> geometrii budynku oraz **import projektu ze strony ARCHON** — jedyną funkcję,
+> która czyta cokolwiek z zewnątrz. Jej wynik jest kandydatem do sprawdzenia:
+> nic nie zapisuje do modelu budynku ani do kosztów. Nie ma jeszcze
+> produkcyjnego renderera 3D, weryfikacji kandydata przez człowieka,
+> persystencji, backendu ani logiki biznesowej. Pozostałe wartości widoczne
+> w interfejsie to placeholdery (`—`), a nie dane.
 
 ## Stack
 
@@ -63,11 +65,30 @@ uruchamiają się tylko, gdy `BUILDPLAN_ANALYZER_EVIDENCE_DIR` wskazuje katalog
 kolejne odtwarzają bufor (`BUILDPLAN_ANALYZER_LIVE=1` wymusza sieć).
 Pobranych rysunków nie commituj.
 
-**Analyzer Lab** (tylko debug) to osobna ikona launchera obok aplikacji:
-adres strony projektu → fakty, rzuty, kandydat, przedmiar, porównanie ze
-źródłem, pytania i podgląd 3D kandydata; migawka JSON ląduje w pamięci
-aplikacji (`files/analyzer/<klucz>/snapshot.json`). Wariant debug ma przez to
-uprawnienie `INTERNET`; release nie.
+## Import projektu
+
+Od STAGE-024 analizator jest funkcją produktu: **Projekt → Import projektu**.
+Wklej adres publicznej strony projektu ARCHON, a aplikacja pobierze ją wraz
+z rzutami przez HTTPS i pokaże, co z nich odczytała: kondygnacje,
+pomieszczenia, otwory, wielkości do przedmiaru, pytania i to, czego źródło nie
+rozstrzyga.
+
+Ekran jest **tylko do odczytu**. Wynik jest propozycją, nie projektem — nic nie
+trafia do modelu budynku ani do kosztów; potwierdzanie danych to osobny etap.
+
+- Obsługiwane są wyłącznie strony projektów `archon.pl` podane jawnie. Wynik
+  wyszukiwarki, losowa strona czy PDF z nieznanego hosta dostają odpowiedź
+  „nieobsługiwane źródło", a nie próbę ogólnego parsowania.
+- Pobrane strony i rysunki leżą w prywatnym cache aplikacji
+  (`cacheDir/project-analyzer`), kluczowanym wersją schematu, analizatora
+  i adaptera; **Pobierz ponownie** wymusza świeże pobranie.
+- Release ma z tego powodu uprawnienie `INTERNET` — i tylko je.
+
+**Analyzer Lab** (tylko debug) to osobna ikona launchera obok aplikacji: ten
+sam bieg pokazany w szczegółach — fakty, rzuty, kandydat, przedmiar,
+porównanie ze źródłem, pytania i podgląd 3D kandydata; migawka JSON ląduje
+w pamięci aplikacji (`files/analyzer/<klucz>/snapshot.json`). Lab nie wchodzi
+do release.
 
 ## Struktura
 
@@ -80,10 +101,14 @@ app/src/main/java/com/buildplan/app/
     units/           jednostki miar
   geometry/          kontrakt geometrii budynku (metry, Y w górę, rzut w XZ);
                      bez renderera, kamery i zależności od Androida
+  analyzer/          szwy platformy dla analizatora: dekodowanie rastra
+                     (BitmapFactory) i fabryka usługi z prywatnym cache;
+                     nie może nazwać typu z domain/ ani geometry/
   ui/
     AppShell.kt      ramka aplikacji: ModalNavigationDrawer + NavHost
     navigation/      lista sekcji, NavHost, zawartość szuflady
-    screens/         przestrzeń robocza (dom jako kanwa) i placeholdery sekcji
+    screens/         przestrzeń robocza (dom jako kanwa), import projektu
+                     i placeholdery pozostałych sekcji
     components/      komponenty współdzielone: szkło, szyna narzędzi, oś czasu
     workspace/       stan otwartego chromu i polityka ruchu
     theme/           kolory, typografia, kształty
@@ -103,6 +128,10 @@ app/src/debug/java/com/buildplan/app/
   analyzer/lab/      Analyzer Lab: debugowy harness prototypu analizatora
 
 analyzer/src/main/kotlin/com/buildplan/app/analyzer/
+  service/           PUBLICZNE API: usługa, żądanie, fazy postępu, rodziny
+                     wyniku, raport z weryfikacją ilości i niejednoznacznościami,
+                     zdrowie adaptera. Aplikacja mówi wyłącznie przez to
+  cache/             prywatny cache: wersjonowany, atomowy, ograniczony
   source/            bezpieczeństwo adresu, pobieranie, rozpoznanie strony
   site/              pakiet źródłowy i adapter witryny (archon/)
   asset/             manifest i pobieranie rysunków do pamięci aplikacji

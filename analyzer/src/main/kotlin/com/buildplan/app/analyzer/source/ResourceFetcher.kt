@@ -2,9 +2,9 @@ package com.buildplan.app.analyzer.source
 
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 
 /**
  * One fetched HTTP resource: bytes plus the metadata the layers above need
@@ -67,57 +67,47 @@ interface ResourceFetcher {
 }
 
 /**
- * The production fetcher on `java.net.HttpURLConnection` — in the platform on
- * Android and on the JVM alike, so no HTTP client dependency is added for a
- * prototype that makes a handful of GETs.
+ * One HTTP exchange with no policy in it at all: open this URL, hand back the
+ * response head and a stream.
  *
- * Redirects are followed by hand rather than by the platform, because the
- * platform's automatic redirect would happily follow a `Location` header to a
- * host the allowlist has never heard of.
+ * The split exists so the policy above it can be tested. Redirect
+ * revalidation, the redirect budget and the body limits are the security
+ * behaviour of this layer, and until they were separable from a socket the
+ * only way to exercise them was to point the app at a real host and hope.
  */
-class HttpResourceFetcher(
-    private val policy: FetchPolicy = FetchPolicy(),
-    private val clock: () -> Long = System::currentTimeMillis,
-) : ResourceFetcher {
+interface HttpTransport {
 
-    override fun fetch(url: String): FetchedResource {
-        val redirects = mutableListOf<String>()
-        var current = url
-        repeat(policy.maxRedirects + 1) {
-            val verdict = UrlSafety.check(current)
-            if (verdict !is UrlSafety.Verdict.Allowed) {
-                throw FetchException("Refusing to fetch $current: ${(verdict as UrlSafety.Verdict.Rejected).reason} ${verdict.detail}")
-            }
-            val connection = open(verdict.uri)
-            try {
-                val status = connection.responseCode
-                if (status in 300..399) {
-                    val location = connection.getHeaderField("Location")
-                        ?: throw FetchException("Redirect $status from $current without Location")
-                    val next = verdict.uri.resolve(location).toString()
-                    redirects += current
-                    current = next
-                    return@repeat
-                }
-                val body = readBounded(connection, status)
-                return FetchedResource(
-                    requestedUrl = url,
-                    finalUrl = current,
-                    redirects = redirects.toList(),
-                    statusCode = status,
-                    contentType = connection.contentType,
-                    body = body,
-                    retrievedAtEpochMillis = clock(),
-                )
-            } finally {
-                connection.disconnect()
-            }
-        }
-        throw FetchException("More than ${policy.maxRedirects} redirects starting at $url")
-    }
+    @Throws(FetchException::class)
+    fun get(uri: URI, policy: FetchPolicy): Response
 
-    private fun open(uri: URI): HttpURLConnection {
-        val connection = URL(uri.toString()).openConnection() as HttpURLConnection
+    /**
+     * @property declaredLength what the response claims its body is, or -1.
+     * @property body the body stream, or null when the response has none.
+     * @property close releases the connection; always called by the fetcher.
+     */
+    class Response(
+        val statusCode: Int,
+        val location: String?,
+        val contentType: String?,
+        val declaredLength: Long,
+        val body: InputStream?,
+        val close: () -> Unit,
+    )
+}
+
+/**
+ * The transport on `java.net.HttpURLConnection` — in the platform on Android
+ * and on the JVM alike, so no HTTP client dependency is added for a prototype
+ * that makes a handful of GETs.
+ *
+ * Automatic redirects are switched off, because the platform's own would
+ * happily follow a `Location` header to a host the allowlist has never heard
+ * of. Following them is the layer above's job, and it re-checks each one.
+ */
+class UrlConnectionTransport : HttpTransport {
+
+    override fun get(uri: URI, policy: FetchPolicy): HttpTransport.Response {
+        val connection = URI(uri.toString()).toURL().openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = false
         connection.connectTimeout = policy.connectTimeoutMillis
         connection.readTimeout = policy.readTimeoutMillis
@@ -126,16 +116,82 @@ class HttpResourceFetcher(
         connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,image/*;q=0.9,*/*;q=0.5")
         connection.setRequestProperty("Accept-Language", "pl,en;q=0.5")
         connection.useCaches = false
-        return connection
+        val status = connection.responseCode
+        return HttpTransport.Response(
+            statusCode = status,
+            location = connection.getHeaderField("Location"),
+            contentType = connection.contentType,
+            declaredLength = connection.contentLengthLong,
+            body = if (status >= 400) connection.errorStream else connection.inputStream,
+            close = connection::disconnect,
+        )
+    }
+}
+
+/**
+ * The production fetcher: everything the analyzer is allowed to do on a
+ * network, and nothing else.
+ *
+ * Four rules, all enforced here rather than trusted to the platform:
+ *
+ * - **every hop is checked, not just the first.** `archon.pl` redirecting to
+ *   somewhere else does not lend that somewhere else its trust, so each
+ *   `Location` goes back through [UrlSafety] before it is opened;
+ * - **the chain is bounded**, so a redirect loop is an error and not a hang;
+ * - **the body is bounded twice** — once against what the response claims and
+ *   once against what it actually sends, because a header is a claim and a
+ *   socket is a fact;
+ * - **nothing is followed except redirects.** No link on a page is fetched by
+ *   this class; there is no crawl here to bound.
+ *
+ * [resolveAddress] is injectable for the same reason it is on [UrlSafety]: the
+ * private-address rule has to be exercisable without DNS.
+ */
+class HttpResourceFetcher(
+    private val policy: FetchPolicy = FetchPolicy(),
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val transport: HttpTransport = UrlConnectionTransport(),
+    private val resolveAddress: ((String) -> List<java.net.InetAddress>)? = null,
+) : ResourceFetcher {
+
+    override fun fetch(url: String): FetchedResource {
+        val redirects = mutableListOf<String>()
+        var current = url
+        repeat(policy.maxRedirects + 1) {
+            val verdict = resolveAddress?.let { UrlSafety.check(current, it) } ?: UrlSafety.check(current)
+            if (verdict !is UrlSafety.Verdict.Allowed) {
+                throw FetchException("Refusing to fetch $current: ${(verdict as UrlSafety.Verdict.Rejected).reason} ${verdict.detail}")
+            }
+            val response = transport.get(verdict.uri, policy)
+            try {
+                if (response.statusCode in 300..399) {
+                    val location = response.location
+                        ?: throw FetchException("Redirect ${response.statusCode} from $current without Location")
+                    redirects += current
+                    current = verdict.uri.resolve(location).toString()
+                    return@repeat
+                }
+                return FetchedResource(
+                    requestedUrl = url,
+                    finalUrl = current,
+                    redirects = redirects.toList(),
+                    statusCode = response.statusCode,
+                    contentType = response.contentType,
+                    body = readBounded(response, current),
+                    retrievedAtEpochMillis = clock(),
+                )
+            } finally {
+                response.close()
+            }
+        }
+        throw FetchException("More than ${policy.maxRedirects} redirects starting at $url")
     }
 
-    private fun readBounded(connection: HttpURLConnection, status: Int): ByteArray {
-        val declared = connection.contentLengthLong
-        if (declared > policy.maxBodyBytes) {
-            throw FetchException("Body of ${connection.url} declares $declared bytes, over the ${policy.maxBodyBytes} limit")
+    private fun readBounded(response: HttpTransport.Response, url: String): ByteArray {
+        if (response.declaredLength > policy.maxBodyBytes) {
+            throw FetchException("Body of $url declares ${response.declaredLength} bytes, over the ${policy.maxBodyBytes} limit")
         }
-        val stream = (if (status >= 400) connection.errorStream else connection.inputStream)
-            ?: return ByteArray(0)
+        val stream = response.body ?: return ByteArray(0)
         stream.use { input ->
             val out = ByteArrayOutputStream()
             val buffer = ByteArray(16 * 1024)
@@ -144,8 +200,10 @@ class HttpResourceFetcher(
                 val read = input.read(buffer)
                 if (read < 0) break
                 total += read
+                // Checked against what arrives, not only against what was declared: a response
+                // may promise a kilobyte and send until the device runs out of memory.
                 if (total > policy.maxBodyBytes) {
-                    throw FetchException("Body of ${connection.url} exceeds the ${policy.maxBodyBytes} byte limit")
+                    throw FetchException("Body of $url exceeds the ${policy.maxBodyBytes} byte limit")
                 }
                 out.write(buffer, 0, read)
             }

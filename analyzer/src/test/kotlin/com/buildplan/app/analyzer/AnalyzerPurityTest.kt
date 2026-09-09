@@ -59,6 +59,25 @@ class AnalyzerPurityTest {
         if (violations.isNotEmpty()) fail(violations.joinToString("\n"))
     }
 
+    /**
+     * Coroutines are the service boundary's vocabulary, not the analyzer's.
+     *
+     * The pipeline stays a plain synchronous computation over bytes — which is
+     * why it can be run from a JVM test, a debug harness or a `Dispatchers.IO`
+     * coroutine without three notions of what cancellation means. `service/`
+     * bridges structured concurrency onto the one cooperative signal the core
+     * exposes, and that bridge is allowed to be in exactly one place.
+     */
+    @Test
+    fun `structured concurrency lives only at the service boundary`() {
+        val violations = coreSources()
+            .filter { !it.path.replace('\\', '/').contains("/service/") }
+            .flatMap { file ->
+                file.readLines().filter { it.startsWith("import kotlinx.coroutines") }.map { "${file.name}: $it" }
+            }
+        if (violations.isNotEmpty()) fail(violations.joinToString("\n"))
+    }
+
     @Test
     fun `site vocabulary lives only in the site adapter`() {
         // Polish room-name keywords are site vocabulary; the generic layers work on RoomKind and numbers.

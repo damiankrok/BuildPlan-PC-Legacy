@@ -16,6 +16,16 @@ enum class ValidationStatus { MATCH_STRONG, MATCH_ACCEPTABLE, MISMATCH, NOT_COMP
  * value, with the semantics of what is being compared spelled out.
  */
 data class ValidationFinding(
+    /**
+     * Stable machine key for the quantity this finding is about, in ASCII:
+     * `project:roofArea`, `floor:f0:roomFloorAreaSum`, `room:f1-r3:floorArea`.
+     *
+     * [subject] is Polish prose for a reader and will be rewritten the first
+     * time someone improves the wording; a consumer that wants to put this
+     * comparison beside the quantity it judges needs something that will not
+     * move, which is what this is.
+     */
+    val key: String,
     val subject: String,
     val candidateValue: Double?,
     val sourceValue: Double?,
@@ -46,6 +56,9 @@ object CrossSourceValidator {
     const val STRONG = 0.05
     const val ACCEPTABLE = 0.15
 
+    /** Every reading of the published facade figure is about the same quantity, so they share one key. */
+    private const val FACADE_KEY = "project:facadeInsulation"
+
     fun validate(pkg: SourcePackage, candidate: ProjectAnalysisCandidate, quantities: ProjectQuantities): List<ValidationFinding> {
         val out = mutableListOf<ValidationFinding>()
 
@@ -56,11 +69,11 @@ object CrossSourceValidator {
                 val q = quantities.rooms.firstOrNull { it.roomId == room.id }
                 val planned = room.plannedArea.value
                 when {
-                    room.sourceFloorArea.value != null -> out += compare("Pomieszczenie ${room.name} (${room.id}): powierzchnia podłogi", planned, room.sourceFloorArea.value, "m2",
+                    room.sourceFloorArea.value != null -> out += compare("room:${room.id}:floorArea", "Pomieszczenie ${room.name} (${room.id}): powierzchnia podłogi", planned, room.sourceFloorArea.value, "m2",
                         "candidate room polygon vs published floor area (in parentheses on the page)", room.matchConfidence)
-                    isTop && room.sourceUsableArea.value != null -> out += compare("Pomieszczenie ${room.name} (${room.id}): powierzchnia użytkowa wg reguły wysokości", q?.usableAreaByHeightRule?.value, room.sourceUsableArea.value, "m2",
+                    isTop && room.sourceUsableArea.value != null -> out += compare("room:${room.id}:usableAreaByHeightRule", "Pomieszczenie ${room.name} (${room.id}): powierzchnia użytkowa wg reguły wysokości", q?.usableAreaByHeightRule?.value, room.sourceUsableArea.value, "m2",
                         "candidate usable area by the page's own height rule (100 % above 2.2 m, 50 % from 1.4 m) vs published usable area", q?.usableAreaByHeightRule?.fidelity)
-                    room.sourceUsableArea.value != null -> out += compare("Pomieszczenie ${room.name} (${room.id}): powierzchnia", planned, room.sourceUsableArea.value, "m2",
+                    room.sourceUsableArea.value != null -> out += compare("room:${room.id}:floorArea", "Pomieszczenie ${room.name} (${room.id}): powierzchnia", planned, room.sourceUsableArea.value, "m2",
                         "candidate room polygon vs published usable area (no floor area printed)", room.matchConfidence)
                 }
             }
@@ -72,19 +85,19 @@ object CrossSourceValidator {
             val q = quantities.floors.firstOrNull { it.floorId == floor.id } ?: return@forEachIndexed
             val target = published.floorAreaTotal.value ?: published.usableAreaTotal.value
             val semantics = if (published.floorAreaTotal.value != null) "sum of matched room polygons vs published storey floor-area total" else "sum of matched room polygons vs published storey usable total (attic usable excludes low strips)"
-            out += compare("Kondygnacja ${published.name}: suma powierzchni pomieszczeń", q.roomFloorAreaSum.value, target, "m2", semantics, q.roomFloorAreaSum.fidelity)
+            out += compare("floor:${floor.id}:roomFloorAreaSum", "Kondygnacja ${published.name}: suma powierzchni pomieszczeń", q.roomFloorAreaSum.value, target, "m2", semantics, q.roomFloorAreaSum.fidelity)
         }
 
         // Footprint: the calibration anchor, so not an independent check.
         pkg.scalar(ScalarKey.FOOTPRINT_AREA)?.let { s ->
             val footprint = candidate.floors.minByOrNull { it.order }?.footprint?.area
-            out += ValidationFinding("Powierzchnia zabudowy", footprint, s.measured.value, "m2", footprint?.let { abs(it - (s.measured.value ?: 0.0)) }, null, ValidationStatus.NOT_COMPARABLE,
+            out += ValidationFinding("project:footprintArea", "Powierzchnia zabudowy", footprint, s.measured.value, "m2", footprint?.let { abs(it - (s.measured.value ?: 0.0)) }, null, ValidationStatus.NOT_COMPARABLE,
                 "the published footprint area is the calibration anchor of the ground plan; agreement is by construction, not evidence", FactFidelity.SOURCE_DERIVED)
         }
 
         // Roof.
         firstScalar(pkg, ScalarKey.ROOF_AREA)?.let { s ->
-            out += compare("Powierzchnia dachu", quantities.roofTotal.value, s.measured.value, "m2", "sum of skeleton facets / cos(pitch) over the roof outline vs published roof area", quantities.roofTotal.fidelity)
+            out += compare("project:roofArea", "Powierzchnia dachu", quantities.roofTotal.value, s.measured.value, "m2", "sum of skeleton facets / cos(pitch) over the roof outline vs published roof area", quantities.roofTotal.fidelity)
         }
 
         // Aggregate walls.
@@ -98,32 +111,33 @@ object CrossSourceValidator {
             // the openings from a figure they were never in, and reported Project A's exterior
             // walls at 73 m2 when the traced masonry alone was 123 m2.
             out += compare(
+                "project:exteriorWallMaterial",
                 "Powierzchnia ścian zewnętrznych (mur między otworami)",
                 quantities.facadeWallMaterial.value, s.measured.value, "m2",
                 "traced exterior wall pieces × storey height, once per piece, all storeys; openings are gaps between pieces and are already absent, so this is not reduced by them again",
                 quantities.facadeWallMaterial.fidelity,
             )
             out += ValidationFinding(
-                "Powierzchnia zewnętrzna obwiedni (nad otworami)", quantities.floors.sumOf { it.exteriorEnvelopeGross.value ?: 0.0 }, s.measured.value, "m2", null, null,
+                "project:exteriorEnvelopeGross", "Powierzchnia zewnętrzna obwiedni (nad otworami)", quantities.floors.sumOf { it.exteriorEnvelopeGross.value ?: 0.0 }, s.measured.value, "m2", null, null,
                 ValidationStatus.NOT_COMPARABLE,
                 "the envelope run over the openings — a facade surface, not a masonry quantity, and not what a cost page's external-wall line prices; reported so the two readings of the envelope are both visible",
                 FactFidelity.SOURCE_DERIVED,
             )
         }
         pkg.scalar(ScalarKey.INTERNAL_LOAD_BEARING_WALL_AREA)?.let { s ->
-            out += compare("Powierzchnia ścian wewnętrznych nośnych", quantities.floors.sumOf { it.loadBearingWallsStructural.value ?: 0.0 }, s.measured.value, "m2", "internal walls ≥ 0.20 m thick, once each, all storeys", FactFidelity.SOURCE_DERIVED)
+            out += compare("project:loadBearingWalls", "Powierzchnia ścian wewnętrznych nośnych", quantities.floors.sumOf { it.loadBearingWallsStructural.value ?: 0.0 }, s.measured.value, "m2", "internal walls ≥ 0.20 m thick, once each, all storeys", FactFidelity.SOURCE_DERIVED)
         }
         pkg.scalar(ScalarKey.PARTITION_WALL_AREA_GROUND)?.let { s ->
-            out += compare("Powierzchnia ścian działowych parter", ground?.partitionsStructural?.value, s.measured.value, "m2", "internal walls < 0.20 m thick on the ground storey, once each (structural, not two-sided finish)", FactFidelity.SOURCE_DERIVED)
+            out += compare("project:partitionsGround", "Powierzchnia ścian działowych parter", ground?.partitionsStructural?.value, s.measured.value, "m2", "internal walls < 0.20 m thick on the ground storey, once each (structural, not two-sided finish)", FactFidelity.SOURCE_DERIVED)
         }
         pkg.scalar(ScalarKey.PARTITION_WALL_AREA_UPPER)?.let { s ->
-            out += compare("Powierzchnia ścian działowych poddasze", upper?.partitionsStructural?.value, s.measured.value, "m2", "internal walls < 0.20 m thick on the upper storey, once each, to the roof underside", FactFidelity.SOURCE_DERIVED)
+            out += compare("project:partitionsUpper", "Powierzchnia ścian działowych poddasze", upper?.partitionsStructural?.value, s.measured.value, "m2", "internal walls < 0.20 m thick on the upper storey, once each, to the roof underside", FactFidelity.SOURCE_DERIVED)
         }
         pkg.scalar(ScalarKey.FLOORS_AND_STAIRS_AREA)?.let { s ->
-            out += compare("Powierzchnia podłóg i schodów", quantities.floorsAndStairsArea.value, s.measured.value, "m2", "sum of all room polygons on all storeys vs published floors-and-stairs area", quantities.floorsAndStairsArea.fidelity)
+            out += compare("project:floorsAndStairs", "Powierzchnia podłóg i schodów", quantities.floorsAndStairsArea.value, s.measured.value, "m2", "sum of all room polygons on all storeys vs published floors-and-stairs area", quantities.floorsAndStairsArea.fidelity)
         }
         pkg.scalar(ScalarKey.EXTERIOR_JOINERY_AREA)?.let { s ->
-            out += compare("Powierzchnia stolarki zewnętrznej", quantities.exteriorJoinery.value, s.measured.value, "m2", "exterior openings: traced widths × assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
+            out += compare("project:exteriorJoinery", "Powierzchnia stolarki zewnętrznej", quantities.exteriorJoinery.value, s.measured.value, "m2", "exterior openings: traced widths × assumed heights", FactFidelity.DISPLAY_ASSUMPTION, assumptionBacked = true)
         }
         pkg.scalar(ScalarKey.FACADE_INSULATION_AREA)?.let { s ->
             out += facadeFinding(quantities.facadeScope, s.measured.value)
@@ -131,7 +145,7 @@ object CrossSourceValidator {
         pkg.scalar(ScalarKey.BUILDING_HEIGHT)?.let { s ->
             val ridge = candidate.levels.ridge.value
             val terrain = candidate.levels.terrain.value
-            out += ValidationFinding("Wysokość budynku", if (ridge != null && terrain != null) ridge - terrain else null, s.measured.value, "m", 0.0, 0.0, ValidationStatus.NOT_COMPARABLE,
+            out += ValidationFinding("project:buildingHeight", "Wysokość budynku", if (ridge != null && terrain != null) ridge - terrain else null, s.measured.value, "m", 0.0, 0.0, ValidationStatus.NOT_COMPARABLE,
                 "the published height is an input of the vertical chain (ridge = height + terrain); not an independent check", candidate.levels.ridge.fidelity)
         }
         return out
@@ -161,7 +175,7 @@ object CrossSourceValidator {
         val gross = scope.finishGross.value
         if (gross == null || sourceValue == null || sourceValue == 0.0) {
             return ValidationFinding(
-                "Powierzchnia elewacji do ocieplenia", gross, sourceValue, "m2", null, null,
+                FACADE_KEY, "Powierzchnia elewacji do ocieplenia", gross, sourceValue, "m2", null, null,
                 ValidationStatus.INSUFFICIENT_SOURCE, "the envelope or the published figure is missing", scope.finishGross.fidelity,
             )
         }
@@ -192,7 +206,7 @@ object CrossSourceValidator {
         // of its openings with the garage left out — which is what an insulated envelope is.
         if (rel <= ACCEPTABLE) {
             return ValidationFinding(
-                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
+                FACADE_KEY, "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
                 if (rel <= STRONG) ValidationStatus.MATCH_STRONG else ValidationStatus.MATCH_ACCEPTABLE,
                 "$attribution; every scope enumerated — $enumerated",
                 scope.finishGross.fidelity,
@@ -200,7 +214,7 @@ object CrossSourceValidator {
         }
         if (sourceValue in scope.plausibleRange) {
             return ValidationFinding(
-                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", null, null,
+                FACADE_KEY, "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", null, null,
                 ValidationStatus.NOT_COMPARABLE,
                 "the published figure falls between the scopes this envelope spans without matching any of them, so what it measured is undetermined — $enumerated",
                 scope.finishGross.fidelity,
@@ -210,14 +224,14 @@ object CrossSourceValidator {
         // quantity the analyzer does not have, not one it measured wrongly.
         if (bestValue < sourceValue && rel <= PLINTH_EXPLAINS) {
             return ValidationFinding(
-                "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
+                FACADE_KEY, "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel,
                 ValidationStatus.NOT_COMPARABLE,
                 "the published figure is ${fmt(sourceValue - bestValue)} m2 above the widest scope measured, which the unmeasured plinth could account for — $enumerated",
                 scope.finishGross.fidelity,
             )
         }
         return ValidationFinding(
-            "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel, ValidationStatus.MISMATCH,
+            FACADE_KEY, "Powierzchnia elewacji do ocieplenia", bestValue, sourceValue, "m2", abs(bestValue - sourceValue), rel, ValidationStatus.MISMATCH,
             "outside every scope this envelope spans, so no combination of the choices the cost page leaves open reaches it; compared against the nearest ($bestLabel) — $enumerated",
             scope.finishGross.fidelity,
         )
@@ -246,6 +260,7 @@ object CrossSourceValidator {
      * still visible.
      */
     private fun bracketed(
+        key: String,
         subject: String,
         gross: Double?,
         net: Double?,
@@ -256,13 +271,13 @@ object CrossSourceValidator {
         fidelity: FactFidelity?,
     ): ValidationFinding {
         if (gross == null || net == null || sourceValue == null || sourceValue == 0.0) {
-            return ValidationFinding(subject, gross, sourceValue, "m2", null, null, ValidationStatus.INSUFFICIENT_SOURCE, "$grossSemantics; $whyAmbiguous", fidelity)
+            return ValidationFinding(key, subject, gross, sourceValue, "m2", null, null, ValidationStatus.INSUFFICIENT_SOURCE, "$grossSemantics; $whyAmbiguous", fidelity)
         }
         val low = minOf(gross, net)
         val high = maxOf(gross, net)
         if (sourceValue in low..high) {
             return ValidationFinding(
-                subject, gross, sourceValue, "m2", null, null, ValidationStatus.NOT_COMPARABLE,
+                key, subject, gross, sourceValue, "m2", null, null, ValidationStatus.NOT_COMPARABLE,
                 "the published figure falls between the two readings of this envelope — " +
                     "${fmt(net)} m2 net ($netSemantics) and ${fmt(gross)} m2 gross ($grossSemantics) — so the difference is a definition, not geometry: $whyAmbiguous",
                 fidelity,
@@ -276,7 +291,7 @@ object CrossSourceValidator {
             else -> ValidationStatus.MISMATCH
         }
         return ValidationFinding(
-            subject, nearer, sourceValue, "m2", abs(nearer - sourceValue), rel, status,
+            key, subject, nearer, sourceValue, "m2", abs(nearer - sourceValue), rel, status,
             "outside both readings of this envelope (${fmt(net)}–${fmt(gross)} m2), compared against the nearer; $whyAmbiguous",
             fidelity,
         )
@@ -287,6 +302,7 @@ object CrossSourceValidator {
     private fun pctOf(v: Double) = String.format(java.util.Locale.ROOT, "%.1f %%", v * 100)
 
     private fun compare(
+        key: String,
         subject: String,
         candidateValue: Double?,
         sourceValue: Double?,
@@ -296,7 +312,7 @@ object CrossSourceValidator {
         assumptionBacked: Boolean = false,
     ): ValidationFinding {
         if (candidateValue == null || sourceValue == null || sourceValue == 0.0) {
-            return ValidationFinding(subject, candidateValue, sourceValue, unit, null, null, ValidationStatus.INSUFFICIENT_SOURCE, semantics, fidelity)
+            return ValidationFinding(key, subject, candidateValue, sourceValue, unit, null, null, ValidationStatus.INSUFFICIENT_SOURCE, semantics, fidelity)
         }
         val abs = abs(candidateValue - sourceValue)
         val rel = abs / sourceValue
@@ -306,6 +322,6 @@ object CrossSourceValidator {
             rel <= ACCEPTABLE -> ValidationStatus.MATCH_ACCEPTABLE
             else -> ValidationStatus.MISMATCH
         }
-        return ValidationFinding(subject, candidateValue, sourceValue, unit, abs, rel, status, semantics, fidelity)
+        return ValidationFinding(key, subject, candidateValue, sourceValue, unit, abs, rel, status, semantics, fidelity)
     }
 }

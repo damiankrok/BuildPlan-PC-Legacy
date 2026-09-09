@@ -11,6 +11,7 @@ import com.buildplan.app.analyzer.candidate.Pt
 import com.buildplan.app.analyzer.candidate.RegionCandidate
 import com.buildplan.app.analyzer.candidate.RoomBoundarySegment
 import com.buildplan.app.analyzer.candidate.RoomCandidate
+import com.buildplan.app.analyzer.candidate.RoomMatchAlternative
 import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.candidate.Segment
 import com.buildplan.app.analyzer.candidate.StairCandidate
@@ -117,7 +118,7 @@ object FloorCandidateBuilder {
                 recordGeometry(id, room.name, resolved)
                 match.regionIndices.forEach { regionToRooms.getOrPut(it) { mutableListOf() } += id }
                 roomMasks[id] = mask
-                rooms += roomCandidate(id, floorId, room.name, room.ordinal, room.kind, resolved, calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note, match.alternatives.map { alt -> "${alt.roomName} (${"%.2f".format(java.util.Locale.ROOT, alt.publishedArea)} m2, ${"%.1f".format(java.util.Locale.ROOT, alt.relativeError * 100)} %): ${alt.why}" })
+                rooms += roomCandidate(id, floorId, room.name, room.ordinal, room.kind, resolved, calibration, url, room.usableArea, room.floorArea, calibration.cap(match.fidelity), match.note, match.alternatives.map { alt -> RoomMatchAlternative(alt.roomIndex, alt.roomName, alt.publishedArea, alt.relativeError, alt.why) })
             } else {
                 // Open plan: one region, several rooms. Split proportionally to published areas
                 // along the region's longer axis, in table order.
@@ -353,7 +354,7 @@ object FloorCandidateBuilder {
 
     private fun roomCandidate(
         id: String, floorId: String, name: String, ordinal: Int?, kind: RoomKind, resolved: ResolvedRing, calibration: PlanCalibration, url: String,
-        usable: Measured, floorArea: Measured, fidelity: FactFidelity, note: String, alternatives: List<String> = emptyList(),
+        usable: Measured, floorArea: Measured, fidelity: FactFidelity, note: String, alternatives: List<RoomMatchAlternative> = emptyList(),
     ) = RoomCandidate(
         id = id,
         floorId = floorId,

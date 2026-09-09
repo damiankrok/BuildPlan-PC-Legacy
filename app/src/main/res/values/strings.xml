@@ -13,6 +13,9 @@
     <string name="section_home">Dom</string>
     <string name="section_home_summary">Model budynku, oś czasu i stan pieniędzy w jednym miejscu.</string>
 
+    <string name="section_import">Import projektu</string>
+    <string name="section_import_summary">Wczytanie gotowego projektu domu z adresu strony: pomieszczenia, wymiary i przedmiar jako propozycja do sprawdzenia.</string>
+
     <string name="section_timeline">Oś czasu</string>
     <string name="section_timeline_summary">Planowanie i śledzenie kolejnych etapów budowy w czasie.</string>
 
@@ -66,6 +69,60 @@
     <string name="element_kind_foundation">Fundament</string>
     <string name="element_kind_facade">Elewacja</string>
     <string name="element_kind_other">Element</string>
+
+    <!-- Import projektu ze strony -->
+    <string name="import_url_label">Adres strony projektu (https)</string>
+    <string name="import_run">Analizuj</string>
+    <string name="import_cancel">Przerwij</string>
+    <string name="import_refresh">Pobierz ponownie</string>
+    <string name="import_supported">Obsługiwane są wyłącznie strony projektów ARCHON+ (archon.pl). Analiza pobiera stronę i jej rzuty przez HTTPS.</string>
+    <string name="import_candidate_notice">Wynik jest propozycją do sprawdzenia, a nie projektem. Nic nie zostaje zapisane w modelu budynku ani w kosztach — potwierdzenie danych to osobny krok.</string>
+
+    <string name="import_phase_validating_url">Sprawdzanie adresu</string>
+    <string name="import_phase_resolving_project">Rozpoznawanie projektu</string>
+    <string name="import_phase_reading_facts">Odczyt danych ze strony</string>
+    <string name="import_phase_downloading_assets">Pobieranie rysunków</string>
+    <string name="import_phase_reconstructing_geometry">Odtwarzanie rzutów</string>
+    <string name="import_phase_solving_roof">Rozwiązywanie dachu</string>
+    <string name="import_phase_closing_vertical_chain">Rzędne kondygnacji</string>
+    <string name="import_phase_building_candidate">Składanie modelu</string>
+    <string name="import_phase_calculating_quantities">Przedmiar</string>
+    <string name="import_phase_validating">Porównanie ze źródłem</string>
+    <string name="import_phase_building_questions">Braki i pytania</string>
+    <string name="import_phase_finalizing">Kończenie</string>
+
+    <string name="import_result_title">%1$s</string>
+    <string name="import_result_complete">Analiza zakończona</string>
+    <string name="import_result_partial">Analiza niepełna</string>
+    <string name="import_result_from_cache">Wynik odtworzony z pamięci podręcznej urządzenia</string>
+    <string name="import_result_fresh">Wynik pobrany ze strony</string>
+    <string name="import_stat_floors">Kondygnacje: %1$d</string>
+    <string name="import_stat_rooms">Pomieszczenia: %1$d</string>
+    <string name="import_stat_openings">Otwory: %1$d</string>
+    <string name="import_stat_quantities">Wielkości z przedmiaru: %1$d</string>
+    <string name="import_stat_needs_confirmation">Wymaga potwierdzenia: %1$d</string>
+    <string name="import_section_questions">Pytania do potwierdzenia (%1$d)</string>
+    <string name="import_section_ambiguities">Nierozstrzygnięte (%1$d)</string>
+    <string name="import_section_issues">Czego zabrakło (%1$d)</string>
+    <string name="import_ambiguity_alternatives">Możliwe odczyty: %1$s</string>
+    <string name="import_none">Brak</string>
+
+    <string name="import_error_unsupported">Ten adres nie jest stroną projektu obsługiwanego serwisu. Obsługiwane adresy: %1$s.</string>
+    <string name="import_error_unsafe">Adres został odrzucony ze względów bezpieczeństwa (%1$s).</string>
+    <string name="import_error_fetch">Nie udało się pobrać strony.</string>
+    <string name="import_error_source_changed">Strona projektu ma inną budowę niż ta, którą analizator potrafi odczytać. Brakuje: %1$s</string>
+    <string name="import_error_assets">Nie udało się pobrać ani odczytać rzutów (%1$d).</string>
+    <string name="import_error_failed">Analiza nie powiodła się.</string>
+    <string name="import_error_detail">Szczegóły techniczne: %1$s</string>
+    <string name="import_error_cancelled">Analiza przerwana.</string>
+
+    <!-- Nazwy sygnałów, których analizator szuka na stronie -->
+    <string name="import_signal_title">tytuł projektu</string>
+    <string name="import_signal_scalars">tabela parametrów</string>
+    <string name="import_signal_room_tables">tabele pomieszczeń</string>
+    <string name="import_signal_plan_assets">rzuty kondygnacji</string>
+    <string name="import_signal_cost_page">podstrona kosztów</string>
+    <string name="import_signal_site_tags">dane strukturalne strony</string>
 
     <!-- Ekrany w przygotowaniu -->
     <string name="placeholder_module_title">Moduł w przygotowaniu</string>

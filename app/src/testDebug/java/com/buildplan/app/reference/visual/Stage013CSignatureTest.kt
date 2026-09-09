@@ -554,7 +554,14 @@ class Stage013CSignatureTest {
         // renders through, and no OCR, vision or ML library anywhere.
         val forbidden = Regex("""(?i)\b(ocr|tesseract|opencv|imageproc)\b""")
         val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
-        val authorised = Regex("""app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""")
+        // STAGE-024 widened the footprint again, and deliberately: project import is a product
+        // feature now, so the app carries the analyzer's platform bindings and one small screen
+        // that calls its service. What is still forbidden is what always was — analyzer-like code
+        // anywhere else in the shipped app, and any OCR, vision or ML library at all.
+        val authorised = Regex(
+            """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
+                """|app[\\/]src[\\/]main[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/]ProjectImport[A-Za-z]*)\.kt$""",
+        )
         val sources = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }
             .filter { it.isFile && it.extension == "kt" }

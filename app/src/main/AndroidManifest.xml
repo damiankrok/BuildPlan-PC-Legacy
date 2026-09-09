@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Project import (STAGE-024) fetches a project page and its drawings over HTTPS, so the
+      release build now needs network access. What it may reach is not decided here: the
+      analyzer's URL safety layer allows https only, to an allowlisted host, on the default
+      port, with no credentials and no private address, and re-checks every redirect hop.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

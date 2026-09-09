@@ -115,7 +115,29 @@ data class RoomCandidate(
     val matchConfidence: FactFidelity,
     val matchNote: String,
     /** Rooms that also fitted these regions, so a reader can see what the match was chosen against. */
-    val matchAlternatives: List<String> = emptyList(),
+    val matchAlternatives: List<RoomMatchAlternative> = emptyList(),
+)
+
+/**
+ * A published room row that would also have fitted the regions this match
+ * took.
+ *
+ * Structured rather than a sentence because the question it raises is
+ * answerable: a later stage shows the highlighted region and the rows it could
+ * be, and a person picks one. Prose reads well and cannot be offered as a
+ * choice, which is the whole use it has.
+ *
+ * @property sourceRowIndex position of the row in the storey's published table,
+ *   0-based, so the answer can point at the source rather than at a name that
+ *   may repeat.
+ */
+data class RoomMatchAlternative(
+    val sourceRowIndex: Int,
+    val roomName: String,
+    val publishedAreaM2: Double,
+    /** Signed relative difference between the region area and this row's published area. */
+    val relativeError: Double,
+    val why: String,
 )
 
 /** One straight run of a room's boundary: which wall it lies on and what is on the other side. */

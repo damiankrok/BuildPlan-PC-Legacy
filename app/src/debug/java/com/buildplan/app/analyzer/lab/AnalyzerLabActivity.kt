@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.buildplan.app.R
+import com.buildplan.app.analyzer.AndroidRasterCodec
 import com.buildplan.app.analyzer.candidate.RoomGeometryState
 import com.buildplan.app.analyzer.pipeline.AnalysisListener
 import com.buildplan.app.analyzer.pipeline.AnalysisRun
@@ -269,7 +270,7 @@ private fun linesFor(tab: LabTab, run: AnalysisRun, stages: List<String>): List<
                 val q = run.quantities?.rooms?.firstOrNull { it.roomId == r.id }
                 add("  ${r.sourceOrdinal ?: "?"}. ${r.name} [${r.id}] ${"%.2f".format(java.util.Locale.ROOT, r.plannedArea.value)} m² (źródło ${r.sourceFloorArea.value ?: r.sourceUsableArea.value}) ${r.matchConfidence} ${r.geometryState}")
                 if (r.geometryState == RoomGeometryState.UNRESOLVED_REGION) add("      obrys nierozstrzygnięty: ${r.geometryNote}")
-                r.matchAlternatives.forEach { alt -> add("      mogłoby też być: $alt") }
+                r.matchAlternatives.forEach { alt -> add("      mogłoby też być: wiersz ${alt.sourceRowIndex + 1} „${alt.roomName}” (${"%.2f".format(java.util.Locale.ROOT, alt.publishedAreaM2)} m2, ${"%.1f".format(java.util.Locale.ROOT, alt.relativeError * 100)} %): ${alt.why}") }
                 add("      obwód ${"%.2f".format(java.util.Locale.ROOT, r.perimeter.value)} m, ściany brutto ${"%.1f".format(java.util.Locale.ROOT, q?.wallGross?.value)} / netto ${"%.1f".format(java.util.Locale.ROOT, q?.wallNet?.value)} m², sufit płaski ${"%.1f".format(java.util.Locale.ROOT, q?.ceilingFlat?.value)} + skosy ${"%.1f".format(java.util.Locale.ROOT, q?.ceilingSloped?.value)} m², kubatura ${"%.1f".format(java.util.Locale.ROOT, q?.volume?.value)} m³")
                 r.boundary.forEachIndexed { i, b -> add("      ściana ${i + 1}: ${"%.2f".format(java.util.Locale.ROOT, b.segment.length)} m → ${b.neighbourRoomId ?: if (b.faceOutside) "zewnątrz" else "?"} (${b.wallId ?: "brak ściany"})") }
             }

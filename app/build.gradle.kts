@@ -55,6 +55,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
 
     implementation(libs.androidx.compose.ui)
@@ -73,13 +74,18 @@ dependencies {
     debugImplementation(libs.filament.android)
     debugImplementation(libs.filamat.android)
 
-    // STAGE-023A project analyzer: a pure-JVM module, so its core cannot import
-    // Android by construction and its raster evaluation runs on a plain JDK.
-    // Debug only: its sole consumer is the Analyzer Lab, so release ships
-    // neither the module nor jsoup.
-    debugImplementation(project(":analyzer"))
+    // The project analyzer. A pure-JVM module, so its core cannot import Android by
+    // construction and its raster evaluation runs on a plain JDK.
+    //
+    // STAGE-024 moved it from `debugImplementation` to the release path: the app now offers
+    // project import, so the module and jsoup ship, and the main manifest asks for INTERNET.
+    // What did *not* move is the Analyzer Lab, the evaluation fixtures and the benchmark
+    // values — those stay in `src/debug` and `analyzer/src/test`, and `ReleaseBoundaryTest`
+    // checks that they do.
+    implementation(project(":analyzer"))
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

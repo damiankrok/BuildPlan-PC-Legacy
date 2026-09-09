@@ -51,6 +51,10 @@ import org.jsoup.nodes.Element
  */
 class ArchonSiteAdapter : SiteAdapter {
 
+    override val adapterId: String = ADAPTER_ID
+
+    override val adapterVersion: String = ADAPTER_VERSION
+
     override fun read(identity: SourceIdentity, page: FetchedResource, fetcher: ResourceFetcher): SourcePackage {
         val html = page.bodyAsText()
         val document = Jsoup.parse(html, page.finalUrl)
@@ -396,6 +400,12 @@ class ArchonSiteAdapter : SiteAdapter {
     }
 
     companion object {
+
+        const val ADAPTER_ID = "archon-pl"
+
+        /** Bump when the selectors below stop matching the live markup. */
+        const val ADAPTER_VERSION = "1"
+
         /** Maps the site's roof vocabulary onto a family the roof solver understands. */
         fun roofFamily(text: String?): PublishedRoofFamily {
             val t = text?.lowercase() ?: return PublishedRoofFamily.UNKNOWN

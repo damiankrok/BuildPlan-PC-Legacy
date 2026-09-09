@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Debug-only additions. The analyzer's network access and its Lab activity
-  live here so that a release build gains neither a permission nor a second
-  launcher entry; the analyzer core in :analyzer is inert without a caller.
+  Debug-only additions. The Analyzer Lab's launcher entry lives here so that a release build
+  gains no second launcher icon and no evidence tooling. The INTERNET permission moved to the
+  main manifest in STAGE-024, when project import became a product feature.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <uses-permission android:name="android.permission.INTERNET" />
 
     <application>
         <activity

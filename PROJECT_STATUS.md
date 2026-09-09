@@ -616,6 +616,110 @@
   w kresce (broni korespondencja, nie rozpoznawanie).
   Wynik: `PARTIAL_STAGE_023C_FINAL_RESEARCH_HARDENING`.
 
+- **STAGE-024 analyzer MVP** — z prototypu badawczego zrobiona **usługa
+  o stabilnym kontrakcie**, z której korzysta wariant release. Zabezpieczenia
+  ze STAGE-023C zostały bez zmiękczeń; rdzeń badawczy nie ruszony.
+
+  **Publiczne API** (`analyzer/.../service/`): `ProjectAnalyzerService.analyze`
+  zwraca `Flow<AnalysisEvent>` — zimny, anulowalny przez anulowanie kolekcji,
+  liczący na własnym dispatcherze. Dziewięć rodzin wyniku (`Success`,
+  `Partial`, `UnsupportedSource`, `UnsafeUrl`, `FetchFailed`, `SourceChanged`,
+  `AssetFailure`, `AnalysisFailed`, `Cancelled`) zamiast jednego
+  `Result<_, Throwable>`, bo wywołujący robi z nimi różne rzeczy: zły host jest
+  do naprawienia przez wklejenie innego linku, zmieniona strona jest do
+  naprawienia tylko przez nas, a kandydat częściowy to wynik do pokazania,
+  a nie błąd do przełknięcia. Reguła podziału jest jedna: bieg jest niepełny,
+  **gdy czegoś, co miał odczytać, nie odczytał** — nie dlatego, że odpowiedź
+  jest niepewna. Inaczej każdy bieg na prawdziwym domu byłby „częściowy".
+  `AnalyzerApiSurfaceTest` pilnuje, że `app/src/main` nie sięga za granicę do
+  `plan/`, `roof/`, `text/`, `site/archon/` ani fikstur.
+
+  **Release delta.** `:analyzer` przeszedł z `debugImplementation` na
+  `implementation`; do release weszły moduł, jsoup, `kotlinx-coroutines-core`
+  (wersja, do której Compose i tak już się rozwiązywał),
+  `lifecycle-viewmodel-compose` i uprawnienie `INTERNET` w manifeście `main`.
+  **Nie weszły**: Analyzer Lab i jego wpis launchera, zasoby `lab_*`, fikstury
+  ewaluacyjne, wartości benchmarkowe, Filament. Sprawdzone w dexie
+  zbudowanego APK z kontrolą dodatnią i ujemną: obecne
+  `analyzer/service/ProjectAnalyzerService`, `analyzer/cache/AnalysisCache`,
+  `org/jsoup/Jsoup`; nieobecne `AnalyzerLabActivity`, `com/google/android/filament`,
+  `MarcowkiVisualModelV1`, `SyntheticDemoHouse`, `m2fa281446a8ca`,
+  `EvaluationProjects`, `BUILDPLAN_ANALYZER_EVIDENCE_DIR`. Inwentarz `.so`
+  **bez zmian** (tylko `libandroidx.graphics.path.so` ×4 ABI), więc badania
+  16 KB nie powtarzano; `zipalign -c -P 16 -v 4` przechodzi. Uprawnienia
+  release: dokładnie `INTERNET`, jeden wpis launchera.
+
+  **Kontrakt kandydata.** `ProjectAnalysisReport` = wersjonowana migawka
+  (`schemaVersion` 1→**2**, `analyzerVersion` **`0.2.0-stage024`**, plus
+  `adapterId`/`adapterVersion`) i wszystko inne z niej wyprowadzone czystą
+  funkcją, więc bieg z cache i świeży są nie do odróżnienia, a granica nie
+  stała się drugą kopią modelu. `generation` (czasy, cache) trzymane osobno od
+  danych o domu; `deterministicJson()` zdejmuje czasy, dziennik i ścieżki —
+  dwa biegi na tych samych bajtach dają identyczne bajty i nie wychodzi przez
+  to żadna ścieżka z urządzenia. `quantityVerification` to **płaska** lista
+  wszystkiego wycenialnego (pokoje, kondygnacje, projekt, **otwory**) z
+  `VerificationState`; `USER_CONFIRMED` istnieje w schemacie i **analizator go
+  nigdy nie emituje** — sprawdzane na całym raporcie i całej migawce.
+  `ValidationFinding` dostało stabilny maszynowy `key`, więc porównanie da się
+  położyć obok wielkości, którą ocenia, bez dopasowywania polskiej prozy.
+
+  **Niejednoznaczność jako dane.** `CandidateAmbiguity` niesie każdy odczyt,
+  na który źródło pozwala, a `RoomCandidate.matchAlternatives` przestało być
+  listą zdań i jest listą `RoomMatchAlternative(sourceRowIndex, roomName,
+  publishedAreaM2, relativeError, why)` — prozy nie da się podać jako wyboru,
+  a to jedyny użytek, jaki ma. Żadnego progu w tej warstwie: potok ma już
+  jedyną opinię o tym, co jest niepewne.
+
+  **Cache** (`cacheDir/project-analyzer`): kluczowany schematem, wersją
+  analizatora i wersją adaptera, więc wpis starszego builda jest niewidoczny
+  i kasowany; zapisy przez `.part` + `rename`, każdy bieg w prywatnej sesji
+  wnoszonej na miejsce dopiero po zakończeniu; 96 MB / 8 projektów kasowane
+  **całymi projektami**; `PREFER_CACHE` / `REFRESH` / `CACHE_ONLY`
+  (ta ostatnia nie dostaje klienta sieci w ogóle). Bieg, który nie odczytał
+  rysunków albo trafił na zmienioną stronę, **nie jest zapisywany** — po
+  „rysunki nie doszły" człowiek próbuje ponownie, a natychmiastowa ta sama
+  porażka z dysku jest gorsza niż powrót do sieci. Ścieżki oddawane w produkcji
+  są względne.
+
+  **Anulowanie i współbieżność.** Kooperatywny `CancellationSignal` w rdzeniu
+  (sprawdzany na granicy każdego etapu i między rysunkami), mostkowany przez
+  `service/`; `AnalyzerPurityTest` pilnuje, że korutyny nie wychodzą poza
+  `service/`. Bieg anulowany nie publikuje nic i kasuje sesję. Jeden mutex na
+  projekt: dwa dotknięcia tego samego linku są szeregowane, drugie czyta wpis
+  pierwszego. W aplikacji bieg żyje w `viewModelScope`.
+
+  **Dryf źródła.** `AdapterHealth` — sześć nazwanych sygnałów z dowodem;
+  brak wymaganego to `SourceChanged` z zachowaniem tego, co mimo wszystko
+  odczytano. Testy przechodzą przez przemianowany selektor, przemianowany
+  wrapper tabeli, znikające rzuty, brak podstrony kosztów, podstronę z 404
+  i zepsuty `dataLayer`.
+
+  **Sieć.** `HttpResourceFetcher` dostał szew `HttpTransport`, więc
+  rewalidacja każdego skoku, budżet przekierowań i limity ciała są **testowane
+  bez gniazda**: przekierowanie poza allowlistę, rebind na adres prywatny na
+  drugim skoku, zejście na `http`, dorzucone poświadczenia i port, pętla,
+  ciało deklarujące ponad limit, ciało kłamiące o długości, przekierowanie bez
+  `Location`, oraz dowód, że jeden adres daje dokładnie jedno otwarcie.
+
+  **Regresja benchmarkowa — bez zmian wobec STAGE-023C.** A: 15 pomieszczeń,
+  15/15 pierścieni, 0 samoprzecięć, dach **−1,50 %**, kalibracja 0,41 % /
+  0,99 %, kompletność **71,4 %**, 13 STRONG / 10 ACCEPTABLE / 1 MISMATCH.
+  B: 14 pomieszczeń, 14/14 pierścieni, dach **+0,69 %**, kalibracja 0,72 % /
+  0,37 %, kompletność **74,3 %**, 12 STRONG / 6 ACCEPTABLE / 5 MISMATCH.
+  Wysokości otworów nadal `MISSING` (0 z 50 w A, 0 z 88 w B), znane
+  niejednoznaczności nadal jawne.
+
+  **Znaleziony i naprawiony przy okazji:** migawka zapisywała manifest
+  rysunków sprzed pobrania, więc każdy zapisany bieg opisywał wszystkie rzuty
+  jako „odkryte" — czytelnik nie miał jak odróżnić zdekodowanego rzutu od
+  takiego, który nigdy się nie ściągnął. Teraz migawka niesie manifest po
+  pobraniu, z sumami kontrolnymi, rozmiarami i porażkami.
+
+  Bramki: `:analyzer:test` (**200** testów, 2 pominięte bez zmiennych sond;
+  w tym ewaluacja obu domów),
+  `:app:testDebugUnitTest` (**209**), `lintDebug`, `assembleDebug`,
+  `assembleRelease` — zielone.
+
 ## Następny krok
 
 GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń
@@ -624,19 +728,25 @@ roboczą ze STAGE-013H: dom jako kanwa ekranu bez karty, chrom przy krawędziach
 bloków, szkło i ruch; do tego nadal dwa warunki ze STAGE-013F (okna z ramami,
 schody bez kolizji ze ścianą — bez zmian od STAGE-013G). Dopiero po tej
 ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013H
-**nie jest** akceptacją wizualną. Równolegle OWNER ocenia prototyp
-analizatora ze STAGE-023A w debugowym Lab (oba projekty, pytania,
-podgląd 3D kandydata); STAGE-023B, STAGE-024 ani STAGE-014 nie startują
-automatycznie — wracają do koordynatora.
+**nie jest** akceptacją wizualną. Równolegle OWNER ocenia import projektu
+ze STAGE-024 — w produkcie (Projekt → Import projektu: adres, fazy,
+podsumowanie tylko do odczytu, pytania i niejednoznaczności) oraz w debugowym
+Lab, gdzie widać ten sam bieg w szczegółach. STAGE-025 (weryfikacja kandydata
+przez człowieka) ani STAGE-014 nie startują automatycznie — wracają do
+koordynatora.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, klas rozmiaru okna (tablet, poziom)
 w przestrzeni roboczej, prawdziwego rozmycia tła pod szkłem, śledzenia palca
-przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **produktowego
-analizatora projektów** (STAGE-023A to prototyp badawczy w `analyzer/`
-i debugowym Lab: bez wejścia w produkcie, bez odczytu tekstu z rysunków,
-bez przejścia kandydata do modelu), wycinania otworów w połaci dachu, grubości połaci, gąsiora
+przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **weryfikacji
+kandydata przez człowieka** (STAGE-024 dało usługę, wejście w produkcie
+i podsumowanie tylko do odczytu; wybór między dwoma odczytami, potwierdzanie
+założeń i przejście kandydata do modelu to STAGE-025 i nie istnieją),
+**wyceny z przedmiaru** (żadna wielkość analizatora nie tworzy kosztu; ekran
+importu nie może nawet nazwać typu z `domain/`), drugiego adaptera witryny,
+odczytu wysokości otworów (ograniczenie źródła: 4–6 px na glif),
+wycinania otworów w połaci dachu, grubości połaci, gąsiora
 na kalenicy, drugiego stylu pokrycia dachu, animacji dachówek, pickingu przez
 szkło, profilu ramy okiennej i pochwytu balustrady, danych na osi czasu
 i w księdze kosztów, ikon w szufladzie, persystencji i danych rzeczywistych.

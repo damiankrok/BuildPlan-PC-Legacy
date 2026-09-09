@@ -237,7 +237,40 @@ z zewnętrznego źródła, i obowiązują tu ostrzejsze reguły niż gdzie indzi
 
 Analizator mieszka w osobnym, czysto-JVM module `analyzer/` (pakiet
 `com.buildplan.app.analyzer`), a jego debugowy harness w
-`app/src/debug/java/com/buildplan/app/analyzer/lab/`. Prototyp ze STAGE-023A.
+`app/src/debug/java/com/buildplan/app/analyzer/lab/`. Rdzeń badawczy ze
+STAGE-023A; od STAGE-024 aplikacja korzysta z niego produkcyjnie przez
+usługę w `analyzer/src/main/.../service/`.
+
+- **Do analizatora mówi się przez `service/`.** `app/src/main` importuje
+  wyłącznie `service/`, `cache/` i typy wartości, z których zrobiony jest
+  raport. `plan/`, `roof/`, `raster/`, `text/`, `vertical/`, `site/archon/`
+  i fikstury ewaluacyjne to wnętrze prototypu — pilnuje tego
+  `AnalyzerApiSurfaceTest`. Nie sięgaj za granicę „tylko po tę jedną liczbę".
+- **Wersje są kluczem, nie ozdobą.** `schemaVersion`, `analyzerVersion`
+  i `adapterVersion` nazywają katalog cache. Zmieniasz coś, co zmienia
+  odpowiedź — podnieś odpowiednią wersję. Odtworzenie wyniku starego parsera
+  jako bieżącego to jedyny błąd cache, który daje pewne złe liczby zamiast
+  błędu.
+- **`Partial` znaczy „czegoś nie odczytałem", nie „nie jestem pewien".**
+  Niejednoznaczność i brak wysokości otworów to normalny stan tych źródeł.
+  Gdyby czyniły bieg niepełnym, każdy bieg byłby niepełny.
+- **Analizator nigdy nie emituje `USER_CONFIRMED`** ani żadnego
+  `VerificationState`, który znaczy „człowiek to sprawdził". To stan, w który
+  wielkość wprowadza STAGE-025.
+- **Bieg, który nie odczytał tego, po co szedł, nie trafia do cache.**
+  Nie zapisuj `AssetFailure` ani `SourceChanged`.
+- **Korutyny tylko w `service/`.** Rdzeń zostaje zwykłym obliczeniem na
+  bajtach z kooperatywnym `CancellationSignal`; pilnuje tego
+  `AnalyzerPurityTest`.
+- **Bieg anulowany nie publikuje nic.** Połowicznie zanalizowany kandydat nie
+  jest kandydatem częściowym, tylko niedokończonym.
+- **Ścieżki z urządzenia nie podróżują.** Produkcyjne `AnalysisStorage` oddaje
+  ścieżki względne, a `deterministicJson()` zdejmuje czasy, dziennik
+  i ścieżki. Nie loguj ciał stron ani ścieżek plików.
+- **Zakres wsparcia się nie rozszerza po cichu.** Obsługiwane są publiczne
+  strony projektów ARCHON podane jawnie przez użytkownika. Wynik wyszukiwarki,
+  losowa strona, PDF z nieznanego hosta i katalog to `UnsupportedSource`,
+  a nie próba ogólnego parsowania.
 
 - **Rdzeń nie zna żadnego projektu.** Żadnych nazw, sloganów, kluczy,
   współrzędnych ani wartości oczekiwanych konkretnego domu w `analyzer/src/main`.
@@ -400,15 +433,19 @@ Zostaw czysty worktree.
 ## Czego na tym etapie NIE ma
 
 Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych,
-**produktowego** analizatora projektów i **produkcyjnego** renderera 3D.
+**weryfikacji kandydata przez człowieka**, **wyceny z przedmiaru**
+i **produkcyjnego** renderera 3D.
 
-Analizator istnieje od STAGE-023A wyłącznie jako **prototyp badawczy**
-w module `analyzer/` z debugowym Lab (reguły w sekcji „Analizator projektów"
-wyżej). Nie ma wejścia w produkcie, nie zapisuje nic do domeny i nie czyta
-tekstu z rysunków. Jego kontrakt — wymagane wejścia, cechy do odzyskania
-i sytuacje, w których ma **dopytać użytkownika** zamiast podstawić wartość
-domyślną — jest spisany w `ARCHITECTURE.md`. Nie rozszerzaj go (OCR, drugi
-adapter witryny, przejście kandydata do modelu, UI produktowe) bez wyraźnego
+Analizator ma od STAGE-024 **produktowe wejście** (Projekt → Import projektu)
+i wchodzi do wariantu release, ale to nadal **kandydat, a nie prawda
+projektu**: nie zapisuje nic do domeny, nie tworzy żadnego kosztu i nie czyta
+z rysunków niczego poza tym, co przechodzi bramki ze STAGE-023C. Ekran importu
+jest **tylko do odczytu**; wybór między dwoma odczytami, potwierdzanie założeń
+i przeniesienie kandydata do modelu to STAGE-025 i nie istnieją. Kontrakt —
+wymagane wejścia, cechy do odzyskania i sytuacje, w których ma **dopytać
+użytkownika** zamiast podstawić wartość domyślną — jest spisany
+w `ARCHITECTURE.md`. Nie rozszerzaj go (OCR, drugi adapter witryny, przejście
+kandydata do modelu, integracja z wyceną, UI weryfikacji) bez wyraźnego
 zlecenia OWNER-a. Brak danych ma kończyć się pytaniem; odpowiedź wchodzi do
 modelu jako `DISPLAY_ASSUMPTION` z podanym powodem, a nierozstrzygnięta
 niepewność zostaje `TRACE_UNCERTAIN`. Model domenowy i kontrakt geometrii

@@ -61,9 +61,9 @@ class SnapshotCodecTest {
             AssetManifest(listOf(AssetRecord(AssetRole.PLAN_GROUND, "https://assets.archon.pl/x.gif", identity.canonicalUrl, "img", "alt", "image/gif", RetrievalState.DECODED, 10L, "ab", 853, 853, "/p", null, 0))),
             emptyList(), mapOf("projectRoof" to "czterospadowy"))
         val snapshot = ProjectAnalysisSnapshot(
-            ProjectAnalysisSnapshot.SCHEMA_VERSION, ProjectAnalysisSnapshot.ANALYZER_VERSION, 0L, identity.canonicalUrl,
+            ProjectAnalysisSnapshot.SCHEMA_VERSION, ProjectAnalysisSnapshot.ANALYZER_VERSION, "archon-pl", "1", 0L, identity.canonicalUrl,
             listOf(ResolutionStep(ResolutionStep.Kind.ACCEPTED, "ok")), source, candidate, null,
-            listOf(ValidationFinding("s", 1.0, 1.1, "m2", 0.1, 0.09, ValidationStatus.MATCH_ACCEPTABLE, "sem", FactFidelity.SOURCE_DERIVED)),
+            listOf(ValidationFinding("project:roofArea", "s", 1.0, 1.1, "m2", 0.1, 0.09, ValidationStatus.MATCH_ACCEPTABLE, "sem", FactFidelity.SOURCE_DERIVED)),
             GapAnalysis(listOf(RequirementStatus(Requirement.ROOF_OUTLINE, RequirementState.SATISFIED, FactFidelity.SOURCE_DERIVED, "e"))),
             listOf(ClarificationQuestion("q1", Requirement.STOREY_LEVELS, "Pytanie?", "0,30 m", "levels")),
             listOf("log line"), linkedMapOf("RESOLVE" to 12L),
@@ -78,7 +78,8 @@ class SnapshotCodecTest {
         assertEquals(roof.totalArea.value!!, parsed.candidate!!.roof!!.totalArea.value!!, 1e-9)
         assertEquals(1, parsed.questions.size)
         assertEquals("czterospadowy", parsed.source!!.siteTags["projectRoof"])
-        assertTrue(text.contains("\"schemaVersion\": 1"))
+        assertTrue(text.contains("\"schemaVersion\": ${ProjectAnalysisSnapshot.SCHEMA_VERSION}"))
+        assertTrue(text.contains("\"adapterId\": \"archon-pl\""))
         assertTrue(!text.contains("NaN") && !text.contains("Infinity"))
     }
 }
