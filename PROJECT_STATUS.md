@@ -846,9 +846,14 @@
   silnik weryfikacji, przestrzeń robocza, jsoup; nieobecne Lab, Filament,
   `MarcowkiVisualModelV1`, `SyntheticDemoHouse`, `EvaluationProjects`,
   `CandidateReferenceComparator`, `buildplan/app/evaluation`, klucze projektów,
-  `BUILDPLAN_ANALYZER_EVIDENCE_DIR`. Inwentarz `.so` bez zmian, więc badania
-  16 KB nie powtarzano; `zipalign -c -P 16 -v 4` przechodzi; uprawnienia
-  dokładnie `INTERNET`, jeden wpis launchera.
+  `BUILDPLAN_ANALYZER_EVIDENCE_DIR`. Inwentarz `.so` bez zmian
+  (`libandroidx.graphics.path.so` ×4 ABI), więc badania 16 KB nie powtarzano;
+  `zipalign -c -P 16 -v 4` przechodzi; jeden wpis launchera. Uprawnienia:
+  jedno rzeczywiste — `INTERNET` — obok
+  `com.buildplan.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, które
+  `androidx.core` deklaruje samo na poziomie `signature` przy `targetSdk` 34+
+  i które nie jest żadną zdolnością widzianą przez użytkownika. Wcześniejsze
+  „dokładnie `INTERNET`" było nieprecyzyjne.
 
 ## Następny krok
 
