@@ -730,9 +730,23 @@
   16 zalecanych, 13 opcjonalnych), **5,1×** mniej. Największe rozgałęzienia:
   dach 78 wielkości, rzędna stropu nad parterem 69, grubość stropu 68, otwarta
   przestrzeń dzienna 30, konflikt liczby otworów na elewacji 23, grupa
-  „5 × drzwi 0,85 m" 21. Projekt B: 226 wierszy → 41 decyzji, **5,5×**.
-  Nic nie zostało uznane za zweryfikowane bez decyzji — po zerowej liczbie
-  decyzji podsumowanie mówi „0 potwierdzonych, 246 nadal bez potwierdzenia".
+  „5 × drzwi 0,85 m" 21. Projekt B: 435 wielkości, 311 do potwierdzenia →
+  **63 decyzje** (6 wymaganych, 16 dużego wpływu, 19 zalecanych,
+  22 opcjonalne), **4,9×**. Mierzone `VerificationBurdenProbeTest` na obu
+  realnych projektach, nie na fiksturze; asercje są podłogą, nie celem, żeby
+  nie dostrajać silnika priorytetów do benchmarku. Nic nie zostało uznane za
+  zweryfikowane bez decyzji — przy zerowej liczbie decyzji podsumowanie mówi
+  „0 potwierdzonych, 246 nadal bez potwierdzenia", a sonda to sprawdza.
+
+  **Znalezione przez sondę obciążenia:** jedenaście pytań korzeniowych
+  Projektu A rozstrzyga **zero** wierszy przedmiaru, i tak ma być — wygląd
+  i pokrycie dachu są kandydatami prezentacji, liczba stopni jest
+  `DISPLAY_ASSUMPTION`, niepostawiony wiersz tabeli nie ma jeszcze geometrii,
+  a schody nie mają w przedmiarze żadnej pozycji (`project:floorsAndStairs`
+  to suma pierścieni pomieszczeń i nie zależy od tego, czy równo rozstawione
+  linie są stopniami). Przestrzeń robocza **nie drukuje** dla nich liczby
+  wielkości, a sonda trzyma tę listę rodzajów zamkniętą, żeby nowy rodzaj
+  pytania nie dołączył do niej przez przypadek.
 
   **Nakładka, nie mutacja.** `VerificationSession(originalCandidate, decisions,
   derivedVerifiedCandidate, unresolvedQuestions, changeSummary)` — migawka
@@ -826,7 +840,7 @@
   poprawny w 100 %".
 
   Migawka: `schemaVersion` 2→**3**, `analyzerVersion` **`0.3.0-stage025`**.
-  Bramki: `:analyzer:test` (**227**), `:app:testDebugUnitTest` (**217**),
+  Bramki: `:analyzer:test` (**229**), `:app:testDebugUnitTest` (**217**),
   `lintDebug`, `assembleDebug`, `assembleRelease` — zielone. Granica release
   sprawdzona w dexie z kontrolą dodatnią i ujemną: obecne `analyzer/service`,
   silnik weryfikacji, przestrzeń robocza, jsoup; nieobecne Lab, Filament,
