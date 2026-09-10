@@ -720,6 +720,122 @@
   `:app:testDebugUnitTest` (**209**), `lintDebug`, `assembleDebug`,
   `assembleRelease` — zielone.
 
+- STAGE-025 candidate verification and source-image cross-check — pierwsza
+  droga, którą **człowiek potwierdza wynik analizatora**, oraz pierwszy odczyt
+  elewacji i wizualizacji jako dowodu. Wejście: 331 wielkości Projektu A,
+  z czego 246 bez potwierdzenia i zero sposobów, żeby je potwierdzić.
+
+  **Redukcja obciążenia — zmierzona, nie obiecana.** Projekt A: 246 wierszy do
+  potwierdzenia → **48 decyzji korzeniowych** (4 wymagane, 15 dużego wpływu,
+  16 zalecanych, 13 opcjonalnych), **5,1×** mniej. Największe rozgałęzienia:
+  dach 78 wielkości, rzędna stropu nad parterem 69, grubość stropu 68, otwarta
+  przestrzeń dzienna 30, konflikt liczby otworów na elewacji 23, grupa
+  „5 × drzwi 0,85 m" 21. Projekt B: 226 wierszy → 41 decyzji, **5,5×**.
+  Nic nie zostało uznane za zweryfikowane bez decyzji — po zerowej liczbie
+  decyzji podsumowanie mówi „0 potwierdzonych, 246 nadal bez potwierdzenia".
+
+  **Nakładka, nie mutacja.** `VerificationSession(originalCandidate, decisions,
+  derivedVerifiedCandidate, unresolvedQuestions, changeSummary)` — migawka
+  analizy jest niezmienna, decyzje leżą obok, a `VerificationEngine.verify()`
+  składa je w kopię kandydata i **przelicza od nowa** przedmiar i porównania.
+  Sesja jest wartością: `undoLast`, `reset`, `defer` i `replay` z samej listy
+  decyzji dają ten sam wynik. Siedem rodzajów decyzji, w tym
+  `REJECT_OBSERVATION` dla dowodu z obrazu i `DEFER_QUESTION`, którego
+  **nie wolno** użyć na pytaniu wymaganym.
+
+  **`USER_CONFIRMED` tylko od człowieka.** Wielkość dotknięta decyzją →
+  `USER_CONFIRMED` / `USER_OVERRIDDEN`; przeliczona z niej →
+  `DERIVED_FROM_USER_CONFIRMED`; rodowód (`rootQuestionIds`, `decisionIds`,
+  wartość przed i po) zachowany. `VerificationBoundaryTest` sprawdza, że
+  literał `USER_CONFIRMED` nie występuje nigdzie w źródłach aplikacji — jedyną
+  drogą do tego stanu jest silnik.
+
+  **Odczyt obrazów źródła.** `analyzer/visual/` — `PictureClasses` (klasy
+  pikseli na `ByteArray`), `ElevationReader` (sylwetka z usuwaniem chmur,
+  profil dachu, kominy, szczyt/koperta, linia okapu, moduł pokrycia, okna
+  połaciowe, prostokąty otworów z testem otoczenia ścianą, okładzina, ramy,
+  pasy, balustrady), `VisualEvidenceBuilder` (przypisanie stron świata,
+  konflikty, `AppearanceCandidate`). **Bez zdalnej AI i bez modelu wizyjnego** —
+  deterministyczna morfologia i autokorelacja. Hierarchia dowodu wpisana
+  w typy: wymiar podany > rzut i przekrój > elewacja > wizualizacja > odrys
+  ręczny > założenie prezentacyjne; obraz nigdy nie nadpisuje rzutu, tylko
+  rodzi `VisualConflict`, a konflikt rodzi pytanie. Nastrojone na precyzję,
+  nie zasięg: A jeden konflikt niski, B dwa niskie, zero fałszywych otworów.
+  Wygląd (kolor, pokrycie, okładzina) zostaje kandydatem prezentacji i nie
+  wchodzi do przedmiaru.
+
+  **Wyrocznia porównawcza (`src/testDebug`).** `CandidateReferenceComparator`
+  porównuje kandydata z ręcznie odrysowanym `MarcowkiVisualModelV1` —
+  wyłącznie ocena, nieosiągalna z produktu (sprawdzane w dexie APK).
+  Każda wartość referencyjna niesie wiarygodność ze własnej księgi odrysu,
+  a wartości `DISPLAY_ASSUMPTION` **nie są oceniane** (`NOT_SCORED`).
+
+  **Korekta analizatora, neutralna wobec projektu.** Porównanie wskazało
+  `plan.extentZ` 14,47 m wobec wydrukowanych 12,60 m (+14,9 %); zrzucone maski
+  rzutu pokazały ostrogi parapetu tarasu wchodzące do obrysu. `withoutWhiskers`
+  w `PlanAnalyzer` — otwarcie morfologiczne promieniem połowy maksymalnej
+  grubości ściany, największa składowa, odrzucone gdy zjadłoby >10 % bryły —
+  **stosowane tylko do obrysu**; `footprintMask` dla segmentacji, kalibracji,
+  rejestracji i pasa dachu zostaje maską pierwotną (`enclosedOutlinePx` jako
+  jawny zapasowy obrys dachu). Po korekcie `plan.extentZ` 12,48 m (−0,9 %,
+  `MATCH`), centroidy bliżej (Garaż 0,87 → 0,17 m, Pralnia 0,94 → 0,04 m),
+  wyrocznia **17 MATCH / 5 CLOSE / 5 DIFFERS** wobec 18 / 3 / 6. Przy okazji
+  wyszło, że dotychczasowe −1,5 % na dachu A było **przypadkowe** — ostrogi
+  dostarczały mniej więcej tyle, ile wynosi okap szczytowy.
+
+  **Regresja na drugim domu — bez cofnięcia.** A: dach **−1,50 %**,
+  13 STRONG / 10 ACCEPTABLE / 1 MISMATCH, kompletność 71,43 %, 14 pytań.
+  B: dach **+0,69 %**, 11 STRONG / 7 ACCEPTABLE / 5 MISMATCH, kompletność
+  74,29 %, 14 pytań. Pomieszczenia, kalibracja, dach, schody, pytania
+  i kompletność co do bajtu jak w STAGE-024; zmienia się **wyłącznie**
+  obwiednia elewacji i w obu domach w stronę podanej liczby
+  (A 305,53 → 266,47, B 300,03 → 250,80 przy podanych 225,90 / 171,60).
+
+  **Przestrzeń robocza.** Kanwa 3D na cały ekran, wąska szyna pytań przy
+  krawędzi pogrupowana szczeblami, panel kontekstu jednego pytania, stabilna
+  nawigacja, kompaktowy postęp; podświetlany podmiot pytania
+  (`BuildingElementId("cand-<id>")`). Bez siatki kart, bez pełnoekranowego
+  formularza, bez listy 246 wielkości. Wariant release ma własną kanwę
+  z zarezerwowanym studiem — Filament zostaje w `debug`.
+
+  **Znalezione na urządzeniu i naprawione.** (1) Panel pytania na pełną
+  szerokość zasłaniał szynę i przechwytywał jej przewijanie — dwie trzecie
+  z 48 pytań było nieosiągalnych; szyna i panel dzielą teraz jeden budżet
+  wysokości z `BoxWithConstraints`. (2) Diagnostyczna angielszczyzna
+  analizatora przeciekała do `why`, dowodu i etykiet wyboru. (3) Dwa
+  pomieszczenia o tej samej nazwie były oferowane jako „Pokój", czy „Pokój"?.
+  (4) Kropka dziesiętna zamiast przecinka. (5) „4 otworów", a potem
+  „4 otwory zewnętrznych" — `candidate/PolishText` uzgadnia liczebnik
+  z przymiotnikiem, a `QuestionLanguageTest` chodzi po każdym renderowanym
+  napisie każdego pytania i tego pilnuje.
+
+  **Ograniczenia zapisane wprost.** Debugowy APK nie kończy analizy na
+  `emulator-5570` pod presją pamięci (Filament + 2 GB RAM; ten sam bieg na
+  podpisanym release przechodzi — rozpoznane przez podstawienie, nie przez
+  domysł). `PictureClasses` przeszło z `Array<PixelClass>` na `ByteArray`
+  (≈2 MB → ≈0,5 MB na render), co i tak było realną poprawą. Czytnik elewacji
+  ma z założenia niski zasięg na otworach. Sesja weryfikacji nie jest trwała —
+  żyje w `viewModelScope`. Pięć pozostałych `DIFFERS` wyroczni to znane
+  ograniczenia źródła i różnica semantyki (liczba otworów 13 vs 11,
+  pomieszczenia 15 vs 18, suma powierzchni, schody 2 vs 1, długość ścian
+  zewnętrznych 24,42 vs 58,60 — mur kontra obwiednia).
+
+  **Nadal nie ma kanonicalizacji.** Zweryfikowany kandydat jest zweryfikowanym
+  **kandydatem**: nic nie idzie do `domain/`, nie powstaje żaden koszt.
+  Podsumowanie mówi „Model zweryfikowany do dalszej pracy", nigdy „Model jest
+  poprawny w 100 %".
+
+  Migawka: `schemaVersion` 2→**3**, `analyzerVersion` **`0.3.0-stage025`**.
+  Bramki: `:analyzer:test` (**227**), `:app:testDebugUnitTest` (**217**),
+  `lintDebug`, `assembleDebug`, `assembleRelease` — zielone. Granica release
+  sprawdzona w dexie z kontrolą dodatnią i ujemną: obecne `analyzer/service`,
+  silnik weryfikacji, przestrzeń robocza, jsoup; nieobecne Lab, Filament,
+  `MarcowkiVisualModelV1`, `SyntheticDemoHouse`, `EvaluationProjects`,
+  `CandidateReferenceComparator`, `buildplan/app/evaluation`, klucze projektów,
+  `BUILDPLAN_ANALYZER_EVIDENCE_DIR`. Inwentarz `.so` bez zmian, więc badania
+  16 KB nie powtarzano; `zipalign -c -P 16 -v 4` przechodzi; uprawnienia
+  dokładnie `INTERNET`, jeden wpis launchera.
+
 ## Następny krok
 
 GATE-3D-SHAPE-01-R7 (`RETEST_PENDING`) — OWNER ocenia immersyjną przestrzeń
@@ -731,21 +847,30 @@ ocenie STAGE-014 (izolacja pomieszczenia). Zieleń techniczna STAGE-013H
 **nie jest** akceptacją wizualną. Równolegle OWNER ocenia import projektu
 ze STAGE-024 — w produkcie (Projekt → Import projektu: adres, fazy,
 podsumowanie tylko do odczytu, pytania i niejednoznaczności) oraz w debugowym
-Lab, gdzie widać ten sam bieg w szczegółach. STAGE-025 (weryfikacja kandydata
-przez człowieka) ani STAGE-014 nie startują automatycznie — wracają do
-koordynatora.
+Lab, gdzie widać ten sam bieg w szczegółach.
+
+Do tego **brama łącząca po STAGE-025**: OWNER ocenia przestrzeń roboczą
+weryfikacji — czy 48 decyzji na 246 wierszy to naprawdę minimalny zbiór
+korzeni, czy kolejność pytań odpowiada temu, co dla niego ważne, czy zdania
+pytań są zrozumiałe bez zaglądania w rysunek i czy podsumowanie jest uczciwe.
+Zieleń techniczna STAGE-025 **nie jest** akceptacją. Trwałość sesji
+weryfikacji, przejście zweryfikowanego kandydata do domeny, wycena
+z przedmiaru, STAGE-014 (izolacja pomieszczenia) ani żaden następny etap
+**nie startują automatycznie** — wracają do koordynatora.
 
 ## Czego nadal NIE ma
 
 Produkcyjnej architektury renderera, klas rozmiaru okna (tablet, poziom)
 w przestrzeni roboczej, prawdziwego rozmycia tła pod szkłem, śledzenia palca
-przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **weryfikacji
-kandydata przez człowieka** (STAGE-024 dało usługę, wejście w produkcie
-i podsumowanie tylko do odczytu; wybór między dwoma odczytami, potwierdzanie
-założeń i przejście kandydata do modelu to STAGE-025 i nie istnieją),
+przy przeciąganiu osi czasu, izolacji pomieszczenia w UI, **trwałości sesji
+weryfikacji** (STAGE-025 dało decyzje, przeliczenie i rodowód, ale sesja żyje
+w `viewModelScope` i ginie z procesem), **przejścia zweryfikowanego kandydata
+do domeny** (nadal nie ma kanonicalizacji: nic nie zapisuje się do `domain/`),
 **wyceny z przedmiaru** (żadna wielkość analizatora nie tworzy kosztu; ekran
 importu nie może nawet nazwać typu z `domain/`), drugiego adaptera witryny,
 odczytu wysokości otworów (ograniczenie źródła: 4–6 px na glif),
+odczytu elewacji o wysokim zasięgu (czytnik jest z założenia nastrojony na
+precyzję i pomija otwory, których nie potrafi otoczyć ścianą),
 wycinania otworów w połaci dachu, grubości połaci, gąsiora
 na kalenicy, drugiego stylu pokrycia dachu, animacji dachówek, pickingu przez
 szkło, profilu ramy okiennej i pochwytu balustrady, danych na osi czasu
@@ -768,11 +893,14 @@ kominowych, materiałów, konstrukcji ani rzędnych konstrukcyjnych.
 - statistics
 - budget calculations (spent / remaining / overrun)
 - cost allocation rules (STAGE-015)
+- trwałość sesji weryfikacji (STAGE-025 dało decyzje i przeliczenie w pamięci)
+- przejście zweryfikowanego kandydata do domeny (kanonicalizacja)
 
 ## PARKED
 
-- parser projektu (prototyp badawczy ze STAGE-023A istnieje; produktyzacja
-  i drugi adapter witryny zaparkowane)
+- parser projektu (rdzeń badawczy ze STAGE-023A, produktowe wejście od
+  STAGE-024, weryfikacja przez człowieka od STAGE-025; drugi adapter witryny
+  zaparkowany)
 - OCR
 - benchmarki
 - PRO
@@ -797,6 +925,12 @@ technicznego PASS.
 - czas do pierwszej klatki modelu na realnym urządzeniu (na emulatorze
   kilka sekund pod okładką)
 - zachowanie na realnym urządzeniu
+- czy 48 decyzji na 246 wierszy Projektu A to naprawdę minimalny zbiór korzeni
+  (STAGE-025 — do oceny)
+- czy kolejność pytań weryfikacji odpowiada temu, co dla OWNER-a ważne
+- czy zdanie pytania da się zrozumieć bez zaglądania w rysunek
+- czy podsumowanie „Model zweryfikowany do dalszej pracy" jest uczciwe wobec
+  tego, co faktycznie zostało potwierdzone
 
 ## Do potwierdzenia przez OWNER-a
 

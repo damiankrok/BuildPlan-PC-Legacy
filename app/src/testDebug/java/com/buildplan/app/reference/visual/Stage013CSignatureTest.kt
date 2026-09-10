@@ -558,9 +558,13 @@ class Stage013CSignatureTest {
         // feature now, so the app carries the analyzer's platform bindings and one small screen
         // that calls its service. What is still forbidden is what always was — analyzer-like code
         // anywhere else in the shipped app, and any OCR, vision or ML library at all.
+        // Widened in STAGE-025 for the verification workspace, which is the product's own screen
+        // over the analyzer's questions: it names `RootQuestion` and `VerificationSession` the way
+        // the import screen already names `Measured`. The canvas has a variant-specific half in
+        // each of `debug` and `release`, so both are authorised by name and neither by wildcard.
         val authorised = Regex(
             """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
-                """|app[\\/]src[\\/]main[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/]ProjectImport[A-Za-z]*)\.kt$""",
+                """|app[\\/]src[\\/](main|debug|release)[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/](ProjectImport|Verification)[A-Za-z]*)\.kt$""",
         )
         val sources = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }

@@ -235,14 +235,24 @@ class QuantityTakeoffEngine(
     private val candidate: ProjectAnalysisCandidate,
     private val roofField: RoofHeightField?,
     private val gridM: Double = 0.05,
-    private val assumedOpeningHeights: Map<OpeningType, Double> = mapOf(
-        OpeningType.DOOR to 2.05,
-        OpeningType.WINDOW to 1.50,
-        OpeningType.GARAGE_GATE to 2.20,
-        OpeningType.ROOFLIGHT to 1.18,
-        OpeningType.UNKNOWN to 1.50,
-    ),
+    private val assumedOpeningHeights: Map<OpeningType, Double> = DEFAULT_ASSUMED_OPENING_HEIGHTS,
 ) {
+
+    companion object {
+        /**
+         * The heights used for a deduction when the source prints none. Stated
+         * once, here, so the verification stage can show a person exactly the
+         * number it is asking them to confirm or replace.
+         */
+        val DEFAULT_ASSUMED_OPENING_HEIGHTS: Map<OpeningType, Double> = mapOf(
+            OpeningType.DOOR to 2.05,
+            OpeningType.WINDOW to 1.50,
+            OpeningType.GARAGE_GATE to 2.20,
+            OpeningType.PASSAGE to 2.05,
+            OpeningType.ROOFLIGHT to 1.18,
+            OpeningType.UNKNOWN to 1.50,
+        )
+    }
 
     private val levels = candidate.levels
     private val topFloorId = candidate.floors.maxByOrNull { it.order }?.id
@@ -255,6 +265,15 @@ class QuantityTakeoffEngine(
         val notes = mutableListOf<String>()
         val assumption = Provenance.assumption("opening heights assumed per type (door ${assumedOpeningHeights[OpeningType.DOOR]} m, window ${assumedOpeningHeights[OpeningType.WINDOW]} m, gate ${assumedOpeningHeights[OpeningType.GARAGE_GATE]} m) because the plan prints them as text this stage does not read")
         notes += assumption.method
+        // Whether the exterior openings' heights are known decides how far every figure that
+        // deducts them may be trusted. Once each height is read or confirmed the deduction is a
+        // derivation like any other; while one is absent the figure rests on the assumption
+        // above and says so. Recomputed rather than fixed, because verification may supply them.
+        val exteriorOpenings = candidate.openings.filter { it.exterior }
+        val exteriorHeightFidelity = heightFidelity(exteriorOpenings)
+        val exteriorHeightProvenance = if (exteriorOpenings.all { it.height.value != null }) {
+            Provenance.derived("exterior opening widths × heights", exteriorOpenings.map { it.height.provenance.method }.distinct().take(3))
+        } else assumption
 
         for (floor in candidate.floors) {
             val floorY = floor.floorElevation.value ?: 0.0
@@ -285,6 +304,20 @@ class QuantityTakeoffEngine(
                     notes += "${room.id}: $why"
                     continue
                 }
+                // A room with an outline and no boundary segments — a region a person assigned to
+                // a published row — has a floor and a ceiling but no wall faces the analyzer can
+                // name, and a zero here would look like a measurement of nothing.
+                if (room.boundary.isEmpty()) {
+                    val why = "room has no wall-face segments: ${room.geometryNote}"
+                    val grid = integrate(room, ::heightAt)
+                    roomQuantities += unresolvedRoom(room, floorArea, why).copy(
+                        ceilingFlat = Measured(grid.flatArea, MeasureUnit.SQUARE_METER, fidelityOf(room, isTop, floor), Provenance.derived("grid integration")),
+                        volume = Measured(grid.volume, MeasureUnit.CUBIC_METER, fidelityOf(room, isTop, floor), Provenance.derived("grid integration of height")),
+                    )
+                    surfaces += MeasuredSurfaceCandidate("${room.id}-floor", SurfaceType.FLOOR, room.id, room.id, null, null, false, "room polygon", floorArea, zero(), floorArea, "floor finish area of the room polygon")
+                    notes += "${room.id}: $why"
+                    continue
+                }
                 val grid = integrate(room, ::heightAt)
                 val fidelityH = if (isTop) FactFidelity.weakest(listOf(room.matchConfidence, levels.atticFlatCeilingHeight.fidelity)) else FactFidelity.weakest(listOf(room.matchConfidence, floor.clearHeight.fidelity))
                 val faceIds = mutableListOf<String>()
@@ -301,7 +334,17 @@ class QuantityTakeoffEngine(
                         val w = o.width.value ?: 0.0
                         val full = if (o.type == OpeningType.PASSAGE) faceGross / max(length, 1e-6) * w else w * h
                         faceDeduction += min(full, faceGross)
-                        if (o.height.value == null) deductionFidelity = FactFidelity.DISPLAY_ASSUMPTION
+                        deductionFidelity = if (o.height.value == null) {
+                            FactFidelity.DISPLAY_ASSUMPTION
+                        } else {
+                            FactFidelity.weakest(listOf(deductionFidelity, o.height.fidelity, FactFidelity.SOURCE_DERIVED))
+                        }
+                    }
+                    val faceHeightsKnown = openings.all { it.height.value != null }
+                    val deductionProvenance = when {
+                        openings.isEmpty() -> Provenance.derived("no openings on this face")
+                        faceHeightsKnown -> Provenance.derived("opening widths × heights", openings.map { it.height.provenance.method }.distinct().take(3))
+                        else -> assumption
                     }
                     val id = "${room.id}-face${i + 1}"
                     faceIds += id
@@ -317,7 +360,7 @@ class QuantityTakeoffEngine(
                         facesOutside = seg.faceOutside,
                         basis = "boundary segment ${"%.2f".format(java.util.Locale.ROOT, length)} m from (${"%.2f".format(java.util.Locale.ROOT, seg.segment.a.x)}, ${"%.2f".format(java.util.Locale.ROOT, seg.segment.a.z)}) to (${"%.2f".format(java.util.Locale.ROOT, seg.segment.b.x)}, ${"%.2f".format(java.util.Locale.ROOT, seg.segment.b.z)}), height integrated along it",
                         grossArea = Measured(faceGross, MeasureUnit.SQUARE_METER, fidelityH, Provenance.derived("segment length × height profile", listOf("room polygon", if (isTop) "roof height field" else "storey clear height"))),
-                        deductions = Measured(faceDeduction, MeasureUnit.SQUARE_METER, if (openings.isEmpty()) fidelityH else deductionFidelity, if (openings.isEmpty()) Provenance.derived("no openings on this face") else assumption),
+                        deductions = Measured(faceDeduction, MeasureUnit.SQUARE_METER, if (openings.isEmpty()) fidelityH else deductionFidelity, deductionProvenance),
                         netArea = Measured(faceGross - faceDeduction, MeasureUnit.SQUARE_METER, if (openings.isEmpty()) fidelityH else deductionFidelity, Provenance.derived("gross − opening deductions")),
                         semantics = "room-facing finish area of one side of the wall (plaster/paint); not a structural wall quantity",
                     )
@@ -335,7 +378,7 @@ class QuantityTakeoffEngine(
                     perimeter = room.perimeter,
                     wallFaceIds = faceIds,
                     wallGross = Measured(gross, MeasureUnit.SQUARE_METER, fidelityH, Provenance.derived("sum of wall faces")),
-                    wallOpenings = Measured(deductions, MeasureUnit.SQUARE_METER, deductionFidelity, assumption),
+                    wallOpenings = Measured(deductions, MeasureUnit.SQUARE_METER, deductionFidelity, if (deductionFidelity == FactFidelity.DISPLAY_ASSUMPTION) assumption else Provenance.derived("sum of face deductions")),
                     wallNet = Measured(gross - deductions, MeasureUnit.SQUARE_METER, deductionFidelity, Provenance.derived("gross − openings")),
                     ceilingFlat = Measured(ceilingFlat, MeasureUnit.SQUARE_METER, fidelityH, Provenance.derived("grid integration")),
                     ceilingSloped = Measured(ceilingSloped, MeasureUnit.SQUARE_METER, fidelityH, Provenance.derived("grid integration / cos(pitch)")),
@@ -366,9 +409,11 @@ class QuantityTakeoffEngine(
             val partitions = walls.filter { it.wallClass == WallClass.PARTITION }.sumOf(::structural)
             val openings = candidate.openings.filter { it.floorId == floor.id }
             val byType = openings.groupBy { it.type }.mapValues { (t, list) -> list.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[t] ?: 0.0) } }
-            val exteriorOpenings = openings.filter { it.exterior }.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[it.type] ?: 0.0) }
+            val floorExterior = openings.filter { it.exterior }
+            val exteriorOpenings = floorExterior.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[it.type] ?: 0.0) }
             val envelopeGross = floor.footprint?.edges?.sumOf { e -> lineIntegral(e.a, e.b, ::wallHeightAt) } ?: 0.0
             val f = FactFidelity.weakest(listOf(floor.clearHeight.fidelity, FactFidelity.SOURCE_TRACED))
+            val floorHeightFidelity = heightFidelity(floorExterior)
             FloorQuantities(
                 floorId = floor.id,
                 roomFloorAreaSum = Measured(floor.rooms.sumOf { it.plannedArea.value ?: 0.0 }, MeasureUnit.SQUARE_METER, f, Provenance.derived("sum of room polygons")),
@@ -379,7 +424,11 @@ class QuantityTakeoffEngine(
                 // has every opening missing from it, and taking them off a second time reported
                 // Project A's envelope at 73 m2 when the traced masonry alone was 123 m2.
                 exteriorEnvelopeGross = Measured(envelopeGross, MeasureUnit.SQUARE_METER, f, Provenance.derived("storey footprint perimeter × storey height, measured over the openings")),
-                exteriorEnvelopeNet = Measured(max(0.0, envelopeGross - exteriorOpenings), MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+                exteriorEnvelopeNet = Measured(
+                    max(0.0, envelopeGross - exteriorOpenings), MeasureUnit.SQUARE_METER,
+                    FactFidelity.weakest(listOf(f, floorHeightFidelity)),
+                    if (floorHeightFidelity == FactFidelity.DISPLAY_ASSUMPTION) assumption else Provenance.derived("envelope gross − exterior openings at their heights"),
+                ),
                 openingAreasByType = byType,
             )
         }
@@ -395,8 +444,8 @@ class QuantityTakeoffEngine(
         val eave = roof?.eaveLength ?: Measured.missing(MeasureUnit.METER, "no roof")
 
         // Joinery and facade.
-        val exteriorOpenings = candidate.openings.filter { it.exterior }
         val joinery = exteriorOpenings.sumOf { (it.width.value ?: 0.0) * (it.height.value ?: assumedOpeningHeights[it.type] ?: 0.0) }
+        val heightsKnown = exteriorOpenings.count { it.height.value != null }
         // Two readings of the envelope, and the difference between them is the point.
         //
         // The masonry reading sums the traced exterior wall pieces. Every opening is already
@@ -425,15 +474,18 @@ class QuantityTakeoffEngine(
             ridgeLength = ridge,
             hipLength = hip,
             eaveLength = eave,
-            exteriorJoinery = Measured(joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption, note = "${exteriorOpenings.size} exterior openings, widths traced, heights assumed"),
+            exteriorJoinery = Measured(
+                joinery, MeasureUnit.SQUARE_METER, exteriorHeightFidelity, exteriorHeightProvenance,
+                note = "${exteriorOpenings.size} exterior openings, widths traced, $heightsKnown heights read or confirmed, ${exteriorOpenings.size - heightsKnown} assumed",
+            ),
             facadeGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("storey footprint perimeters × storey heights + gables")),
-            facadeNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+            facadeNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, exteriorHeightFidelity, if (exteriorHeightFidelity == FactFidelity.DISPLAY_ASSUMPTION) assumption else Provenance.derived("facade gross − exterior joinery")),
             facadeWallMaterial = Measured(wallMaterial, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("traced exterior wall pieces, openings and unresolved envelope excluded")),
             facadeScope = FacadeScope(
                 exteriorStructuralWall = Measured(wallMaterial, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_TRACED, Provenance.derived("traced exterior wall pieces")),
                 finishGross = Measured(facadeGross, MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("storey footprint perimeters × storey heights + gables")),
-                finishNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
-                openingDeduction = Measured(joinery, MeasureUnit.SQUARE_METER, FactFidelity.DISPLAY_ASSUMPTION, assumption),
+                finishNet = Measured(facadeGross - joinery, MeasureUnit.SQUARE_METER, exteriorHeightFidelity, if (exteriorHeightFidelity == FactFidelity.DISPLAY_ASSUMPTION) assumption else Provenance.derived("facade gross − exterior joinery")),
+                openingDeduction = Measured(joinery, MeasureUnit.SQUARE_METER, exteriorHeightFidelity, exteriorHeightProvenance),
                 gableFace = Measured(gableArea(), MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED, Provenance.derived("roof height field above the eave along the gable edges")),
                 garageExterior = Measured(
                     garageExteriorArea(surfaces), MeasureUnit.SQUARE_METER, FactFidelity.SOURCE_DERIVED,
@@ -452,6 +504,22 @@ class QuantityTakeoffEngine(
             notes = notes,
         )
     }
+
+    /**
+     * How far a deduction of these openings may be trusted: the weakest of
+     * their heights, with an absent height counting as the assumption it is
+     * replaced by. Openings with no height at all — none in the list — deduct
+     * nothing and rest on nothing.
+     */
+    private fun heightFidelity(openings: List<com.buildplan.app.analyzer.candidate.OpeningCandidate>): FactFidelity {
+        if (openings.isEmpty()) return FactFidelity.SOURCE_DERIVED
+        return FactFidelity.weakest(
+            openings.map { if (it.height.value == null) FactFidelity.DISPLAY_ASSUMPTION else it.height.fidelity } + FactFidelity.SOURCE_DERIVED,
+        )
+    }
+
+    private fun fidelityOf(room: RoomCandidate, isTop: Boolean, floor: com.buildplan.app.analyzer.candidate.FloorCandidate): FactFidelity =
+        if (isTop) FactFidelity.weakest(listOf(room.matchConfidence, levels.atticFlatCeilingHeight.fidelity)) else FactFidelity.weakest(listOf(room.matchConfidence, floor.clearHeight.fidelity))
 
     /**
      * A room whose outline could not be proved: every quantity that needs the

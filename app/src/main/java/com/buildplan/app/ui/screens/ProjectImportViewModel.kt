@@ -10,6 +10,7 @@ import com.buildplan.app.analyzer.service.AnalysisPhase
 import com.buildplan.app.analyzer.service.AnalyzeProjectRequest
 import com.buildplan.app.analyzer.service.CachePolicy
 import com.buildplan.app.analyzer.service.ProjectAnalyzerService
+import com.buildplan.app.analyzer.verification.VerificationSession
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,16 @@ data class ProjectImportState(
     val phase: AnalysisPhase? = null,
     val detail: String? = null,
     val outcome: AnalysisOutcome? = null,
+    /**
+     * The verification workspace, once a person has opened it on this run's
+     * candidate. Null while the screen is the read-only summary.
+     *
+     * It lives here rather than in a screen of its own because it is *this*
+     * analysis being verified: leaving the screen and coming back to a fresh
+     * empty session would silently discard a person's decisions, and a second
+     * view model would have to be handed the report to avoid that.
+     */
+    val verification: VerificationUiState? = null,
 )
 
 /**
@@ -89,7 +100,86 @@ class ProjectImportViewModel @JvmOverloads constructor(
     fun cancel() {
         job?.cancel()
         job = null
-        _state.update { it.copy(running = false, outcome = AnalysisOutcome.Cancelled) }
+        _state.update { it.copy(running = false, outcome = AnalysisOutcome.Cancelled, verification = null) }
+    }
+
+    // ------------------------------------------------------------ verification
+
+    /**
+     * Opens the verification workspace on the candidate this run produced.
+     *
+     * Does nothing when the run produced no candidate: there is nothing to
+     * verify, and a workspace over an empty report would be a screen that
+     * asks a person to confirm nothing.
+     */
+    fun startVerification() {
+        val report = _state.value.outcome?.reportOrNull ?: return
+        if (report.candidate == null) return
+        val session = VerificationSession.start(report) { System.currentTimeMillis() }
+        _state.update {
+            it.copy(
+                verification = VerificationUiState(
+                    session = session,
+                    activeQuestionId = session.questions.firstOrNull()?.id,
+                ),
+            )
+        }
+    }
+
+    fun closeVerification() {
+        _state.update { it.copy(verification = null) }
+    }
+
+    fun selectQuestion(id: String?) = updateVerification { it.copy(activeQuestionId = id, showSummary = false) }
+
+    fun showSummary(show: Boolean) = updateVerification { it.copy(showSummary = show) }
+
+    fun choose(questionId: String, optionId: String) = decide(questionId) { it.choose(questionId, optionId) }
+
+    fun provide(questionId: String, value: Double, onlyIds: Set<String>? = null) =
+        decide(questionId) { it.provide(questionId, value, onlyIds) }
+
+    fun confirm(questionId: String) = decide(questionId) { it.confirm(questionId) }
+
+    fun defer(questionId: String) = decide(questionId, advance = true) { it.defer(questionId) }
+
+    /**
+     * Applies one decision, then moves to the next open question.
+     *
+     * The advance is what keeps the workspace from asking a person to hunt for
+     * their next task, and it is deliberately *after* the decision so the
+     * change summary the screen shows is the one they just made.
+     */
+    private fun decide(questionId: String, advance: Boolean = true, action: (VerificationSession) -> VerificationSession) {
+        updateVerification { ui ->
+            val next = try {
+                action(ui.session)
+            } catch (e: IllegalArgumentException) {
+                // A value the session refuses — an empty field, a member outside the family — is
+                // a no-op rather than a crash; the field's own validation is what tells the user.
+                return@updateVerification ui
+            }
+            ui.copy(
+                session = next,
+                activeQuestionId = if (advance) next.nextOpenAfter(questionId)?.id ?: questionId else questionId,
+                lastChange = next.verified.changeSummary.firstOrNull(),
+            )
+        }
+    }
+
+    fun undo() = updateVerification { ui ->
+        val next = ui.session.undoLast()
+        ui.copy(session = next, lastChange = null, activeQuestionId = ui.activeQuestionId ?: next.questions.firstOrNull()?.id)
+    }
+
+    fun resetQuestion(questionId: String) = updateVerification { ui ->
+        ui.copy(session = ui.session.reset(questionId), lastChange = null, activeQuestionId = questionId)
+    }
+
+    fun dismissChange() = updateVerification { it.copy(lastChange = null) }
+
+    private fun updateVerification(transform: (VerificationUiState) -> VerificationUiState) {
+        _state.update { state -> state.verification?.let { state.copy(verification = transform(it)) } ?: state }
     }
 
     override fun onCleared() {

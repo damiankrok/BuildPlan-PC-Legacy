@@ -5,11 +5,13 @@ Natywna aplikacja **Android** do organizowania i analizowania kosztów budowy do
 > **Bardzo wczesny etap.** Repozytorium zawiera powłokę aplikacji (App Shell,
 > nawigacja, puste ekrany modułów), kanoniczny model domenowy, kontrakt
 > geometrii budynku oraz **import projektu ze strony ARCHON** — jedyną funkcję,
-> która czyta cokolwiek z zewnątrz. Jej wynik jest kandydatem do sprawdzenia:
+> która czyta cokolwiek z zewnątrz. Jej wynik jest kandydatem do sprawdzenia,
+> a od STAGE-025 człowiek może go **zweryfikować** decyzjami; kandydat nadal
 > nic nie zapisuje do modelu budynku ani do kosztów. Nie ma jeszcze
-> produkcyjnego renderera 3D, weryfikacji kandydata przez człowieka,
-> persystencji, backendu ani logiki biznesowej. Pozostałe wartości widoczne
-> w interfejsie to placeholdery (`—`), a nie dane.
+> produkcyjnego renderera 3D, trwałości sesji weryfikacji, przejścia
+> zweryfikowanego kandydata do modelu, wyceny, persystencji, backendu ani
+> logiki biznesowej. Pozostałe wartości widoczne w interfejsie to
+> placeholdery (`—`), a nie dane.
 
 ## Stack
 
@@ -73,8 +75,8 @@ z rzutami przez HTTPS i pokaże, co z nich odczytała: kondygnacje,
 pomieszczenia, otwory, wielkości do przedmiaru, pytania i to, czego źródło nie
 rozstrzyga.
 
-Ekran jest **tylko do odczytu**. Wynik jest propozycją, nie projektem — nic nie
-trafia do modelu budynku ani do kosztów; potwierdzanie danych to osobny etap.
+Wynik jest propozycją, nie projektem — nic nie trafia do modelu budynku ani do
+kosztów.
 
 - Obsługiwane są wyłącznie strony projektów `archon.pl` podane jawnie. Wynik
   wyszukiwarki, losowa strona czy PDF z nieznanego hosta dostają odpowiedź
@@ -83,6 +85,35 @@ trafia do modelu budynku ani do kosztów; potwierdzanie danych to osobny etap.
   (`cacheDir/project-analyzer`), kluczowanym wersją schematu, analizatora
   i adaptera; **Pobierz ponownie** wymusza świeże pobranie.
 - Release ma z tego powodu uprawnienie `INTERNET` — i tylko je.
+
+## Weryfikacja modelu
+
+Od STAGE-025 pod podsumowaniem importu stoi **Zweryfikuj model**. Otwiera
+przestrzeń roboczą, w której kandydat jest kanwą, a przy krawędzi stoi szyna
+pytań: model w środku, wąska lista decyzji obok, panel kontekstu na jedno
+pytanie i podświetlony w 3D podmiot, o który pytanie idzie.
+
+Pyta się o **korzenie, nie o wiersze**. W Projekcie A 246 wielkości bez
+potwierdzenia sprowadza się do **48 decyzji**, bo jedna rzędna stropu nad
+parterem rozstrzyga 69 wielkości, a jeden odczyt dachu 78. Pytania są
+pogrupowane szczeblami — wymagane, dużego wpływu, zalecane, opcjonalne —
+i tylko wymagane blokują.
+
+- Migawka analizy jest **niezmienna**. Decyzje leżą obok niej, a wynik jest
+  przeliczany deterministycznie od nowa; cofnięcie, reset i odłożenie pytania
+  są zawsze dostępne (odłożyć nie da się pytania wymaganego).
+- `USER_CONFIRMED` nadaje **wyłącznie decyzja człowieka**; wielkość
+  przeliczona z takiej decyzji dostaje `DERIVED_FROM_USER_CONFIRMED`
+  i zachowuje rodowód do pytania, decyzji i miejsca w źródle.
+- Pole liczbowe startuje **puste**. Jeśli analizator coś przyjął, potwierdzenie
+  tego jest osobnym przyciskiem.
+- Podsumowanie mówi „Model zweryfikowany do dalszej pracy", nie „poprawny
+  w 100 %", i wymienia, co zostało bez potwierdzenia. Sesja żyje w pamięci
+  — trwałość to osobny etap.
+
+Elewacje i wizualizacje są od STAGE-025 **czytane**, nie tylko pobierane:
+deterministyczna morfologia rastra, bez zdalnej AI. Obraz nigdy nie nadpisuje
+rzutu — rozbieżność staje się nazwanym konfliktem, a konflikt pytaniem.
 
 **Analyzer Lab** (tylko debug) to osobna ikona launchera obok aplikacji: ten
 sam bieg pokazany w szczegółach — fakty, rzuty, kandydat, przedmiar,
@@ -107,7 +138,8 @@ app/src/main/java/com/buildplan/app/
   ui/
     AppShell.kt      ramka aplikacji: ModalNavigationDrawer + NavHost
     navigation/      lista sekcji, NavHost, zawartość szuflady
-    screens/         przestrzeń robocza (dom jako kanwa), import projektu
+    screens/         przestrzeń robocza (dom jako kanwa), import projektu,
+                     przestrzeń robocza weryfikacji kandydata
                      i placeholdery pozostałych sekcji
     components/      komponenty współdzielone: szkło, szyna narzędzi, oś czasu
     workspace/       stan otwartego chromu i polityka ruchu
@@ -124,8 +156,13 @@ app/src/debug/java/com/buildplan/app/
   presentation/      profile prezentacji po identyfikatorze elementu:
                      dekompozycja widoku i pokrycie dachu (tylko debug)
   render/filament/   debugowy renderer, kanwa Filamenta i scena modelu
-  ui/screens/        debugowa kanwa przestrzeni roboczej: narzędzia i inspektor
+  ui/screens/        debugowe kanwy: przestrzeń robocza (narzędzia, inspektor)
+                     i kanwa weryfikacji kandydata na Filamencie
   analyzer/lab/      Analyzer Lab: debugowy harness prototypu analizatora
+
+app/src/testDebug/java/com/buildplan/app/
+  evaluation/        wyrocznia porównawcza: kandydat analizatora kontra ręczny
+                     odrys Marcówek; wyłącznie ocena, nieosiągalna z produktu
 
 analyzer/src/main/kotlin/com/buildplan/app/analyzer/
   service/           PUBLICZNE API: usługa, żądanie, fazy postępu, rodziny
@@ -143,7 +180,11 @@ analyzer/src/main/kotlin/com/buildplan/app/analyzer/
                      bramka czytelności, szablonowe rozpoznawanie cyfr,
                      łańcuch wymiarowy i jego korespondencja
   candidate/         kandydat analizy (nigdy nie jest modelem kanonicznym),
-                     walidacja pierścienia
+                     walidacja pierścienia, dowód z obrazu, formy polskie
+  visual/            deterministyczny odczyt elewacji i wizualizacji: klasy
+                     pikseli, sylwetka, dach, otwory, konflikty; bez zdalnej AI
+  verification/      weryfikacja przez człowieka: graf zależności, pytania
+                     korzeniowe z priorytetem, decyzje, sesja i przeliczenie
   quantity/          przedmiar: lica pomieszczeń, ściany, sufity, dach
   validate/          porównanie ze źródłem, braki, pytania
   snapshot/          deterministyczna migawka JSON

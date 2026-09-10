@@ -34,6 +34,15 @@ class FloorPlanAnalysis(
     val exteriorPieceIndices: Set<Int>,
     val footprintPixelArea: Int,
     val footprintOutlinePx: List<Pt>,
+    /**
+     * The sealed enclosure as drawn, whiskers included.
+     *
+     * [footprintOutlinePx] is the storey — the body a room can be inside — and is what the
+     * envelope is measured from. This one is everything the flood could not get into, which is
+     * what a roof covers when the plan draws no roof band of its own: an eaves or gable overhang
+     * reads on a plan as exactly the narrow strip the storey outline drops.
+     */
+    val enclosedOutlinePx: List<Pt>,
     /** The filled footprint in pixels, kept so storeys can be registered against each other. */
     val footprintMask: BinaryMask,
     val roofBandOutlinePx: List<Pt>?,
@@ -224,11 +233,41 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         debug.emit("$debugPrefix-3b-sealedAll", sealedAll)
         val footprintComponents = outsideAll.not().components()
         val mainLabel = (1..footprintComponents.count).maxByOrNull { footprintComponents.sizes[it] } ?: 0
-        val footprintMask = if (mainLabel == 0) BinaryMask(image.width, image.height) else footprintComponents.maskOf(mainLabel)
-        val footprintBox = footprintMask.boundingBox()
-        val footprintPixelArea = footprintMask.count()
-        val footprintOutline = footprintBox?.let { Regions.smoothJogs(Regions.traceOutline(footprintMask, it), px(0.15).toDouble()) } ?: emptyList()
-        debug.emit("$debugPrefix-3-footprint", footprintMask)
+        val enclosed = if (mainLabel == 0) BinaryMask(image.width, image.height) else footprintComponents.maskOf(mainLabel)
+        // A storey is a body, not a body with whiskers.
+        //
+        // A terrace parapet, a canopy cheek or a plinth return is masonry, is drawn as thick as a
+        // wall, and joins the house — so it seals with everything else and the flood cannot get
+        // behind it. What it never is, is a piece of storey: nothing stands on it and no room is
+        // inside it. Left in, it costs almost no *area* — which is why the calibration and the
+        // footprint area still reconcile with the published figure — and it costs a great deal of
+        // *extent* and *perimeter*, which is what the envelope is measured from: two prongs a
+        // metre long add four metres of facade that is not there.
+        //
+        // A square opening is the whole rule: it deletes anything narrower than the structuring
+        // element and leaves an axis-aligned body untouched, corners included. The threshold is
+        // twice the thickest wall a house has — below that width there is no room to be inside,
+        // so it is not a storey — and it is the same number the wall classifier already uses.
+        val body = withoutWhiskers(enclosed, px(t.maxWallThicknessM / 2))
+        val prongPixels = enclosed.count() - body.count()
+        if (prongPixels > 0) {
+            issues += AnalysisIssue(
+                IssueSeverity.INFO, "plan", assetUrl,
+                "${"%.2f".format(java.util.Locale.ROOT, prongPixels / (ppm * ppm))} m2 of the enclosed outline was narrower than ${"%.2f".format(java.util.Locale.ROOT, t.maxWallThicknessM)} m and dropped: a parapet, canopy cheek or plinth return, not a part of the storey",
+            )
+        }
+        // The whisker rule shapes the storey's *outline* and nothing else. The mask keeps its
+        // whiskers, because everything else built from it wants the sealed enclosure as drawn:
+        // the calibration reconciles its pixel area with the published footprint, the region
+        // segmentation floods inside it, the storeys are registered against it, and the roof band
+        // is grown from it — a roof legitimately overhangs, and a gable's overhang reads as
+        // exactly the kind of strip the outline drops.
+        val footprintMask = enclosed
+        val footprintBox = body.boundingBox() ?: enclosed.boundingBox()
+        val footprintPixelArea = enclosed.count()
+        val footprintOutline = footprintBox?.let { Regions.smoothJogs(Regions.traceOutline(body, it), px(0.15).toDouble()) } ?: emptyList()
+        val enclosedOutline = enclosed.boundingBox()?.let { Regions.smoothJogs(Regions.traceOutline(enclosed, it), px(0.15).toDouble()) } ?: footprintOutline
+        debug.emit("$debugPrefix-3-footprint", body)
 
         // Pieces beside the outside are exterior. Probe a band just beyond each face.
         val exterior = pieces.withIndex().filter { (_, p) -> touchesOutside(p, outsideAll, px(0.06)) }.map { it.index }.toSet()
@@ -266,6 +305,10 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         // one overhang is a fact about roofs, not about either house, and it is a no-op wherever
         // the band already hugs the walls.
         val roofBandOutline = if (roofBand.count() > 0) {
+            // Built from the *enclosed* outline, before the whisker rule: a roof legitimately
+            // overhangs its walls, and a gable's overhang reads on the plan as exactly the kind
+            // of narrow strip the storey footprint drops. Taking the opened body here would
+            // shorten every gable roof by its own overhang.
             val reach = wallEnvelope.or(footprintMask.and(nearWalls)).dilate(px(t.maxRoofOverhangM), px(t.maxRoofOverhangM))
             val filled = roofBand.or(footprintMask).and(reach).close(px(0.3), px(0.3)).outsideRegion().not()
             val comps = filled.components()
@@ -372,6 +415,7 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
             exteriorPieceIndices = exterior,
             footprintPixelArea = footprintPixelArea,
             footprintOutlinePx = footprintOutline,
+            enclosedOutlinePx = enclosedOutline,
             footprintMask = footprintMask,
             roofBandOutlinePx = roofBandOutline,
             regions = regionsInFootprint,
@@ -388,6 +432,32 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
 
     /** Whether a probe band just beyond either face of the piece lands mostly on outside pixels. */
     /** Share of [a]'s rectangle covered by [b]. */
+    /**
+     * The enclosed outline with every part narrower than `2 × radius` removed,
+     * as one connected body.
+     *
+     * A square opening is exact on the shapes a plan is made of: erode then
+     * dilate restores an axis-aligned rectangle to itself, corners included,
+     * and deletes anything the structuring element cannot fit inside. So a
+     * parapet return goes and the storey does not move by a pixel.
+     *
+     * Guarded rather than trusted. If the opening takes more than a tenth of
+     * the area, the shape was not a body with whiskers — it is a plan this
+     * rule does not understand — and the original is kept, because losing a
+     * wing is a worse answer than keeping a prong.
+     */
+    private fun withoutWhiskers(enclosed: BinaryMask, radiusPx: Int): BinaryMask {
+        val before = enclosed.count()
+        if (before == 0 || radiusPx < 1) return enclosed
+        val opened = enclosed.open(radiusPx, radiusPx)
+        val components = opened.components()
+        val main = (1..components.count).maxByOrNull { components.sizes[it] } ?: return enclosed
+        val body = components.maskOf(main)
+        val kept = body.count()
+        if (kept < before * MIN_BODY_SHARE) return enclosed
+        return body
+    }
+
     private fun overlapFraction(a: WallPiece, b: WallPiece): Double {
         val w = min(a.maxX(), b.maxX()) - max(a.minX(), b.minX())
         val h = min(a.maxY(), b.maxY()) - max(a.minY(), b.minY())
@@ -417,8 +487,11 @@ class PlanAnalyzer(private val debug: PlanDebugSink = PlanDebugSink.NONE) {
         return if (bothFaces) probe(true) && probe(false) else probe(true) || probe(false)
     }
 
+    /** How much of the enclosed outline the whisker rule may take before it is refused. */
+    private val MIN_BODY_SHARE = 0.90
+
     private fun empty(assetUrl: String, image: RasterImage, issues: List<AnalysisIssue>) = FloorPlanAnalysis(
-        assetUrl, image, emptyList(), emptyList(), emptyList(), emptySet(), 0, emptyList(), BinaryMask(image.width, image.height), null, emptyList(), { _, _ -> 0 }, emptyMap(), emptyList(), BinaryMask(image.width, image.height), null, null, 0, issues,
+        assetUrl, image, emptyList(), emptyList(), emptyList(), emptySet(), 0, emptyList(), emptyList(), BinaryMask(image.width, image.height), null, emptyList(), { _, _ -> 0 }, emptyMap(), emptyList(), BinaryMask(image.width, image.height), null, null, 0, issues,
     )
 }
 

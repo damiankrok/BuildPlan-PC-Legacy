@@ -24,6 +24,8 @@ data class ProjectAnalysisCandidate(
     val dimensions: List<NamedDimension>,
     /** Everything the analysis could not settle, in the order it was found. */
     val issues: List<AnalysisIssue>,
+    /** What the elevations and renders contributed: observations, facade assignments, conflicts, appearance proposals. */
+    val visual: VisualEvidence = VisualEvidence.NONE,
 ) {
     fun floor(id: String): FloorCandidate? = floors.firstOrNull { it.id == id }
     fun room(id: String): RoomCandidate? = floors.asSequence().flatMap { it.rooms.asSequence() }.firstOrNull { it.id == id }

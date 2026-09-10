@@ -40,6 +40,12 @@ class AnalyzerApiSurfaceTest {
         // The one seam the platform has to implement itself: bytes to pixels.
         "com.buildplan.app.analyzer.raster",
         "com.buildplan.app.analyzer.asset",
+        // STAGE-025. The verification overlay is a supported boundary in its own right: the
+        // product asks a person the questions it raises and folds their decisions back through
+        // it, so the app names `RootQuestion`, `VerificationSession` and the verified candidate
+        // exactly as it names `Measured`. What stays out of reach is unchanged — the raster, the
+        // solver and the reader that produced the report being verified.
+        "com.buildplan.app.analyzer.verification",
     )
 
     /**
@@ -53,6 +59,7 @@ class AnalyzerApiSurfaceTest {
         "com.buildplan.app.analyzer.roof",
         "com.buildplan.app.analyzer.text",
         "com.buildplan.app.analyzer.vertical",
+        "com.buildplan.app.analyzer.visual",
         "com.buildplan.app.analyzer.site.archon",
         "com.buildplan.app.analyzer.evaluation",
     )

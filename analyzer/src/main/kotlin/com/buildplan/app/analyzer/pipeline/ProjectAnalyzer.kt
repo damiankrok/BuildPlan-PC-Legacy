@@ -55,11 +55,12 @@ import com.buildplan.app.analyzer.validate.GapAnalysis
 import com.buildplan.app.analyzer.validate.GapAnalyzer
 import com.buildplan.app.analyzer.validate.ValidationFinding
 import com.buildplan.app.analyzer.vertical.VerticalAnalyzer
+import com.buildplan.app.analyzer.visual.VisualEvidenceBuilder
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** The stages the pipeline reports, in order. */
-enum class AnalysisStage { RESOLVE, READ_PAGE, FETCH_ASSETS, PLANS, ROOF, VERTICAL, CANDIDATE, QUANTITIES, VALIDATE, GAPS, SNAPSHOT }
+enum class AnalysisStage { RESOLVE, READ_PAGE, FETCH_ASSETS, PLANS, ROOF, VERTICAL, CANDIDATE, VISUAL, QUANTITIES, VALIDATE, GAPS, SNAPSHOT }
 
 /** Progress callback for a debug harness; called on the analysing thread. */
 fun interface AnalysisListener {
@@ -190,7 +191,11 @@ class ProjectAnalyzer(
         val groundCal = groundAnalysis?.calibration
         val roofOutline: Polygon? = topAnalysis?.let { a ->
             val cal = a.calibration ?: return@let null
-            (a.roofBandOutlinePx ?: a.footprintOutlinePx).let { Regions.toPolygon(it.map { p -> cal.toMeters(p) }) }
+            // No roof band drawn: the roof covers the sealed enclosure — whiskers included —
+            // rather than the storey body. A gable or eaves overhang reads on a plan as a narrow
+            // strip past the walls, which is exactly the kind of strip the storey outline drops,
+            // and a roof that stopped at the walls would be short by its own overhang.
+            (a.roofBandOutlinePx ?: a.enclosedOutlinePx).let { Regions.toPolygon(it.map { p -> cal.toMeters(p) }) }
         }
         val groundFootprint: Polygon? = groundAnalysis?.calibration?.let { cal -> Regions.toPolygon(groundAnalysis.footprintOutlinePx.map { cal.toMeters(it) }) }
         val exteriorThickness = analyses.flatMap { a -> a.pieces.filterIndexed { i, _ -> i in a.exteriorPieceIndices }.map { it.thickness / (a.calibration?.pixelsPerMeter?.value ?: 1.0) } }
@@ -368,7 +373,7 @@ class ProjectAnalyzer(
             }
         }
         val dimensions = dimensions(built.map { it.floor }, roof, levels, groundFootprint) + readDimensions
-        val candidate = ProjectAnalysisCandidate(
+        val traced = ProjectAnalysisCandidate(
             floors = built.map { it.floor },
             walls = built.flatMap { it.walls },
             openings = openingsWithLabels.flatMap { it.first },
@@ -378,7 +383,18 @@ class ProjectAnalyzer(
             dimensions = dimensions,
             issues = issues,
         )
-        log += "candidate: ${candidate.rooms.size} rooms, ${candidate.walls.size} walls, ${candidate.openings.size} openings, ${candidate.stairs.size} stair zones"
+        log += "candidate: ${traced.rooms.size} rooms, ${traced.walls.size} walls, ${traced.openings.size} openings, ${traced.stairs.size} stair zones"
+
+        // ---- what the elevations and renders show, beside the traced geometry
+        //
+        // Read after the candidate exists, because every comparison is *against* it: which facade
+        // an elevation shows is decided from where the entrance door is, and a count of openings
+        // is a count on that facade. The pictures never edit the geometry; they sit beside it as
+        // observations, conflicts and proposals for a person to judge.
+        val visual = timed(AnalysisStage.VISUAL, "Odczyt elewacji i wizualizacji") {
+            VisualEvidenceBuilder.build(traced, assets, cancellation) { log += it }
+        }
+        val candidate = traced.copy(visual = visual)
 
         val quantities = timed(AnalysisStage.QUANTITIES, "Przedmiar") { QuantityTakeoffEngine(candidate, roof?.let { RoofHeightField(it) }).compute() }
         log += "quantities: ${quantities.surfaces.size} surfaces, roof ${"%.1f".format(java.util.Locale.ROOT, quantities.roofTotal.value ?: 0.0)} m2"

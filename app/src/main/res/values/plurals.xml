@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Polish counts, which need four forms rather than two: 1 wielkość,
+  2-4 wielkości, 5+ wielkości, and the fractional "many" form Android calls
+  `other`. A single "%d wielkości" reads wrong at one and at two, and this is
+  the one place in the app where a number is put in front of a noun often
+  enough for that to show.
+-->
+<resources>
+    <plurals name="verify_affects">
+        <item quantity="one">%1$d wielkość</item>
+        <item quantity="few">%1$d wielkości</item>
+        <item quantity="many">%1$d wielkości</item>
+        <item quantity="other">%1$d wielkości</item>
+    </plurals>
+    <plurals name="verify_affects_long">
+        <item quantity="one">Odpowiedź rozstrzyga %1$d wielkość przedmiaru.</item>
+        <item quantity="few">Odpowiedź rozstrzyga %1$d wielkości przedmiaru.</item>
+        <item quantity="many">Odpowiedź rozstrzyga %1$d wielkości przedmiaru.</item>
+        <item quantity="other">Odpowiedź rozstrzyga %1$d wielkości przedmiaru.</item>
+    </plurals>
+</resources>

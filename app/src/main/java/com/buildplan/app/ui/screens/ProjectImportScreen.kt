@@ -56,6 +56,27 @@ fun ProjectImportScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // Verification takes the whole screen. It is the same analysis being worked on, so it lives
+    // in this screen's view model rather than behind a navigation route — leaving and returning
+    // must not silently drop a person's decisions.
+    state.verification?.let { verification ->
+        VerificationWorkspace(
+            ui = verification,
+            onSelectQuestion = viewModel::selectQuestion,
+            onChoose = viewModel::choose,
+            onProvide = { id, value -> viewModel.provide(id, value) },
+            onConfirm = viewModel::confirm,
+            onDefer = viewModel::defer,
+            onReset = viewModel::resetQuestion,
+            onUndo = viewModel::undo,
+            onDismissChange = viewModel::dismissChange,
+            onShowSummary = viewModel::showSummary,
+            onClose = viewModel::closeVerification,
+            modifier = modifier,
+        )
+        return
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = { SectionTopBar(title = stringResource(AppSection.Import.labelRes), onOpenDrawer = onOpenDrawer) },
@@ -124,16 +145,18 @@ fun ProjectImportScreen(
                 }
             }
 
-            state.outcome?.let { Outcome(it) }
+            state.outcome?.let { Outcome(it, onVerify = viewModel::startVerification) }
         }
     }
 }
 
 @Composable
-private fun Outcome(outcome: AnalysisOutcome) {
+private fun Outcome(outcome: AnalysisOutcome, onVerify: () -> Unit) {
     when (outcome) {
-        is AnalysisOutcome.Success -> ReportSummary(outcome.report, R.string.import_result_complete)
-        is AnalysisOutcome.Partial -> ReportSummary(outcome.report, R.string.import_result_partial, outcome.issues.map { it.message })
+        is AnalysisOutcome.Success -> ReportSummary(outcome.report, R.string.import_result_complete, onVerify = onVerify)
+        // A partial candidate is a usable answer and may be verified: what is missing is said
+        // on the screen, and the questions it produces are the same questions.
+        is AnalysisOutcome.Partial -> ReportSummary(outcome.report, R.string.import_result_partial, outcome.issues.map { it.message }, onVerify)
         is AnalysisOutcome.SourceChanged -> Problem(
             stringResource(
                 R.string.import_error_source_changed,
@@ -158,6 +181,7 @@ private fun ReportSummary(
     report: ProjectAnalysisReport,
     @StringRes headlineRes: Int,
     issues: List<String> = emptyList(),
+    onVerify: (() -> Unit)? = null,
 ) {
     val candidate = report.candidate
     val lines = buildList {
@@ -183,6 +207,9 @@ private fun ReportSummary(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (onVerify != null && candidate != null) {
+            Button(onClick = onVerify) { Text(stringResource(R.string.verify_open)) }
+        }
         Listing(stringResource(R.string.import_section_questions, report.questions.size), report.questions.map { it.text })
         Listing(
             stringResource(R.string.import_section_ambiguities, report.ambiguities.size),
@@ -268,6 +295,7 @@ private fun labelOf(phase: AnalysisPhase): Int = when (phase) {
     AnalysisPhase.SOLVING_ROOF -> R.string.import_phase_solving_roof
     AnalysisPhase.CLOSING_VERTICAL_CHAIN -> R.string.import_phase_closing_vertical_chain
     AnalysisPhase.BUILDING_CANDIDATE -> R.string.import_phase_building_candidate
+    AnalysisPhase.READING_PICTURES -> R.string.import_phase_reading_pictures
     AnalysisPhase.CALCULATING_QUANTITIES -> R.string.import_phase_calculating_quantities
     AnalysisPhase.VALIDATING -> R.string.import_phase_validating
     AnalysisPhase.BUILDING_QUESTIONS -> R.string.import_phase_building_questions

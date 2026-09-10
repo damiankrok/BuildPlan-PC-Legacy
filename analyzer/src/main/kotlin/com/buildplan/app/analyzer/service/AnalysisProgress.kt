@@ -46,6 +46,9 @@ enum class AnalysisPhase {
     /** Assembling floors, rooms, walls, openings and stairs into the candidate. */
     BUILDING_CANDIDATE,
 
+    /** Reading the elevations and renders beside the traced geometry: silhouette, roofline, openings, features. */
+    READING_PICTURES,
+
     /** Taking off floor, wall-face, ceiling, roof and facade quantities. */
     CALCULATING_QUANTITIES,
 
@@ -70,6 +73,7 @@ enum class AnalysisPhase {
             AnalysisStage.ROOF -> SOLVING_ROOF
             AnalysisStage.VERTICAL -> CLOSING_VERTICAL_CHAIN
             AnalysisStage.CANDIDATE -> BUILDING_CANDIDATE
+            AnalysisStage.VISUAL -> READING_PICTURES
             AnalysisStage.QUANTITIES -> CALCULATING_QUANTITIES
             AnalysisStage.VALIDATE -> VALIDATING
             AnalysisStage.GAPS -> BUILDING_QUESTIONS

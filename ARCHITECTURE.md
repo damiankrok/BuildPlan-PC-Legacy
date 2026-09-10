@@ -22,7 +22,12 @@ Powłoka aplikacji jest od STAGE-013H **immersyjną przestrzenią roboczą**:
 dom rysowany od krawędzi do krawędzi jako kanwa ekranu startowego, a chrom
 (szklana pigułka, szyna narzędzi, oś czasu, inspektor) przy krawędziach
 i na żądanie.
-Brak backendu, persystencji, autoryzacji i parsera rzutów.
+Obok tego **analizator projektów** (`analyzer/`, STAGE-023A/B/C) z produktowym
+wejściem od STAGE-024 i — od STAGE-025 — **weryfikacją kandydata przez
+człowieka**: nakładka decyzji nad niezmienną migawką analizy, pytania o korzenie
+zamiast o wiersze przedmiaru, deterministyczne przeliczenie oraz pierwszy odczyt
+elewacji i wizualizacji jako dowodu. Kandydat nadal nie zapisuje nic do domeny.
+Brak backendu, persystencji, autoryzacji i wyceny.
 
 ## Decyzje
 
@@ -2270,6 +2275,208 @@ Determinizm sprawdzany przez powtórzenie: dwa przebiegi obu projektów różni�
 porównanie migawek: po odjęciu czasów i metadanych pobrania **zero** różniących
 się wierszy na 24 475 (A) i 30 893 (B).
 
+## Weryfikacja kandydata i odczyt obrazów źródła (STAGE-025)
+
+STAGE-024 dało produktowe wejście do analizatora, ale wynik był tylko do
+odczytu: 331 wielkości Projektu A, z czego **246 bez potwierdzenia**, i żadnej
+drogi, którą człowiek mógłby je potwierdzić. STAGE-025 dokłada tę drogę oraz
+drugie źródło dowodu — elewacje i wizualizacje, dotąd pobierane i nieczytane.
+
+### Weryfikuje się korzenie, nie wiersze
+
+246 pól wyboru nie jest interfejsem, tylko przerzuceniem pracy analizatora na
+człowieka. Warstwa `analyzer/verification/` zaczyna od pytania: **ile decyzji
+naprawdę jest niezależnych?** Odpowiedź dla Projektu A to **48**, przy 246
+wierszach do potwierdzenia — pięciokrotnie mniej, bo jedna rzędna stropu nad
+parterem rozstrzyga 69 wielkości, a jeden odczyt dachu 78.
+
+- `DependencyGraph` mapuje **klucz korzenia** (`room:<id>:identity`,
+  `room:<id>:boundary`, `opening:<id>:height`, `level:terrain|upperFloor|
+  slab|atticCeiling`, `roof:ridge`, `roof:mass:<id>`, `facade:scope`,
+  `stair:<id>`) na klucze wielkości, które z niego wynikają. Graf powstaje
+  z kandydata i z księgi `quantityVerification`, którą raport już niesie —
+  nie z drugiej, ręcznie utrzymywanej listy zależności.
+- `RootQuestions.of(report)` zwraca `RootQuestion` z `affectedQuantityKeys`,
+  więc „ile wielkości rozstrzyga ta odpowiedź" jest liczbą z grafu, a nie
+  obietnicą.
+- Otwory tego samego typu i zbliżonej szerokości na jednej kondygnacji
+  łączą się w jedno pytanie (`groupMemberIds`): „5 × drzwi 0,85 m" to jedna
+  wysokość, nie pięć. **Grupować wolno tylko wtedy, gdy członkowie mają jeden
+  korzeń** — inaczej masowa decyzja jest cichym nadpisaniem.
+
+### Kolejność pytań jest wyliczana, nie zastana
+
+`priorityScore` powstaje z wagi tego, co pytanie odblokowuje, nie z kolejności,
+w jakiej pytania powstały: blokada geometrii 100, tożsamość pomieszczenia 60,
+widoczny skutek w 3D 8, konflikt wysoki 20 / średni 10 / niski 3, po 1 za
+każdą zależną wielkość, −5 za rzecz czysto kosmetyczną. Wynik trafia do
+czterech szczebli `PriorityTier` — `REQUIRED`, `HIGH_IMPACT`, `RECOMMENDED`,
+`OPTIONAL`. `REQUIRED` to pytania, bez których bryła nie ma sensu; **tylko
+one blokują** i tylko ich nie wolno odłożyć.
+
+### Nakładka decyzji nad niezmienną migawką
+
+`ProjectAnalysisReport` pozostaje dowodem tego, co odczytał analizator, i nie
+jest mutowany nigdy. Decyzje leżą **obok**:
+
+```
+VerificationSession(
+    originalCandidate,        // migawka, bez zmian
+    decisions,                // co człowiek postanowił, w kolejności
+    derivedVerifiedCandidate, // przeliczone deterministycznie
+    unresolvedQuestions,
+    changeSummary,
+)
+```
+
+`VerificationDecision` ma siedem rodzajów: `CONFIRM_CANDIDATE_VALUE`,
+`REPLACE_VALUE`, `CHOOSE_ALTERNATIVE`, `CONFIRM_ASSUMPTION`,
+`REJECT_OBSERVATION`, `PROVIDE_MISSING_VALUE`, `DEFER_QUESTION`. Sesja jest
+wartością niezmienną: `choose/provide/confirm/reject/defer` oddają nową sesję,
+`undoLast` i `reset` zdejmują decyzje, a `replay` odtwarza wynik z samej listy
+decyzji. Ten sam zbiór decyzji zawsze daje ten sam `VerifiedCandidate`.
+
+`VerificationEngine.verify()` nie łata wielkości pojedynczo: składa decyzje
+w kopię kandydata w ustalonej kolejności, po czym **przelicza od nowa** cały
+przedmiar (`QuantityTakeoffEngine`) i porównania (`CrossSourceValidator`).
+Potwierdzenie rzędnej terenu przenosi całą bryłę dachu, a kalenica i okap
+wyprowadzają się ponownie z potwierdzonej wartości — nie z poprzedniego
+założenia.
+
+### Granica `USER_CONFIRMED`
+
+Analizator nadal **nie umie** wyemitować `USER_CONFIRMED`; to nie jest zwykły
+stan wyniku. Wprowadza go wyłącznie decyzja człowieka:
+
+- wielkość dotknięta wprost decyzją → `USER_CONFIRMED` albo `USER_OVERRIDDEN`,
+- wielkość przeliczona z takiej decyzji → `DERIVED_FROM_USER_CONFIRMED`,
+- reszta zostaje tym, czym była (`SOURCE_FACT`, `SOURCE_DERIVED`,
+  `ASSUMPTION`, `UNRESOLVED`, `DEFERRED`).
+
+`VerifiedQuantity` niesie wartość przed i po, stan, `rootQuestionIds`
+i `decisionIds`, więc rodowód każdej liczby daje się prześledzić do decyzji
+i do miejsca w źródle. Pilnuje tego `VerificationBoundaryTest`: literał
+`USER_CONFIRMED` nie występuje **nigdzie** w źródłach aplikacji — jedyną drogą
+do niego jest silnik.
+
+### Kandydat nadal nie jest prawdą
+
+Zweryfikowany kandydat jest zweryfikowanym **kandydatem**. Nic nie zapisuje się
+do `domain/`, nie powstaje żaden koszt, nie ma kanonicalizacji ani
+„przeniesienia do modelu". Podsumowanie mówi to wprost: „Model zweryfikowany
+do dalszej pracy", nigdy „Model jest poprawny w 100 %".
+
+### Dowód z obrazu — elewacje i wizualizacje
+
+Elewacje i rendery były pobierane od STAGE-023A i nieczytane.
+`analyzer/visual/` czyta je deterministycznie — morfologia rastra, klasy
+pikseli, autokorelacja — **bez żadnej zdalnej AI i bez modelu wizyjnego**.
+
+- `PictureClasses` klasyfikuje piksel (niebo, zieleń, biel, szarość, ciemność,
+  drewno, szkło) na `ByteArray`, nie na tablicy obiektów.
+- `ElevationReader` wyprowadza sylwetkę (z usuwaniem chmur po udziale granicy
+  nieba), profil kalenicy, kominy, odczyt szczyt/koperta, obszar dachu
+  *zwisający* z linii dachu, linię okapu, moduł pokrycia, okna połaciowe,
+  prostokąty otworów z testem otoczenia ścianą, okładzinę, ramy, pasy
+  i balustrady.
+- `VisualEvidenceBuilder` składa `VisualAssetEvidence` z obserwacjami,
+  przypisuje elewacje do stron świata (front = drzwi wejściowe wiatrołapu albo
+  brama garażu; boczne zostają nierozstrzygnięte) i wystawia konflikty.
+
+**Hierarchia dowodu jest twarda i wpisana w typy**: wymiar podany wprost
+> geometria z rzutu i przekroju > elewacja > wizualizacja > model odrysowany
+ręcznie > założenie prezentacyjne. Obraz **nigdy nie nadpisuje rzutu**;
+rozbieżność staje się `VisualConflict` (`OPENING_COUNT_CONFLICT`,
+`ROOF_SILHOUETTE_CONFLICT`, `MASSING_CONFLICT`, `GARAGE_RELATION_CONFLICT`,
+`VISUAL_EVIDENCE_UNCORROBORATED`, …) z wagą, a konflikt staje się pytaniem.
+
+**Wygląd zostaje kandydatem prezentacji.** `AppearanceCandidate` — kolor
+elewacji, materiał pokrycia, okładzina — nie wchodzi do przedmiaru, nie tworzy
+kosztu i nie zmienia geometrii. To osobna warstwa, celowo oddzielona od bryły.
+
+**Precyzja przed zasięgiem.** Fałszywy konflikt kosztuje człowieka pytanie
+o rzecz, której nie ma; brakujący konflikt kosztuje tylko pytanie, którego nie
+zadano. Czytnik jest z tego powodu nastrojony nisko na zasięg: A daje jeden
+konflikt niski, B dwa niskie, żadnego fałszywego otworu.
+
+### Wyrocznia porównawcza (wyłącznie debug/test)
+
+`app/src/testDebug/.../evaluation/` porównuje kandydata analizatora z ręcznie
+odrysowanym `MarcowkiVisualModelV1`. To **narzędzie oceny, nie ścieżka
+produktowa**: żaden kod z `src/main` go nie widzi, a `ReleaseBoundaryTest`
+sprawdza to w dexie zbudowanego APK.
+
+Rzecz, która czyni z tego wyrocznię, a nie samozadowolenie: **każda wartość
+referencyjna niesie wiarygodność, jaką daje jej własna księga odrysu**, a
+`CandidateReferenceComparator` **odmawia oceniania** wartości oznaczonych
+`DISPLAY_ASSUMPTION` (`NOT_SCORED`). Porównywanie kandydata z cudzym
+zgadywaniem produkuje liczbę, która wygląda jak wynik.
+
+### Korekta analizatora znaleziona przez porównanie
+
+Pierwsze porównanie dało `plan.extentZ` 14,47 m wobec wydrukowanych 12,60 m
+(+14,9 %) — największą rozbieżność wspartą liczbą ze źródła. Zrzucone maski
+rzutu pokazały przyczynę: **cienkie ostrogi parapetu tarasu** wychodzące poza
+bryłę, brane do obrysu.
+
+Poprawka jest **neutralna wobec projektu** — to ogólna reguła „obrys bryły to
+nie każdy piksel, który bryły dotyka":
+
+```kotlin
+private fun withoutWhiskers(enclosed: BinaryMask, radiusPx: Int): BinaryMask {
+    val opened = enclosed.open(radiusPx, radiusPx)
+    val body = największa składowa otwarcia
+    if (body.count() < before * MIN_BODY_SHARE) return enclosed   // 0,90
+    return body
+}
+```
+
+Otwarcie morfologiczne promieniem połowy maksymalnej grubości ściany, z progiem
+bezpieczeństwa: jeżeli operacja zjadłaby więcej niż 10 % bryły, wynik jest
+odrzucany i zostaje obrys pierwotny. Zastosowane **wyłącznie do obrysu**;
+`footprintMask` do segmentacji, kalibracji, rejestracji i pasa dachu zostaje
+maską pierwotną, a `enclosedOutlinePx` jest jawnym zapasowym obrysem dachu.
+
+Rezultat po korekcie: `plan.extentZ` 12,48 m wobec 12,60 m (−0,9 %,
+`MATCH`), centroidy pomieszczeń znacznie bliżej (Garaż 0,87 → 0,17 m, Pralnia
+0,94 → 0,04 m), wyrocznia 17 `MATCH` / 5 `CLOSE` / 5 `DIFFERS` wobec
+18 / 3 / 6. **Przy okazji wyszła prawda o poprzednim wyniku**: dotychczasowe
+−1,5 % na dachu Projektu A było przypadkowe — ostrogi dostarczały mniej więcej
+tyle, ile wynosi okap szczytowy.
+
+Projekt B przeszedł ten sam bieg i **nie cofnął się**: pomieszczenia,
+kalibracja, dach, schody, pytania i kompletność są co do bajtu takie jak
+w STAGE-024; zmienia się wyłącznie obwiednia elewacji, w stronę podanej liczby
+(A 305,53 → 266,47, B 300,03 → 250,80 przy podanych 225,90 / 171,60).
+
+### Przestrzeń robocza weryfikacji
+
+Ekran mówi językiem STAGE-013H, nie językiem formularza. Kanwa 3D zajmuje
+ekran; przy krawędzi stoi wąska szyna pytań pogrupowana szczeblami, a nad nią
+panel kontekstu jednego pytania. Podświetlany jest **podmiot pytania** w 3D
+(`BuildingElementId("cand-<id>")`), a nawigacja następne/poprzednie nie
+przestawia układu.
+
+- Szyna i panel dzielą **jeden budżet wysokości** liczony z `BoxWithConstraints`
+  (panel najwyżej 340 dp albo 46 % wolnej wysokości, reszta dla szyny).
+  Na urządzeniu wyszło, że panel na pełną szerokość zasłania szynę i przechwytuje
+  jej przewijanie — dwie trzecie pytań było nieosiągalnych.
+- Pole liczbowe startuje **puste**. Założenie analizatora jest osobnym
+  przyciskiem „Potwierdź X"; wpisana z góry wartość jest sugestią, którą ludzie
+  zatwierdzają nie patrząc.
+- Wariant release ma własną kanwę (`src/release`) z zarezerwowanym studiem
+  i podpisem nazywającym podświetlony podmiot; Filament zostaje w `debug`.
+
+### Język
+
+Wszystko, co widzi człowiek, jest po polsku, łącznie ze zdaniami, które
+analizator **składa** wokół własnej liczby i których żaden `strings.xml` nie
+utrzyma (`candidate/PolishText`: „1 otwór", „4 otwory", „5 otworów", z uzgodnionym
+przymiotnikiem). Diagnostyczna angielszczyzna analizatora — `matchNote`,
+`roof.note`, `VisualConflict.impact` — zostaje w raporcie dla zgłoszenia błędu
+i **nie wchodzi do pytania**; `QuestionLanguageTest` chodzi po każdym
+renderowanym napisie każdego pytania i odrzuca angielskie słowa.
+
 ## Czego jeszcze nie ustalono
 
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
@@ -2278,9 +2485,11 @@ odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy
 rozpoznawcze, STAGE-013D poprawiło wierność elewacji, STAGE-013G dołożyło
 ramy okien i pełnoekranowy host, STAGE-013H zrobiło z hosta immersyjną
 przestrzeń roboczą — nie produkcjonizację renderera), izolacja pomieszczenia w UI, docelowy kształt analizatora (STAGE-023A dało
-prototyp badawczy w `analyzer/` i debugowy Lab; produktowe wejście, odczyt
-tekstu z rysunków, drugi adapter witryny i przejście kandydata do modelu po
-weryfikacji użytkownika są otwarte), wycinanie otworów w połaci dachu, grubość połaci,
+prototyp badawczy w `analyzer/` i debugowy Lab, STAGE-024 produktowe wejście
+przez usługę, STAGE-025 weryfikację kandydata przez człowieka i odczyt obrazów
+źródła; **drugi adapter witryny, odczyt wysokości otworów z rysunku, trwałość
+sesji weryfikacji i przejście zweryfikowanego kandydata do domeny są otwarte**),
+wycinanie otworów w połaci dachu, grubość połaci,
 picking przez szkło, klasy rozmiaru okna (tablet, poziom) dla przestrzeni
 roboczej, docelowy
 `applicationId`, generowanie identyfikatorów, pełne reguły sumowania alokacji

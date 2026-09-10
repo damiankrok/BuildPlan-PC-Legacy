@@ -4,7 +4,22 @@ import com.buildplan.app.analyzer.asset.AssetManifest
 import com.buildplan.app.analyzer.asset.AssetRecord
 import com.buildplan.app.analyzer.asset.AssetRole
 import com.buildplan.app.analyzer.asset.RetrievalState
+import com.buildplan.app.analyzer.candidate.AffectedRegion
 import com.buildplan.app.analyzer.candidate.AnalysisIssue
+import com.buildplan.app.analyzer.candidate.AppearanceCandidate
+import com.buildplan.app.analyzer.candidate.AppearanceKind
+import com.buildplan.app.analyzer.candidate.EvidenceRef
+import com.buildplan.app.analyzer.candidate.FacadeAssignment
+import com.buildplan.app.analyzer.candidate.FacadeSide
+import com.buildplan.app.analyzer.candidate.NormalizedBox
+import com.buildplan.app.analyzer.candidate.VisualAssetEvidence
+import com.buildplan.app.analyzer.candidate.VisualConflict
+import com.buildplan.app.analyzer.candidate.VisualConflictKind
+import com.buildplan.app.analyzer.candidate.VisualConflictSeverity
+import com.buildplan.app.analyzer.candidate.VisualEvidence
+import com.buildplan.app.analyzer.candidate.VisualObservation
+import com.buildplan.app.analyzer.candidate.VisualObservationKind
+import com.buildplan.app.analyzer.candidate.VisualViewpoint
 import com.buildplan.app.analyzer.candidate.Box
 import com.buildplan.app.analyzer.candidate.CalibrationAnchor
 import com.buildplan.app.analyzer.candidate.FloorCandidate
@@ -91,8 +106,8 @@ data class ProjectAnalysisSnapshot(
     val timingsMillis: Map<String, Long>,
 ) {
     companion object {
-        const val SCHEMA_VERSION = 2
-        const val ANALYZER_VERSION = "0.2.0-stage024"
+        const val SCHEMA_VERSION = 3
+        const val ANALYZER_VERSION = "0.3.0-stage025"
     }
 }
 
@@ -243,6 +258,7 @@ object SnapshotCodec {
         "levels" to levelsJson(c.levels)
         "dimensions" toArray c.dimensions.map { d -> json { "scope" to d.scope; "name" to d.name; "measured" to measuredJson(d.measured) } }
         "issues" toArray c.issues.map { i -> json { "severity" to i.severity; "stage" to i.stage; "subject" to i.subject; "message" to i.message } }
+        "visual" to visualJson(c.visual)
     }
 
     private fun candidateFrom(o: JsonValue.Obj): ProjectAnalysisCandidate = ProjectAnalysisCandidate(
@@ -267,6 +283,7 @@ object SnapshotCodec {
         levels = levelsFrom(o.obj("levels")!!),
         dimensions = o.arr("dimensions")?.objects?.map { d -> NamedDimension(d.str("scope")!!, d.str("name")!!, m(d, "measured")) }.orEmpty(),
         issues = o.arr("issues")?.objects?.map { i -> AnalysisIssue(IssueSeverity.valueOf(i.str("severity")!!), i.str("stage")!!, i.str("subject"), i.str("message")!!) }.orEmpty(),
+        visual = o.obj("visual")?.let(::visualFrom) ?: VisualEvidence.NONE,
     )
 
     private fun strings(o: JsonValue.Obj, key: String): List<String> = o.arr(key)?.items?.map { (it as JsonValue.Str).value }.orEmpty()
@@ -423,3 +440,87 @@ object SnapshotCodec {
         ValidationStatus.valueOf(o.str("status")!!), o.str("semantics") ?: "", o.str("candidateFidelity")?.let(FactFidelity::valueOf),
     )
 }
+
+/**
+ * The visual block: what the pictures showed, which facade each shows, the
+ * conflicts and the appearance proposals. Kept in the same codec so the
+ * snapshot stays one record that round-trips byte for byte.
+ */
+private object VisualCodec {
+
+    fun boxJson(b: NormalizedBox) = json { "left" to b.left; "top" to b.top; "right" to b.right; "bottom" to b.bottom }
+    fun boxFrom(o: JsonValue.Obj) = NormalizedBox(o.num("left")!!, o.num("top")!!, o.num("right")!!, o.num("bottom")!!)
+
+    fun observationJson(v: VisualObservation) = json {
+        "kind" to v.kind; "bounds" to boxJson(v.bounds); "confidence" to v.confidence; "method" to v.method; "fidelity" to v.fidelity; "note" to v.note
+        "rejectedAlternatives" toStrings v.rejectedAlternatives
+    }
+
+    fun observationFrom(o: JsonValue.Obj) = VisualObservation(
+        VisualObservationKind.valueOf(o.str("kind")!!), boxFrom(o.obj("bounds")!!), o.num("confidence") ?: 0.0, o.str("method") ?: "", FactFidelity.valueOf(o.str("fidelity")!!),
+        o.str("note") ?: "", o.arr("rejectedAlternatives")?.items?.map { (it as JsonValue.Str).value }.orEmpty(),
+    )
+
+    fun assetJson(a: VisualAssetEvidence) = json {
+        "assetUrl" to a.assetUrl; "role" to a.role; "viewpoint" to a.viewpoint; "widthPx" to a.widthPx; "heightPx" to a.heightPx
+        "observations" toArray a.observations.map(::observationJson); "confidence" to a.confidence; "fidelity" to a.fidelity; "notes" toStrings a.notes
+    }
+
+    fun assetFrom(o: JsonValue.Obj) = VisualAssetEvidence(
+        o.str("assetUrl")!!, AssetRole.valueOf(o.str("role")!!), VisualViewpoint.valueOf(o.str("viewpoint")!!), o.int("widthPx") ?: 0, o.int("heightPx") ?: 0,
+        o.arr("observations")?.objects?.map(::observationFrom).orEmpty(), o.num("confidence") ?: 0.0, FactFidelity.valueOf(o.str("fidelity")!!),
+        o.arr("notes")?.items?.map { (it as JsonValue.Str).value }.orEmpty(),
+    )
+
+    fun conflictJson(c: VisualConflict) = json {
+        "id" to c.id; "kind" to c.kind; "severity" to c.severity; "subjectIds" toStrings c.subjectIds; "facade" to c.facade; "assetUrl" to c.assetUrl
+        "observationIndex" to c.observationIndex; "candidateReading" to c.candidateReading; "sourceReading" to c.sourceReading; "impact" to c.impact
+        "recommendedAction" to c.recommendedAction; "confidence" to c.confidence
+    }
+
+    fun conflictFrom(o: JsonValue.Obj) = VisualConflict(
+        o.str("id")!!, VisualConflictKind.valueOf(o.str("kind")!!), VisualConflictSeverity.valueOf(o.str("severity")!!),
+        o.arr("subjectIds")?.items?.map { (it as JsonValue.Str).value }.orEmpty(), o.str("facade")?.let(FacadeSide::valueOf), o.str("assetUrl")!!,
+        o.int("observationIndex") ?: -1, o.str("candidateReading") ?: "", o.str("sourceReading") ?: "", o.str("impact") ?: "", o.str("recommendedAction") ?: "", o.num("confidence") ?: 0.0,
+    )
+
+    fun appearanceJson(a: AppearanceCandidate) = json {
+        "featureId" to a.featureId; "kind" to a.kind
+        "sourceEvidence" toArray a.sourceEvidence.map { r -> json { "assetUrl" to r.assetUrl; "observationIndex" to r.observationIndex; "viewpoint" to r.viewpoint } }
+        "affectedRegion" to json { "facade" to a.affectedRegion.facade; "floorId" to a.affectedRegion.floorId; "facadeFraction" to a.affectedRegion.facadeFraction?.let(::boxJson) }
+        "confidence" to a.confidence; "fidelity" to a.fidelity
+        "presentationParameters" to json { a.presentationParameters.forEach { (k, v) -> k to v } }
+        "note" to a.note
+    }
+
+    fun appearanceFrom(o: JsonValue.Obj): AppearanceCandidate {
+        val region = o.obj("affectedRegion")
+        return AppearanceCandidate(
+            o.str("featureId")!!, AppearanceKind.valueOf(o.str("kind")!!),
+            o.arr("sourceEvidence")?.objects?.map { r -> EvidenceRef(r.str("assetUrl")!!, r.int("observationIndex") ?: -1, VisualViewpoint.valueOf(r.str("viewpoint")!!)) }.orEmpty(),
+            AffectedRegion(region?.str("facade")?.let(FacadeSide::valueOf), region?.str("floorId"), region?.obj("facadeFraction")?.let(::boxFrom)),
+            o.num("confidence") ?: 0.0, FactFidelity.valueOf(o.str("fidelity")!!),
+            o.obj("presentationParameters")?.fields?.mapValues { (it.value as JsonValue.Num).value }.orEmpty(),
+            o.str("note") ?: "",
+        )
+    }
+
+    fun evidenceJson(v: VisualEvidence) = json {
+        "assets" toArray v.assets.map(::assetJson)
+        "facades" toArray v.facades.map { f -> json { "role" to f.role; "assetUrl" to f.assetUrl; "sides" toStrings f.sides.map { it.name }; "confidence" to f.confidence; "reason" to f.reason } }
+        "conflicts" toArray v.conflicts.map(::conflictJson)
+        "appearance" toArray v.appearance.map(::appearanceJson)
+        "notes" toStrings v.notes
+    }
+
+    fun evidenceFrom(o: JsonValue.Obj) = VisualEvidence(
+        o.arr("assets")?.objects?.map(::assetFrom).orEmpty(),
+        o.arr("facades")?.objects?.map { f -> FacadeAssignment(AssetRole.valueOf(f.str("role")!!), f.str("assetUrl")!!, f.arr("sides")?.items?.map { FacadeSide.valueOf((it as JsonValue.Str).value) }.orEmpty(), f.num("confidence") ?: 0.0, f.str("reason") ?: "") }.orEmpty(),
+        o.arr("conflicts")?.objects?.map(::conflictFrom).orEmpty(),
+        o.arr("appearance")?.objects?.map(::appearanceFrom).orEmpty(),
+        o.arr("notes")?.items?.map { (it as JsonValue.Str).value }.orEmpty(),
+    )
+}
+
+private fun visualJson(v: VisualEvidence): JsonValue.Obj = VisualCodec.evidenceJson(v)
+private fun visualFrom(o: JsonValue.Obj): VisualEvidence = VisualCodec.evidenceFrom(o)

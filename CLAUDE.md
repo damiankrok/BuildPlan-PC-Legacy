@@ -365,6 +365,69 @@ usługę w `analyzer/src/main/.../service/`.
 - **Formatowanie liczb w rdzeniu jest niezależne od locale** (`Locale.ROOT`),
   bo migawka ma być bajt w bajt taka sama na każdym urządzeniu.
 
+## Weryfikacja kandydata przez człowieka — reguły twarde
+
+Warstwa weryfikacji mieszka w `analyzer/src/main/.../verification/`, a jej
+ekran w `app/src/main/.../ui/screens/Verification*`. Od STAGE-025 to jedyne
+miejsce, w którym powstaje `USER_CONFIRMED`.
+
+- **Weryfikuj korzenie, nie wiersze.** Jeżeli dwieście wielkości stoi na
+  jednym fakcie — na tożsamości pomieszczenia, na wysokości rodziny okien, na
+  rzędnej stropu — pytaj o ten fakt raz. Nigdy nie proś o potwierdzenie
+  wiersza przedmiaru, który da się przeliczyć z odpowiedzi na pytanie
+  korzeniowe. Ekran z listą wielkości do odhaczenia jest błędem projektowym,
+  a nie kompletnością.
+- **Niejednoznaczności analizatora nie wolno zamienić w prawdę
+  deterministyczną.** Gdy źródło dopuszcza dwa odczyty, oba idą do wyboru,
+  a bieżące przypisanie jest oznaczone jako *bieżący odczyt*, nie jako
+  odpowiedź. Wybranie bliższego, pierwszego albo „rozsądniejszego" za
+  użytkownika to definicja, której źródło nie podało.
+- **Decyzja użytkownika zachowuje historię źródła.** Migawka analizatora jest
+  niezmienna; decyzje żyją obok niej jako dziennik i tylko z nich powstaje
+  `VerifiedCandidate`. Cofnięcie to usunięcie wpisu z dziennika, a nie
+  odwrócenie mutacji, i odtworzenie tego samego dziennika na tym samym
+  raporcie musi dać ten sam wynik co do bitu.
+- **`USER_CONFIRMED` tylko z decyzji.** Analizator go nie emituje, ekran go
+  nie ustawia, przedmiar go nie wnioskuje. Wielkość przeliczona z
+  potwierdzonego korzenia dostaje `DERIVED_FROM_USER_CONFIRMED` — udawanie,
+  że ktoś sprawdził każdą z nich osobno, jest kłamstwem o proweniencji.
+  Pilnuje tego `VerificationBoundaryTest`.
+- **Pole liczbowe startuje puste, jeżeli nie ma czego zaproponować.**
+  Podpowiedź wyglądająca na zmierzoną jest tym, co użytkownik potwierdzi bez
+  patrzenia. Wolno pokazać założenie analizatora jako osobny przycisk
+  „Potwierdź X", nigdy jako wypełnione pole.
+- **Grupuj tylko wtedy, gdy grupa jest z jednego korzenia.** Rodzina okien
+  tej samej szerokości na tej samej kondygnacji — tak. Dwa pomieszczenia
+  o zbieżnej powierzchni albo dwa odczyty o różnej proweniencji — nigdy.
+  Akcja zbiorcza pokazuje liczbę objętych elementów, zanim zadziała.
+- **Bez wyceny i bez kanonizacji.** Weryfikacja nie zapisuje niczego do
+  `domain/`, nie tworzy kosztu i nie promuje kandydata do modelu. Ścieżka
+  weryfikacji nie może nawet nazwać typu z `domain/` ani z `geometry/`.
+  Przejście do modelu i wycena z przedmiaru to osobne, późniejsze etapy.
+- **Podsumowanie mówi, czego brakuje.** Żadnego „model poprawny w 100 %".
+  Gotowość jest bramkowana pytaniami `REQUIRED`, a odłożone i nieustalone
+  są policzone i nazwane.
+
+## Odczyt obrazów źródła — reguły twarde
+
+Czytnik elewacji i wizualizacji mieszka w `analyzer/src/main/.../visual/`.
+
+- **Rzut i przekrój przebijają elewację, elewacja przebija wizualizację.**
+  Obraz perspektywiczny nie ustala żadnego wymiaru. Elewacja daje proporcje
+  własnej obwiedni (`SOURCE_DERIVED`), render daje obecność cechy
+  (`TRACE_UNCERTAIN`) i nic więcej.
+- **Obserwacja to nie prawda.** Każda niesie prostokąt w obrazie, metodę,
+  pewność i wiarygodność. Rozbieżność z rzutem jest **pytaniem**, nie
+  poprawką geometrii: obraz nigdy nie edytuje kandydata.
+- **Precyzja przed zasięgiem.** Czytnik częściej przeoczy otwór, niż go
+  wymyśli, i tak ma być: fałszywy konflikt kosztuje pytanie zadane bez
+  powodu. Progi zaostrzaj, nie luzuj.
+- **Cecha prezentacyjna zostaje kandydatem prezentacji.** Rama, opaska,
+  balustrada, komin, pokrycie — to `AppearanceCandidate` z proporcjami
+  elewacji, nigdy `BuildingElement` i nigdy metr.
+- **Bez zdalnej AI, tak samo jak w rdzeniu.** Klasyfikacja pikseli po
+  kolorze, morfologia, autokorelacja wierszy. Żadnego modelu, żadnej sieci.
+
 ## Urządzenia i emulatory
 
 - Projekt używa **wyłącznie serialu `emulator-5570`**. Każde polecenie do
@@ -433,19 +496,20 @@ Zostaw czysty worktree.
 ## Czego na tym etapie NIE ma
 
 Backendu, API, bazy danych, Room, autoryzacji, rzeczywistych danych,
-**weryfikacji kandydata przez człowieka**, **wyceny z przedmiaru**
-i **produkcyjnego** renderera 3D.
+**trwałości sesji weryfikacji**, **przejścia zweryfikowanego kandydata do
+domeny**, **wyceny z przedmiaru** i **produkcyjnego** renderera 3D.
 
 Analizator ma od STAGE-024 **produktowe wejście** (Projekt → Import projektu)
-i wchodzi do wariantu release, ale to nadal **kandydat, a nie prawda
-projektu**: nie zapisuje nic do domeny, nie tworzy żadnego kosztu i nie czyta
-z rysunków niczego poza tym, co przechodzi bramki ze STAGE-023C. Ekran importu
-jest **tylko do odczytu**; wybór między dwoma odczytami, potwierdzanie założeń
-i przeniesienie kandydata do modelu to STAGE-025 i nie istnieją. Kontrakt —
+i wchodzi do wariantu release, a od STAGE-025 **weryfikację przez człowieka**
+(decyzje, deterministyczne przeliczenie, rodowód, `USER_CONFIRMED`), ale to
+nadal **kandydat, a nie prawda projektu**: nie zapisuje nic do domeny, nie
+tworzy żadnego kosztu i nie czyta z rysunków niczego poza tym, co przechodzi
+bramki ze STAGE-023C i STAGE-025. Sesja weryfikacji żyje w pamięci i ginie
+z procesem; kanonicalizacji nie ma. Kontrakt —
 wymagane wejścia, cechy do odzyskania i sytuacje, w których ma **dopytać
 użytkownika** zamiast podstawić wartość domyślną — jest spisany
-w `ARCHITECTURE.md`. Nie rozszerzaj go (OCR, drugi adapter witryny, przejście
-kandydata do modelu, integracja z wyceną, UI weryfikacji) bez wyraźnego
+w `ARCHITECTURE.md`. Nie rozszerzaj go (OCR, drugi adapter witryny, trwałość
+sesji, przejście kandydata do modelu, integracja z wyceną) bez wyraźnego
 zlecenia OWNER-a. Brak danych ma kończyć się pytaniem; odpowiedź wchodzi do
 modelu jako `DISPLAY_ASSUMPTION` z podanym powodem, a nierozstrzygnięta
 niepewność zostaje `TRACE_UNCERTAIN`. Model domenowy i kontrakt geometrii

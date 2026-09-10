@@ -41,7 +41,16 @@ object RoofSolver {
         /** Parts of the ground footprint the roof outline does not cover, each a flat secondary mass. */
         val uncoveredMasses: List<Polygon>,
         val secondaryTopElevation: Measured,
+        /**
+         * A ridge direction settled outside the solver — by a person, in verification.
+         * Only consulted for a gable roof; null leaves the choice to the published area
+         * and the longer-axis rule.
+         */
+        val ridgeAxisHint: RidgeAxis? = null,
     )
+
+    /** The plan axis a gable ridge runs along. */
+    enum class RidgeAxis { X, Z }
 
     fun solve(input: Input): RoofCandidate? {
         val pitch = input.pitchDegrees.value ?: return null
@@ -82,7 +91,12 @@ object RoofSolver {
         val bounds = Polygon(ring).bounds
         val longerAxisIsZ = bounds.depth >= bounds.width
         var tieBroken = false
-        val chosen = if (published != null) {
+        val hinted = input.ridgeAxisHint?.takeIf { family == RoofFamily.GABLE }?.let { axis ->
+            complete.firstOrNull { it.note.contains(if (axis == RidgeAxis.Z) "ridge along Z" else "ridge along X") }
+        }
+        val chosen = if (hinted != null) {
+            hinted
+        } else if (published != null) {
             val errors = complete.map { abs(it.area - published) / published }
             val best = errors.min()
             val within = complete.filterIndexed { i, _ -> errors[i] - best < 0.02 }
@@ -115,6 +129,7 @@ object RoofSolver {
         val alternatives = attempts.filter { it !== chosen }.joinToString { "${it.note}: ${"%.1f".format(java.util.Locale.ROOT, it.area)} m2" }
         val note = buildString {
             append(chosen.note)
+            if (hinted != null) append(" — ridge direction settled by the user in verification")
             if (tieBroken) append(" — ridge direction assumed along the longer axis; the published roof area does not tell the two orientations apart")
             append("; facet area ${"%.1f".format(java.util.Locale.ROOT, chosen.area)} m2")
             if (published != null) append(" vs published ${"%.1f".format(java.util.Locale.ROOT, published)} m2 (${"%.1f".format(java.util.Locale.ROOT, (chosen.area / published - 1) * 100)} %)")

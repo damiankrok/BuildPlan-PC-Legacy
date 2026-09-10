@@ -86,6 +86,7 @@
     <string name="import_phase_solving_roof">Rozwiązywanie dachu</string>
     <string name="import_phase_closing_vertical_chain">Rzędne kondygnacji</string>
     <string name="import_phase_building_candidate">Składanie modelu</string>
+    <string name="import_phase_reading_pictures">Odczyt elewacji i wizualizacji</string>
     <string name="import_phase_calculating_quantities">Przedmiar</string>
     <string name="import_phase_validating">Porównanie ze źródłem</string>
     <string name="import_phase_building_questions">Braki i pytania</string>
@@ -124,6 +125,61 @@
     <string name="import_signal_cost_page">podstrona kosztów</string>
     <string name="import_signal_site_tags">dane strukturalne strony</string>
 
+
+    <!-- Weryfikacja kandydata (STAGE-025) -->
+    <string name="verify_open">Zweryfikuj model</string>
+    <string name="verify_title">Weryfikacja modelu</string>
+    <string name="verify_close">Zamknij weryfikację</string>
+    <string name="verify_progress">Rozstrzygnięto %1$d z %2$d decyzji</string>
+    <string name="verify_summary_open">Podsumowanie</string>
+
+    <string name="verify_tier_required">Wymagane</string>
+    <string name="verify_tier_high">Duży wpływ</string>
+    <string name="verify_tier_recommended">Zalecane</string>
+    <string name="verify_tier_optional">Opcjonalne</string>
+    <string name="verify_tier_required_count">Wymagane — %1$d z %2$d</string>
+    <string name="verify_tier_high_count">Duży wpływ — %1$d z %2$d</string>
+    <string name="verify_tier_recommended_count">Zalecane — %1$d z %2$d</string>
+    <string name="verify_tier_optional_count">Opcjonalne — %1$d z %2$d</string>
+
+    <string name="verify_state_open">nierozstrzygnięte</string>
+    <string name="verify_state_answered">rozstrzygnięte</string>
+    <string name="verify_state_deferred">odłożone</string>
+
+    <string name="verify_evidence_reading">Odczyt analizatora: %1$s</string>
+    <string name="verify_evidence_assumption">Przyjęto tymczasowo: %1$s</string>
+    <string name="verify_evidence_none">brak odczytu</string>
+    <string name="verify_option_current">%1$s (obecny odczyt)</string>
+
+    <string name="verify_value_label">Wartość (%1$s)</string>
+    <string name="verify_unit_meter">m</string>
+    <string name="verify_unit_count">szt.</string>
+    <string name="verify_apply">Zastosuj</string>
+    <string name="verify_confirm">Potwierdź</string>
+    <string name="verify_confirm_assumption">Potwierdź %1$s</string>
+    <string name="verify_defer">Odłóż</string>
+    <string name="verify_reset">Cofnij tę odpowiedź</string>
+    <string name="verify_undo">Cofnij</string>
+    <string name="verify_dismiss">OK</string>
+
+    <string name="verify_canvas_reserved">Model kandydata pojawi się tutaj, gdy renderer wejdzie do wydania.</string>
+    <string name="verify_canvas_subject">Pytanie dotyczy: %1$s</string>
+    <string name="verify_canvas_unavailable">Kandydat nie ma geometrii do wyświetlenia.</string>
+
+    <string name="verify_summary_title">Co zostało zweryfikowane</string>
+    <string name="verify_readiness_required">Zostały pytania wymagane — model nie jest jeszcze gotowy do dalszej pracy.</string>
+    <string name="verify_readiness_review">Pytania wymagane rozstrzygnięte. Model zweryfikowany do dalszej pracy.</string>
+    <string name="verify_readiness_ready">Pytania wymagane i o dużym wpływie rozstrzygnięte. Model zweryfikowany do dalszej pracy.</string>
+    <string name="verify_summary_required">Wymagane: %1$d z %2$d</string>
+    <string name="verify_summary_high">Duży wpływ: %1$d z %2$d</string>
+    <string name="verify_summary_other">Zalecane i opcjonalne: %1$d z %2$d</string>
+    <string name="verify_summary_deferred">Odłożone: %1$d</string>
+    <string name="verify_summary_confirmed">Wielkości potwierdzone przez Ciebie: %1$d</string>
+    <string name="verify_summary_derived">Wielkości przeliczone z Twoich decyzji: %1$d</string>
+    <string name="verify_summary_unsafe">Nadal bez potwierdzenia: %1$d z %2$d</string>
+    <string name="verify_summary_missing">Wielkości, których źródło nie podaje: %1$d</string>
+    <string name="verify_summary_burden">Wierszy do potwierdzenia: %1$d. Decyzji do podjęcia: %2$d.</string>
+    <string name="verify_summary_notice">To nadal jest kandydat. Nic nie zostało zapisane w modelu budynku ani w kosztach, a wielkości bez potwierdzenia nie są gotowe do wyceny.</string>
     <!-- Ekrany w przygotowaniu -->
     <string name="placeholder_module_title">Moduł w przygotowaniu</string>
     <string name="placeholder_module_description">Ta sekcja zostanie zaimplementowana w jednym z kolejnych etapów.</string>

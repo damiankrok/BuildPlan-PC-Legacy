@@ -122,7 +122,7 @@ object CandidateAmbiguities {
                 subjectLabel = stair.id,
                 currentChoiceId = "stair",
                 alternatives = listOf(
-                    AmbiguityAlternative("stair", "bieg schodów", stair.note.ifBlank { "równo rozstawione linie w strefie schodów" }),
+                    AmbiguityAlternative("stair", "bieg schodów", stair.treadCount.value?.let { n -> "${n.toInt()} równo rozstawionych linii w strefie ${fmt(stair.zone.width)} × ${fmt(stair.zone.depth)} m" } ?: "równo rozstawione linie w strefie schodów"),
                     AmbiguityAlternative("not-stair", "równo rozstawione linie, które nie są stopniami", competing),
                 ),
                 reason = "evenly spaced parallel lines with no cross-floor confirmation",
@@ -157,28 +157,43 @@ object CandidateAmbiguities {
     private fun roomIdentity(room: RoomCandidate): CandidateAmbiguity? {
         val uncertain = room.matchConfidence == FactFidelity.TRACE_UNCERTAIN || room.matchConfidence == FactFidelity.CONFLICTING
         if (!uncertain || room.matchAlternatives.isEmpty()) return null
+        // The evidence a person weighs, not the note the matcher wrote itself. `matchNote` is the
+        // matcher's own English — "regions 5, 7 joined across wall-line gaps" — and it belongs in
+        // the diagnostic `reason` beside this, never in a choice put to a Polish reader.
+        val published = room.sourceFloorArea.value ?: room.sourceUsableArea.value
         val current = AmbiguityAlternative(
             id = "current:${room.id}",
             label = room.name,
-            evidence = room.matchNote.ifBlank { "bieżące przypisanie" },
+            evidence = buildString {
+                append("obszar z rzutu ${fmt(room.plannedArea.value ?: 0.0)} m²")
+                if (published != null) append(", podana powierzchnia ${fmt(published)} m²")
+                room.sourceOrdinal?.let { append(", wiersz $it tabeli") }
+            },
         )
+        // A published table may print the same name twice — two rooms called "Pokój" on one
+        // storey is ordinary — so the row number goes into the label whenever the name alone
+        // would offer a person the same word twice and call it a choice.
+        val repeats = room.matchAlternatives.any { it.roomName == room.name }
+        fun label(name: String, row: Int?): String =
+            if (repeats && row != null) "$name (wiersz ${row + 1} tabeli)" else name
         val others = room.matchAlternatives.map { alt ->
             AmbiguityAlternative(
                 id = "row:${alt.sourceRowIndex}",
-                label = alt.roomName,
+                label = label(alt.roomName, alt.sourceRowIndex),
                 evidence = "wiersz ${alt.sourceRowIndex + 1} tabeli, ${fmt(alt.publishedAreaM2)} m², różnica ${pct(alt.relativeError)}",
             )
         }
-        val names = room.matchAlternatives.joinToString(" albo ") { "„${it.roomName}”" }
+        val names = others.joinToString(" albo ") { "„${it.label}”" }
+        val currentLabel = label(room.name, room.sourceOrdinal?.let { it - 1 })
         return CandidateAmbiguity(
             id = "room:${room.id}",
             kind = AmbiguityKind.ROOM_IDENTITY,
             subjectId = room.id,
             subjectLabel = room.name,
             currentChoiceId = current.id,
-            alternatives = listOf(current) + others,
+            alternatives = listOf(current.copy(label = currentLabel)) + others,
             reason = room.matchNote,
-            question = "Które pomieszczenie z tabeli leży w zaznaczonym obszarze: „${room.name}”, czy $names?",
+            question = "Które pomieszczenie z tabeli leży w zaznaczonym obszarze: „$currentLabel”, czy $names?",
         )
     }
 
@@ -221,7 +236,7 @@ object CandidateAmbiguities {
         else -> label
     }
 
-    private fun fmt(v: Double) = String.format(java.util.Locale.ROOT, "%.2f", v)
+    private fun fmt(v: Double) = String.format(java.util.Locale.ROOT, "%.2f", v).replace('.', ',')
 
     private fun pct(v: Double) = String.format(java.util.Locale.ROOT, "%.1f %%", v * 100)
 }

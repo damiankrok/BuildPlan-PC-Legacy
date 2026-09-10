@@ -500,9 +500,11 @@ class Stage013DFidelityTest {
         val analyzerish = Regex("""(?i)\b(analyzer|analizator)\b""")
         // Widened in STAGE-024 for the same reason as in Stage013CSignatureTest: the analyzer's
         // platform bindings and its one product screen are authorised; everything else is not.
+        // Widened again in STAGE-025 for the verification workspace and its variant-specific
+        // canvas; the reason is the same one that admitted the import screen in STAGE-024.
         val authorised = Regex(
             """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
-                """|app[\\/]src[\\/]main[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/]ProjectImport[A-Za-z]*)\.kt$""",
+                """|app[\\/]src[\\/](main|debug|release)[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/](ProjectImport|Verification)[A-Za-z]*)\.kt$""",
         )
         val offenders = listOf("app/src/main", "app/src/debug", "app/src/release")
             .flatMap { path -> File(repositoryRoot(), path).walkTopDown().toList() }

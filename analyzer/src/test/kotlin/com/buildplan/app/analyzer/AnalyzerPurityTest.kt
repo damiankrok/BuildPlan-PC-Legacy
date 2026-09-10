@@ -82,12 +82,34 @@ class AnalyzerPurityTest {
     fun `site vocabulary lives only in the site adapter`() {
         // Polish room-name keywords are site vocabulary; the generic layers work on RoomKind and numbers.
         val polishKeywords = listOf("kuchn", "salon", "łazien", "garaż", "kotłow", "wiatro")
-        val violations = coreSources()
-            .filter { !it.path.replace('\\', '/').contains("/site/archon/") && !it.path.replace('\\', '/').contains("/validate/") }
+
+        // Two different things wear the same words, and only one of them is the failure this
+        // guard is for.
+        //
+        // *Keying* on a Polish name — `name.startsWith("garaż")` — is a generic layer deciding
+        // what a room is from one site's vocabulary, and it is forbidden everywhere outside the
+        // adapter. *Writing* the word in a sentence a person reads is the opposite: `validate/`,
+        // `service/` and `verification/` exist partly to put questions to a Polish-speaking user,
+        // and a question about a garage that may not contain the word is a question nobody can
+        // read. So the comparison test runs over every file, and the plain-literal test skips the
+        // layers whose output is prose.
+        val comparison = coreSources()
+            .filter { !it.path.replace('\\', '/').contains("/site/archon/") }
+            .flatMap { file ->
+                val text = file.readText().lowercase().replace(" ", "")
+                polishKeywords.filter { k ->
+                    listOf("startswith(\"$k", "contains(\"$k", "==\"$k", "equals(\"$k").any { text.contains(it) }
+                }.map { "${file.name} keys on '$it'" }
+            }
+        if (comparison.isNotEmpty()) fail(comparison.joinToString("\n"))
+
+        val prose = setOf("/site/archon/", "/validate/", "/service/", "/verification/")
+        val literals = coreSources()
+            .filter { file -> prose.none { file.path.replace('\\', '/').contains(it) } }
             .flatMap { file ->
                 val text = file.readText().lowercase()
-                polishKeywords.filter { text.contains("\"$it") || text.contains("startswith(\"$it") }.map { "${file.name} matches '$it'" }
+                polishKeywords.filter { text.contains("\"$it") }.map { "${file.name} names '$it'" }
             }
-        if (violations.isNotEmpty()) fail(violations.joinToString("\n"))
+        if (literals.isNotEmpty()) fail(literals.joinToString("\n"))
     }
 }

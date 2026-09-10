@@ -83,7 +83,7 @@ class ReleaseBoundaryTest {
         )
         val wiring = sources("main").filter { file ->
             val path = file.path.replace('\\', '/')
-            path.contains("/com/buildplan/app/analyzer/") || file.name.startsWith("ProjectImport")
+            path.contains("/com/buildplan/app/analyzer/") || file.name.startsWith("ProjectImport") || file.name.startsWith("Verification")
         }
         assertTrue("this test must actually have files to check", wiring.isNotEmpty())
         val violations = wiring.flatMap { file ->
@@ -107,7 +107,7 @@ class ReleaseBoundaryTest {
     fun `the analyzer's production path cannot reach the canonical model or the budget`() {
         val wiring = sources("main").filter { file ->
             val path = file.path.replace('\\', '/')
-            path.contains("/com/buildplan/app/analyzer/") || file.name.startsWith("ProjectImport")
+            path.contains("/com/buildplan/app/analyzer/") || file.name.startsWith("ProjectImport") || file.name.startsWith("Verification")
         }
         assertTrue("this test must actually have files to check", wiring.isNotEmpty())
         val violations = wiring.flatMap { file ->
