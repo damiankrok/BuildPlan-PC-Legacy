@@ -33,5 +33,21 @@ internal val GlassTint = Color(0xFF0F1113).copy(alpha = 0.84f)
 internal val GlassRimHigh = Color.White.copy(alpha = 0.16f)
 internal val GlassRimLow = Color.White.copy(alpha = 0.03f)
 
+/**
+ * The same pane, opaque, for chrome that sits over other chrome.
+ *
+ * One sheet of glass over a model reads as a pane. Two stacked never reach
+ * opacity: at 0.84 each, sixteen per cent of the layer below survives, which
+ * is plenty for a sentence underneath to stay legible and interleave with the
+ * sentence on top — two readable texts in one place and no readable text at
+ * all. So the second layer stops being translucent. It is the same hue, so it
+ * still belongs to the family; what it gives up is the transparency, which at
+ * layer two was never buying anything.
+ */
+internal val GlassTintOpaque = Color(0xFF15171A)
+
+/** The scrim under a modal layer: enough to put the workspace behind glass, not enough to hide it. */
+internal val ScrimModal = Color(0xFF07080A).copy(alpha = 0.62f)
+
 /** The scrims that settle the top and bottom edges of the canvas for text. */
 internal val Scrim = Color(0xFF07080A)

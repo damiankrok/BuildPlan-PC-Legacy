@@ -3,6 +3,7 @@ package com.buildplan.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,33 +33,35 @@ import com.buildplan.app.ui.components.BuildingWireframe
 internal fun VerificationCanvas(
     candidate: ProjectAnalysisCandidate,
     highlighted: List<String>,
+    chromeInsets: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
+    // The study fills the canvas; the sentence sits in the corner the chrome leaves.
+    //
+    // Centred on the whole screen it landed behind the rail, and behind the question panel too:
+    // at a glass pane's alpha the words underneath keep showing through, so two texts shared the
+    // same lines and neither could be read. The free area between the panels is a narrow column,
+    // which is the wrong shape for a paragraph, so the line goes to the top of it and stays short.
+    //
+    // There used to be a second line here naming the highlighted subject. It is gone on purpose:
+    // the question panel's own header already names the subject, and this one had no names for
+    // anything but a room — an opening fell through to its candidate id and printed
+    // "Pytanie dotyczy: f0-o5, f0-o7" at a person who has never heard of f0-o5.
     Box(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
         Column(
-            modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(chromeInsets)
+                .padding(horizontal = 16.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             BuildingWireframe(modifier = Modifier.padding(bottom = 20.dp))
             Text(
                 text = stringResource(R.string.verify_canvas_reserved),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            if (highlighted.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.verify_canvas_subject, subjectNames(candidate, highlighted)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
         }
     }
 }
-
-/** The names behind the candidate ids a question points at, so the caption is readable. */
-private fun subjectNames(candidate: ProjectAnalysisCandidate, ids: List<String>): String =
-    ids.map { id -> candidate.room(id)?.name ?: id }.distinct().joinToString(", ")

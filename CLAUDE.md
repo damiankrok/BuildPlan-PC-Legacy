@@ -407,6 +407,42 @@ miejsce, w którym powstaje `USER_CONFIRMED`.
 - **Podsumowanie mówi, czego brakuje.** Żadnego „model poprawny w 100 %".
   Gotowość jest bramkowana pytaniami `REQUIRED`, a odłożone i nieustalone
   są policzone i nazwane.
+- **Odczyt analizatora i odpowiedź człowieka to dwa fakty i widać oba.**
+  `isCurrent` mówi, co niesie analizator, i nigdy się nie zmienia;
+  `chosenOptionId` mówi, co wybrał człowiek. Podmiana jednego na drugie
+  zaciera historię źródła, którą decyzja ma zachowywać, a ekran bez
+  widocznej odpowiedzi to dziennik decyzji, którego nie da się przeczytać.
+
+## Chrom przestrzeni roboczej — reguły twarde
+
+Dotyczy każdego ekranu, na którym `GlassSurface` leży na kanwie
+(STAGE-013H, STAGE-025).
+
+- **Szkło jest materiałem jednowarstwowym.** Jedna tafla nad modelem czyta
+  się jak tafla; dwie ułożone jedna na drugiej nigdy nie osiągają krycia —
+  tekst spod nich nadal widać i dwa czytelne zdania dzielą te same wiersze.
+  Chrom nad chromem bierze `GlassDefaults.OpaqueTint`.
+- **Tafla jest lita dla palca — więc układaj ją względem innych tafli.**
+  `GlassSurface` bierze udział w trafianiu, żeby nie puszczać przeciągnięć
+  na model. Element, który nachodzi na inny, nie tylko po nim drukuje: zjada
+  jego dotknięcia i jego przewijanie. Panele dzielą budżet, a nie warstwę.
+- **Warstwa modalna jest modalna do końca.** Kryjąca karta na
+  przyciemnieniu, które **przechwytuje gest** i zamyka. Bez tego pod kartą
+  nadal działają pola i przyciski ekranu, który karta zasłania.
+- **Nagłówek i sposób działania stoją poza przewijaniem.** Wewnątrz jednego
+  kontenera przewijanego wysokość panelu decyduje o tym, czy widać przycisk,
+  który jest jedynym wyjściem. Nad ucięciem treści dawaj gradient — na
+  ekranie dotykowym suwak nie mówi nic.
+- **Powiadomienie znika samo.** Nic na nie nie czeka, a zostawione do
+  zamknięcia staje się meblem po pierwszej z kilkudziesięciu akcji.
+- **Stan nigdy nie jest powiedziany samym kolorem**, a `contentDescription`
+  na węźle scalonym **kasuje** tekst potomków — użyj `stateDescription`
+  i pozwól scaleniu przeczytać etykietę razem z liczbą.
+- **Przy dwóch gęstych akapitach nie rób przecinki.** Etapuj
+  (`MotionPolicy.enterDelayed`): wychodzący akapit najpierw znika.
+- **Sprawdzaj przy skali czcionki 1,3 i `ANIMATOR_DURATION_SCALE = 0`**, na
+  urządzeniu, przed zgłoszeniem gotowości. Każde `maxLines = 1` ma mieć
+  `overflow = Ellipsis`; stała w `dp` bez pomiaru jest przyszłym obcięciem.
 
 ## Odczyt obrazów źródła — reguły twarde
 

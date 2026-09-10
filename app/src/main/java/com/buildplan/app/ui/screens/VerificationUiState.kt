@@ -35,6 +35,19 @@ data class VerificationUiState(
 
     val answeredCount: Int get() = questions.count { isAnswered(it.id) }
 
+    /** Postponed questions. Counted, and named on screen, because a deferral is also a decision. */
+    val deferredCount: Int get() = questions.count { isDeferred(it.id) }
+
+    /**
+     * The option the person picked, if they picked one.
+     *
+     * Not the option the analyzer is carrying — that is `QuestionOption.isCurrent`, computed once
+     * from the report and never changed. Without this the panel had no way to show an answer back:
+     * choose the other room and every ring stayed empty while the analyzer's reading kept its
+     * "(current)" label, so the decision was invisible the moment the panel was reopened.
+     */
+    fun chosenOptionId(questionId: String): String? = session.chosenOptionId(questionId)
+
     /** Questions grouped by tier, in tier order, keeping each tier's own priority order. */
     val byTier: List<Pair<PriorityTier, List<RootQuestion>>>
         get() = PriorityTier.entries.mapNotNull { tier ->

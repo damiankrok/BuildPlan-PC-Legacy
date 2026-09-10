@@ -58,6 +58,18 @@ data class MotionPolicy(val reduced: Boolean) {
     fun <T> settle(): FiniteAnimationSpec<T> = spec(SETTLE_MILLIS, Standard)
 
     /**
+     * Arriving, but only after the thing it replaces has left.
+     *
+     * Two overlapping fades are the right answer for a photograph and the
+     * wrong one for a paragraph: for the length of the overlap both texts are
+     * drawn on the same lines and neither can be read. Waiting out the exit
+     * costs the eye nothing and buys a clean substitution, so any content
+     * swap where both sides are dense text uses this instead of a crossfade.
+     */
+    fun <T> enterDelayed(): FiniteAnimationSpec<T> =
+        if (reduced) snap() else tween(durationMillis = ENTER_MILLIS, delayMillis = EXIT_MILLIS, easing = EmphasizedDecelerate)
+
+    /**
      * The camera travelling to a named view. The one transition allowed the
      * full three hundred milliseconds: it moves the whole picture, and a
      * shorter cut reads as a different house rather than the same one turned.

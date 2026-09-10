@@ -1,6 +1,7 @@
 package com.buildplan.app.ui.screens
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -37,16 +38,21 @@ import com.buildplan.app.render.filament.rememberModelScene
 internal fun VerificationCanvas(
     candidate: ProjectAnalysisCandidate,
     highlighted: List<String>,
+    chromeInsets: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
     val preview = remember(candidate) { CandidatePreview.of(candidate) }
+    // The rendered model deliberately ignores [chromeInsets] and keeps the whole screen: the
+    // canvas dominating the workspace is the point, and the camera frames the house, not the
+    // gap between the panels. Text is the exception — a sentence centred on the full screen
+    // lands behind the question rail and neither is then readable.
     if (preview == null) {
         Box(modifier = modifier) {
             Text(
                 text = stringResource(R.string.verify_canvas_unavailable),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                modifier = Modifier.align(Alignment.Center).padding(chromeInsets).padding(32.dp),
             )
         }
         return
@@ -59,7 +65,7 @@ internal fun VerificationCanvas(
                     text = stringResource(R.string.verify_canvas_unavailable),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                    modifier = Modifier.align(Alignment.Center).padding(chromeInsets).padding(32.dp),
                 )
             } else {
                 // One subject at a time: the renderer tints the selected element, and a question

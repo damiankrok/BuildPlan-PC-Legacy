@@ -39,6 +39,18 @@ class VerificationSession private constructor(
 
     fun isDeferred(questionId: String): Boolean = lastDecision(questionId)?.kind == DecisionKind.DEFER
 
+    /**
+     * Which option the person took on [questionId], or null when they have
+     * not taken one.
+     *
+     * Distinct from [QuestionOption.isCurrent], which says what the analyzer
+     * is carrying and never changes: the question list is immutable, so a
+     * screen that read only `isCurrent` could show what was read but never
+     * what was decided. Both facts matter and neither replaces the other.
+     */
+    fun chosenOptionId(questionId: String): String? =
+        lastDecision(questionId)?.takeIf { it.kind != DecisionKind.DEFER }?.optionId
+
     /** Questions still open, in priority order, deferred ones last. */
     val open: List<RootQuestion>
         get() = questions.filter { !isAnswered(it.id) }.sortedBy { if (isDeferred(it.id)) 1 else 0 }

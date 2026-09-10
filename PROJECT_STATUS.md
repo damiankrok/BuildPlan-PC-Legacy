@@ -823,6 +823,61 @@
   z przymiotnikiem, a `QuestionLanguageTest` chodzi po każdym renderowanym
   napisie każdego pytania i tego pilnuje.
 
+  **Niezależny audyt (Impeccable + reguły ruchu Emila) i co znalazł.**
+  Przeprowadzony po zieleni technicznej, na kodzie i na zrzutach
+  z urządzenia — i zablokował ekran. Trzy wady krytyczne, wszystkie z jednej
+  przyczyny: **szkło jest materiałem jednowarstwowym**, a ekran układał je
+  w trzy–cztery warstwy i nigdy nie osiągał krycia.
+
+  - Powiadomienie o zmianie stało wyśrodkowane u góry i wchodziło 16 dp
+    **w szynę**; szklana tafla jest lita dla palca, więc nie tylko drukowało
+    po dwóch pierwszych pytaniach, ale **zjadało ich dotknięcia**. Do tego
+    `lastChange` nigdy nie było czyszczone, czyli po pierwszej z 48 odpowiedzi
+    stawało się trwałym meblem. Teraz stoi w kolumnie kanwy, ma kształt
+    panelu (nie pigułki), jest kryjące i **znika samo po 6 s**.
+  - Podsumowanie było przejrzystą, **niemodalną** kartą nad dwiema żywymi
+    warstwami: jego wiersze mieszały się z szyną i z panelem pytania, a pole
+    „Wartość (m)" i przycisk „Zastosuj" **pod** kartą nadal reagowały.
+    Teraz: kryjąca karta na przyciemnieniu, które przechwytuje gest
+    i zamyka sheet.
+  - W pytaniu **wymaganym** drugi wariant odpowiedzi — jedyny sposób, żeby je
+    rozstrzygnąć — był **poniżej krawędzi** panelu, bez suwaka, bez cienia,
+    bez zapowiedzi. Nagłówek panelu odwrotnie: **wyjeżdżał górą**, zostawiając
+    akapit bez tytułu i bez „×". Teraz nagłówek i sposób odpowiedzi stoją
+    **poza** przewijaniem, a nad ucięciem prozy jest gradient.
+
+  Do tego naprawione: odpowiedź na pytanie wyboru **nie była widoczna**
+  (`isCurrent` pochodzi z raportu i nigdy się nie zmienia — wybór był
+  niewidzialny po powrocie do pytania; teraz obok „(obecny odczyt)" stoi
+  „(Twoja odpowiedź)" i oba fakty są zachowane); `contentDescription` na
+  wierszu **kasował** liczbę wielkości z tego, co czyta TalkBack; wybór był
+  powiedziany **wyłącznie kolorem**; `KeyboardType.Number` nie ma klawisza
+  separatora, więc metrów nie dało się wpisać; wszystkie przyciski miały
+  40 dp; przy skali czcionki 1,3 nagłówek **ucinał się bez wielokropka**
+  („Rozstrzygnięto 0 z 48"), a szyna zamieniała każdy temat w prefiks;
+  odłożenie nie było widoczne w nagłówku; `%.2f` na liczbie stopni dawało
+  „Potwierdź 17,00"; kanwa release drukowała surowe identyfikatory
+  („Pytanie dotyczy: f0-o5, f0-o7"); `BackHandler(enabled = true)` zabijał
+  podgląd cofania; szyna była nie-wirtualizowana (48 wierszy, 48 żywych
+  animatorów koloru) i nie przewijała się do pytania, do którego sama
+  przeszła; przejście panelu było **przecinką** dwóch gęstych akapitów przy
+  najczęstszej akcji ekranu — teraz jest etapowe (`MotionPolicy.enterDelayed`),
+  przycięte i zakotwiczone dołem.
+
+  Szyna zwężona z 232 dp do **184 dp** (na telefonie z dowodów 232 dp to było
+  ponad połowa szerokości — kanwa nie dominowała, to był formularz
+  dwupanelowy), temat dostał dwa wiersze, panel ma limit szerokości.
+  Sprawdzone na urządzeniu **przy skali czcionki 1,3 i ANIMATOR_DURATION_SCALE
+  = 0** — zrzuty 21–26.
+
+  **Czego audyt nie naprawił, i to jest zapisane, nie naprawione:** widoczne
+  na ekranie zdania (treść pytań, powody, etykiety wariantów, dowody) są
+  polskimi szablonami w `analyzer/.../verification/`, nie w `strings.xml`.
+  Reguła „etykiety w `strings.xml`" jest spełniona co do litery przez sam
+  ekran i obchodzona co do sensu przez warstwę pod nim. Docelowo pytanie
+  powinno nieść identyfikator zasobu i argumenty, a nie gotowe zdanie —
+  to zmiana kontraktu, nie poprawka, i nie wchodziła w zakres STAGE-025.
+
   **Ograniczenia zapisane wprost.** Debugowy APK nie kończy analizy na
   `emulator-5570` pod presją pamięci (Filament + 2 GB RAM; ten sam bieg na
   podpisanym release przechodzi — rozpoznane przez podstawienie, nie przez

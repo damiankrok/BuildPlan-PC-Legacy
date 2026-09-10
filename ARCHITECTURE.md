@@ -2464,8 +2464,25 @@ przestawia układu.
 - Pole liczbowe startuje **puste**. Założenie analizatora jest osobnym
   przyciskiem „Potwierdź X"; wpisana z góry wartość jest sugestią, którą ludzie
   zatwierdzają nie patrząc.
-- Wariant release ma własną kanwę (`src/release`) z zarezerwowanym studiem
-  i podpisem nazywającym podświetlony podmiot; Filament zostaje w `debug`.
+- Wariant release ma własną kanwę (`src/release`) z zarezerwowanym studiem;
+  Filament zostaje w `debug`. Kanwa dostaje `chromeInsets` i układa **swój
+  tekst** w obszarze, który chrom zostawia — model dalej zajmuje cały ekran.
+- **Szkło jest materiałem jednowarstwowym.** Jedna tafla nad modelem czyta się
+  jak tafla; dwie ułożone jedna na drugiej nigdy nie osiągają krycia i tekst
+  spod nich wciąż przez nie widać. Chrom nad chromem bierze
+  `GlassDefaults.OpaqueTint`, a warstwa modalna dodatkowo `ScrimModal`, który
+  **przechwytuje gest** — bez tego pod kartą podsumowania nadal działało pole
+  wartości i przycisk „Zastosuj".
+- **Nagłówek i sposób odpowiedzi stoją poza przewijaniem.** Wewnątrz jednego
+  kontenera przewijanego wysokość panelu decydowała, czy w pytaniu wymaganym
+  widać drugi wariant odpowiedzi — a nie było widać, bez suwaka i bez cienia.
+  Nad ucięciem prozy jest gradient, bo na ekranie dotykowym suwak nie mówi
+  nic.
+- **Odpowiedź człowieka i odczyt analizatora to dwa fakty i widać oba.**
+  `QuestionOption.isCurrent` mówi, co niesie analizator, i nigdy się nie
+  zmienia; `VerificationSession.chosenOptionId` mówi, co wybrał człowiek.
+  Ekran, który podmieniłby jedno na drugie, zatarłby historię źródła, którą
+  decyzja ma zachowywać.
 
 ### Język
 

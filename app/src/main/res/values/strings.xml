@@ -131,6 +131,7 @@
     <string name="verify_title">Weryfikacja modelu</string>
     <string name="verify_close">Zamknij weryfikację</string>
     <string name="verify_progress">Rozstrzygnięto %1$d z %2$d decyzji</string>
+    <string name="verify_progress_deferred">Rozstrzygnięto %1$d z %2$d, odłożono %3$d</string>
     <string name="verify_summary_open">Podsumowanie</string>
 
     <string name="verify_tier_required">Wymagane</string>
@@ -143,6 +144,7 @@
     <string name="verify_tier_optional_count">Opcjonalne — %1$d z %2$d</string>
 
     <string name="verify_state_open">nierozstrzygnięte</string>
+    <string name="verify_state_active">otwarte pytanie</string>
     <string name="verify_state_answered">rozstrzygnięte</string>
     <string name="verify_state_deferred">odłożone</string>
 
@@ -150,6 +152,7 @@
     <string name="verify_evidence_assumption">Przyjęto tymczasowo: %1$s</string>
     <string name="verify_evidence_none">brak odczytu</string>
     <string name="verify_option_current">%1$s (obecny odczyt)</string>
+    <string name="verify_option_chosen">%1$s (Twoja odpowiedź)</string>
 
     <string name="verify_value_label">Wartość (%1$s)</string>
     <string name="verify_unit_meter">m</string>
@@ -163,7 +166,6 @@
     <string name="verify_dismiss">OK</string>
 
     <string name="verify_canvas_reserved">Model kandydata pojawi się tutaj, gdy renderer wejdzie do wydania.</string>
-    <string name="verify_canvas_subject">Pytanie dotyczy: %1$s</string>
     <string name="verify_canvas_unavailable">Kandydat nie ma geometrii do wyświetlenia.</string>
 
     <string name="verify_summary_title">Co zostało zweryfikowane</string>

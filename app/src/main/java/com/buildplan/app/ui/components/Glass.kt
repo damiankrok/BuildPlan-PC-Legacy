@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.buildplan.app.ui.theme.GlassRimHigh
 import com.buildplan.app.ui.theme.GlassRimLow
 import com.buildplan.app.ui.theme.GlassTint
+import com.buildplan.app.ui.theme.GlassTintOpaque
 
 /**
  * The one material every piece of workspace chrome is made of: a sheet of
@@ -72,4 +73,12 @@ object GlassDefaults {
     val PanelShape: Shape = RoundedCornerShape(18.dp)
     val RailShape: Shape = RoundedCornerShape(28.dp)
     val PillShape: Shape = CircleShape
+
+    /**
+     * The tint for a pane that sits over another pane.
+     *
+     * Glass is a one-layer material. Stack two and the text underneath keeps
+     * showing through both; pass this to the upper one instead.
+     */
+    val OpaqueTint: Color = GlassTintOpaque
 }
