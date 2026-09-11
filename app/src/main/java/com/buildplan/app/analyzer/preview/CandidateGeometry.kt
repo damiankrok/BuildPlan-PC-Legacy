@@ -3,6 +3,7 @@ package com.buildplan.app.analyzer.preview
 import com.buildplan.app.analyzer.candidate.OpeningType
 import com.buildplan.app.analyzer.candidate.ProjectAnalysisCandidate
 import com.buildplan.app.analyzer.candidate.Pt
+import com.buildplan.app.analyzer.candidate.ResolvedSurfaceKind
 import com.buildplan.app.analyzer.service.CandidateGeometryQueries
 import com.buildplan.app.geometry.GablePanelGeometry
 import com.buildplan.app.geometry.WallOpening
@@ -83,10 +84,23 @@ internal class CandidateGeometry private constructor(
             val elements = mutableListOf<BuildingElement>()
             val primitives = mutableListOf<BuildingGeometryPrimitive>()
             val facadePanes = mutableMapOf<String, List<ModelPoint>>()
+            candidate.resolvedGeometry?.surfaces?.groupBy { it.ownerId }?.forEach { (owner,surfaces) ->
+                val first=surfaces.first()
+                val id=eid(owner)
+                val kind=when(first.kind) { ResolvedSurfaceKind.WALL -> BuildingElementKind.WALL; ResolvedSurfaceKind.OPENING -> BuildingElementKind.WINDOW; else -> BuildingElementKind.OTHER }
+                elements+=BuildingElement(id,kind,owner,first.floorId?.let { BuildingElementScope.OnFloor(fid(it)) } ?: BuildingElementScope.WholeBuilding)
+                surfaces.forEach { s ->
+                    val points=s.vertices.map { ModelPoint(it.x,it.y,it.z) }
+                    val planArea=points.indices.sumOf { i -> val a=points[i]; val b=points[(i+1)%points.size]; a.x*b.z-b.x*a.z }*0.5
+                    if(s.kind==ResolvedSurfaceKind.OPENING) primitives+=OpeningPanelGeometry(id,points)
+                    else if(abs(planArea)<1e-8) primitives+=GablePanelGeometry(id,points)
+                    else primitives+=RoofFacetGeometry(id,points)
+                }
+            }
 
             // Continuous exterior envelopes retain lintels and roof-following gables.
             // Opening positions are measured on the envelope, not clamped to a trace fragment.
-            candidate.facadeEnvelopes.forEach { facade ->
+            (if(candidate.resolvedGeometry==null) candidate.facadeEnvelopes else emptyList()).forEach { facade ->
                 val a = facade.segment.a
                 val b = facade.segment.b
                 val length = facade.segment.length
@@ -182,6 +196,7 @@ internal class CandidateGeometry private constructor(
 
             // Openings: a pane spanning the gap on the wall line, at the candidate's (assumed) height.
             candidate.openings.forEach { o ->
+                if(candidate.resolvedGeometry!=null && o.exterior) return@forEach
                 if (candidate.facadeEnvelopes.isNotEmpty() && ((o.linkedRoomIds.isEmpty() && o.id !in facadePanes) || (o.exterior && o.id !in facadePanes))) return@forEach
                 val wall = candidate.wall(o.wallId) ?: return@forEach
                 val floor = floorsByOrder.firstOrNull { it.id == o.floorId } ?: return@forEach

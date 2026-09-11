@@ -127,6 +127,7 @@ data class VisualObservation(
     val fidelity: FactFidelity,
     val note: String = "",
     val rejectedAlternatives: List<String> = emptyList(),
+    val outline: List<Pt> = emptyList(),
 ) {
     init {
         require(confidence in 0.0..1.0) { "confidence must be in 0..1, was $confidence" }
@@ -152,6 +153,7 @@ data class VisualAssetEvidence(
     val confidence: Double,
     val fidelity: FactFidelity,
     val notes: List<String> = emptyList(),
+    val structuralMask: SourceMask? = null,
 ) {
     init {
         require(confidence in 0.0..1.0) { "confidence must be in 0..1, was $confidence" }
@@ -161,6 +163,15 @@ data class VisualAssetEvidence(
 
     /** The building's silhouette box, when the picture yielded one. */
     val silhouette: NormalizedBox? get() = of(VisualObservationKind.BUILDING_SILHOUETTE).firstOrNull()?.bounds
+}
+
+/** Fixed source silhouette and excluded pixels, sampled in its bounding box. RLE start,length pairs. */
+data class SourceMask(val size:Int,val runs:List<Int>,val excludedRuns:List<Int> = emptyList()) {
+    init { require(size in 16..256); require(runs.size%2==0 && excludedRuns.size%2==0)
+        (runs.chunked(2)+excludedRuns.chunked(2)).forEach { require(it[0]>=0 && it[1]>0 && it[0]+it[1]<=size*size) } }
+    fun decode(excluded:Boolean=false):BooleanArray = BooleanArray(size*size).also { out ->
+        (if(excluded) excludedRuns else runs).chunked(2).forEach { (start,length) -> for(i in start until start+length) out[i]=true }
+    }
 }
 
 /** Which way a facade of the candidate faces, in the plan's own frame (Z down the page). */

@@ -30,6 +30,9 @@ data class ProjectAnalysisCandidate(
     val facadeEnvelopes: List<FacadeEnvelopeCandidate> = emptyList(),
     val selfVerification: SelfVerificationResult? = null,
     val reconstruction: ReconstructionState? = null,
+    val openingGroups: List<OpeningGroupCandidate> = emptyList(),
+    val facadeFeatures: List<FacadeFeatureCandidate> = emptyList(),
+    val resolvedGeometry: ResolvedBuildingGeometry? = null,
 ) {
     fun floor(id: String): FloorCandidate? = floors.firstOrNull { it.id == id }
     fun room(id: String): RoomCandidate? = floors.asSequence().flatMap { it.rooms.asSequence() }.firstOrNull { it.id == id }

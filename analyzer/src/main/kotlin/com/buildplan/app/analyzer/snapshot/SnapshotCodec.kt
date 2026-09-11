@@ -113,7 +113,7 @@ data class ProjectAnalysisSnapshot(
 ) {
     companion object {
         const val SCHEMA_VERSION = 5
-        const val ANALYZER_VERSION = "0.5.0-stage025b-1"
+        const val ANALYZER_VERSION = "0.5.0-stage025b-2"
     }
 }
 
@@ -266,6 +266,23 @@ object SnapshotCodec {
         "issues" toArray c.issues.map { i -> json { "severity" to i.severity; "stage" to i.stage; "subject" to i.subject; "message" to i.message } }
         "visual" to visualJson(c.visual)
         "reconstruction" to c.reconstruction?.let(::reconstructionJson)
+        "openingGroups" toArray c.openingGroups.map { g -> json {
+            "id" to g.id; "facadeId" to g.facadeId; "floorId" to g.floorId; "outer" to polygonJson(g.outer)
+            "memberOpeningIds" toStrings g.memberOpeningIds; "panels" toArray g.panels.map(::polygonJson); "doorLeaf" to g.doorLeaf?.let(::polygonJson)
+            "mullions" toArray g.mullions.map(::segJson); "evidenceIds" toStrings g.evidenceIds; "confidence" to g.confidence; "fidelity" to g.fidelity
+        } }
+        "facadeFeatures" toArray c.facadeFeatures.map { f -> json {
+            "id" to f.id; "kind" to f.kind; "facadeId" to f.facadeId; "floorId" to f.floorId; "profile" to polygonJson(f.profile)
+            "depth" to f.depth; "evidenceIds" toStrings f.evidenceIds; "confidence" to f.confidence; "fidelity" to f.fidelity; "depthFidelity" to f.depthFidelity
+        } }
+        "resolvedGeometry" to c.resolvedGeometry?.let { g -> json {
+            "lineage" to g.lineage; "diagnostics" toStrings g.diagnostics
+            "surfaces" toArray g.surfaces.map { s -> json {
+                "id" to s.id; "ownerId" to s.ownerId; "floorId" to s.floorId; "kind" to s.kind
+                "vertices" toArray s.vertices.map { p -> json { "x" to p.x; "y" to p.y; "z" to p.z } }
+                "thickness" to s.thickness; "evidenceIds" toStrings s.evidenceIds; "fidelity" to s.fidelity; "roomId" to s.roomId; "exterior" to s.exterior
+            } }
+        } }
         "masses" toArray c.masses.map { mass -> json {
             "id" to mass.id; "footprint" to polygonJson(mass.footprint); "baseLevel" to measuredJson(mass.baseLevel)
             "topLevel" to measuredJson(mass.topLevel); "roofKind" to mass.roofKind
@@ -286,6 +303,11 @@ object SnapshotCodec {
             } }
             "overallConfidence" to qa.overallConfidence; "selectionMargin" to qa.selectionMargin
             "unresolvedDiagnostics" toStrings qa.unresolvedDiagnostics; "iterations" to qa.iterations
+            "sourceScores" to json { qa.sourceScores.forEach { (k,v)->k to v } }
+            "metricResiduals" to json { qa.metricResiduals.forEach { (k,v)->k to v } }
+            "hardViolations" toStrings qa.hardViolations
+            "searchCounts" to json { qa.searchCounts.forEach { (k,v)->k to v } }
+            "repairTrace" toArray qa.repairTrace.map { r -> json { "cycle" to r.cycle; "action" to r.action; "before" to r.before; "after" to r.after; "accepted" to r.accepted; "reason" to r.reason } }
         } }
     }
 
@@ -313,6 +335,12 @@ object SnapshotCodec {
         issues = o.arr("issues")?.objects?.map { i -> AnalysisIssue(IssueSeverity.valueOf(i.str("severity")!!), i.str("stage")!!, i.str("subject"), i.str("message")!!) }.orEmpty(),
         visual = o.obj("visual")?.let(::visualFrom) ?: VisualEvidence.NONE,
         reconstruction = o.obj("reconstruction")?.let(::reconstructionFrom),
+        openingGroups = o.arr("openingGroups")?.objects?.map { g -> OpeningGroupCandidate(g.str("id")!!,g.str("facadeId")!!,g.str("floorId")!!,polygonFrom(g.arr("outer")!!),
+            strings(g,"memberOpeningIds"),g.arr("panels")!!.items.map { polygonFrom(it as JsonValue.Arr) },g.arr("doorLeaf")?.let(::polygonFrom),g.arr("mullions")!!.objects.map(::segFrom),strings(g,"evidenceIds"),g.num("confidence")!!,FactFidelity.valueOf(g.str("fidelity")!!)) }.orEmpty(),
+        facadeFeatures = o.arr("facadeFeatures")?.objects?.map { f -> FacadeFeatureCandidate(f.str("id")!!,FacadeFeatureKind.valueOf(f.str("kind")!!),f.str("facadeId")!!,f.str("floorId")!!,polygonFrom(f.arr("profile")!!),
+            f.num("depth")!!,strings(f,"evidenceIds"),f.num("confidence")!!,FactFidelity.valueOf(f.str("fidelity")!!),FactFidelity.valueOf(f.str("depthFidelity")!!)) }.orEmpty(),
+        resolvedGeometry = o.obj("resolvedGeometry")?.let { g -> ResolvedBuildingGeometry(g.arr("surfaces")!!.objects.map { s -> ResolvedSurface(s.str("id")!!,s.str("ownerId")!!,s.str("floorId"),ResolvedSurfaceKind.valueOf(s.str("kind")!!),
+            s.arr("vertices")!!.objects.map { Pt3(it.num("x")!!,it.num("y")!!,it.num("z")!!) },s.num("thickness")!!,strings(s,"evidenceIds"),FactFidelity.valueOf(s.str("fidelity")!!),s.str("roomId"),s.bool("exterior")!!) },g.str("lineage")!!,strings(g,"diagnostics")) },
         masses = o.arr("masses")?.objects?.map { mass -> BuildingMassCandidate(
             mass.str("id")!!, polygonFrom(mass.arr("footprint")!!), m(mass, "baseLevel"), m(mass, "topLevel"),
             RoofFamily.valueOf(mass.str("roofKind")!!), strings(mass, "adjacentMassIds"), strings(mass, "sourceAssets"), mass.num("confidence")!!,
@@ -326,6 +354,10 @@ object SnapshotCodec {
             qa.arr("hypotheses")!!.objects.map { h -> ReconstructionHypothesisScore(h.str("id")!!, h.num("score")!!, strings(h, "hardViolations"),
                 h.obj("scores")!!.fields.mapValues { (_, v) -> (v as JsonValue.Num).value }) },
             qa.num("overallConfidence")!!, qa.num("selectionMargin")!!, strings(qa, "unresolvedDiagnostics"), qa.int("iterations")!!,
+            qa.obj("sourceScores")?.fields?.mapValues { (_,v)->(v as JsonValue.Num).value }.orEmpty(),
+            qa.obj("metricResiduals")?.fields?.mapValues { (_,v)->(v as JsonValue.Num).value }.orEmpty(),strings(qa,"hardViolations"),
+            qa.arr("repairTrace")?.objects?.map { r -> RepairRecord(r.int("cycle")!!,r.str("action")!!,r.num("before")!!,r.num("after")!!,r.bool("accepted")!!,r.str("reason")!!) }.orEmpty(),
+            qa.obj("searchCounts")?.fields?.mapValues { (_,v)->(v as JsonValue.Num).value.toInt() }.orEmpty(),
         ) },
     )
 
@@ -531,22 +563,26 @@ private object VisualCodec {
     fun observationJson(v: VisualObservation) = json {
         "kind" to v.kind; "bounds" to boxJson(v.bounds); "confidence" to v.confidence; "method" to v.method; "fidelity" to v.fidelity; "note" to v.note
         "rejectedAlternatives" toStrings v.rejectedAlternatives
+        "outline" toArray v.outline.map { json { "x" to it.x; "z" to it.z } }
     }
 
     fun observationFrom(o: JsonValue.Obj) = VisualObservation(
         VisualObservationKind.valueOf(o.str("kind")!!), boxFrom(o.obj("bounds")!!), o.num("confidence") ?: 0.0, o.str("method") ?: "", FactFidelity.valueOf(o.str("fidelity")!!),
         o.str("note") ?: "", o.arr("rejectedAlternatives")?.items?.map { (it as JsonValue.Str).value }.orEmpty(),
+        o.arr("outline")?.objects?.map { Pt(it.num("x")!!,it.num("z")!!) }.orEmpty(),
     )
 
     fun assetJson(a: VisualAssetEvidence) = json {
         "assetUrl" to a.assetUrl; "role" to a.role; "viewpoint" to a.viewpoint; "widthPx" to a.widthPx; "heightPx" to a.heightPx
         "observations" toArray a.observations.map(::observationJson); "confidence" to a.confidence; "fidelity" to a.fidelity; "notes" toStrings a.notes
+        "structuralMask" to a.structuralMask?.let { m -> json { "size" to m.size; "runs" toNumbers m.runs.map { it.toDouble() }; "excludedRuns" toNumbers m.excludedRuns.map { it.toDouble() } } }
     }
 
     fun assetFrom(o: JsonValue.Obj) = VisualAssetEvidence(
         o.str("assetUrl")!!, AssetRole.valueOf(o.str("role")!!), VisualViewpoint.valueOf(o.str("viewpoint")!!), o.int("widthPx") ?: 0, o.int("heightPx") ?: 0,
         o.arr("observations")?.objects?.map(::observationFrom).orEmpty(), o.num("confidence") ?: 0.0, FactFidelity.valueOf(o.str("fidelity")!!),
         o.arr("notes")?.items?.map { (it as JsonValue.Str).value }.orEmpty(),
+        o.obj("structuralMask")?.let { m -> SourceMask(m.int("size")!!,m.arr("runs")!!.items.map { (it as JsonValue.Num).value.toInt() },m.arr("excludedRuns")!!.items.map { (it as JsonValue.Num).value.toInt() }) },
     )
 
     fun conflictJson(c: VisualConflict) = json {

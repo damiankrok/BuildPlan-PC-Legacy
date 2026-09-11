@@ -26,4 +26,10 @@ internal object PlanarTopology {
     fun difference(a: Polygon, b: Polygon): List<Polygon> = polygons(OverlayNG.overlay(geometry(a), geometry(b), OverlayNG.DIFFERENCE, precision))
     fun union(a: Polygon, b: Polygon): List<Polygon> = polygons(OverlayNG.overlay(geometry(a), geometry(b), OverlayNG.UNION, precision))
     fun distance(a: Polygon, b: Polygon): Double = geometry(a).distance(geometry(b))
+    fun hull(points: List<Pt>): Polygon? = polygons(factory.createMultiPointFromCoords(points.map { Coordinate(it.x,it.z) }.toTypedArray()).convexHull()).firstOrNull()
+    fun inset(p:Polygon,distance:Double):List<Polygon> { require(distance>=0); return polygons(geometry(p).buffer(-distance)) }
+    fun convexParts(p:Polygon):List<Polygon> {
+        val shape=geometry(p)
+        return if(shape.convexHull().area-shape.area<1e-8) listOf(p) else polygons(PolygonTriangulator.triangulate(shape))
+    }
 }

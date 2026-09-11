@@ -36,7 +36,7 @@ class AutomaticReconstructionTest {
         assertEquals(listOf("main"),c.masses[1].adjacentMassIds)
         assertTrue(c.facadeEnvelopes.flatMap { it.topProfile }.maxOf { it.y } > 6.0)
         assertTrue(c.facadeEnvelopes.all { f -> f.topProfile.all { it.y > f.baseLevel.requireValue() } })
-        assertTrue(c.selfVerification!!.unresolvedDiagnostics.any { it.contains("Perspective") })
+        assertTrue(c.selfVerification!!.unresolvedDiagnostics.any { it.contains("render structural projection score unavailable") })
     }
     @Test fun `gap after fragment is placed on facade without clamping`() {
         val c = withOpening(candidate())

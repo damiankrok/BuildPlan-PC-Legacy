@@ -46,9 +46,16 @@ data class SelfVerificationResult(
     val selectionMargin: Double,
     val unresolvedDiagnostics: List<String>,
     val iterations: Int,
+    val sourceScores: Map<String, Double> = emptyMap(),
+    val metricResiduals: Map<String, Double> = emptyMap(),
+    val hardViolations: List<String> = emptyList(),
+    val repairTrace: List<RepairRecord> = emptyList(),
+    val searchCounts: Map<String, Int> = emptyMap(),
 ) {
     init {
         require(overallConfidence in 0.0..1.0 && selectionMargin in 0.0..1.0)
         require(iterations > 0 && sourceCoverage.values.all { it >= 0 })
     }
 }
+
+data class RepairRecord(val cycle:Int,val action:String,val before:Double,val after:Double,val accepted:Boolean,val reason:String)

@@ -17,6 +17,18 @@ The former reconstruction considered only a lower roof level alternative. New gr
 
 First A/B run exposed a wrong rule: ground-minus-upper closure also includes regions under the main hip roof. Treating all of these as flat annexes added false roofs to B. Rejected results are retained under E/iteration1-rejected-roof-ownership. Roof ownership now intersects the primary roof coverage before adding exposed lower roofs. This is a generic correction from A/B, before holdout freeze.
 
+## Iteration 2 — facade coordinates, opening groups and source projection
+
+Global four-side assignment evaluates 24 bounded mappings using metadata, opening distributions and roofline projections. Blue glazing components retain an outer polygon rather than only a rectangle. Facade clipping produces resolved wall and opening surfaces with source lineage; panel subdivisions do not multiply structural deductions. Source-backed bands, gable frames and railing/balcony candidates now have geometry. Their depth remains an explicit display assumption where source views do not establish it.
+
+The former segmentation opening removed thin diagonal fascia. Bounded restoration of original fabric fixes that loss; horizontal extent stays within two pixels of the robust seed, preventing attached vegetation from expanding the building. A connected glazing/railing component can now be separated by a horizontal rail and supporting mass/band. Dark timber under a light border is accepted as interior contrast rather than requiring bright wood classification.
+
+Local perspective projection searches yaw, pitch and perspective strength (distance at a canonical field of view, because crop scale/FOV cannot be independently identified). Source masks, aspect ratio, silhouette IoU, octile edge-distance residual and roofline residual drive structural QA. Duplicate near-identical page thumbnails are downweighted by scoring the largest matching view once. Opening QA includes false-positive candidate openings as well as missing source openings. RGB MSE is not used.
+
+Final iteration-2 A has 7 opening groups, 4 frame pieces, 5 bands, 1 railing and 1 balcony; B has 14 groups and 8 bands. These are extracted hypotheses, not an owner MATCH declaration. New source objective: A 0.852222, B 0.825632; scores are not probabilities and historical 025A coarse scores are not directly comparable. Structural rendering/quantities remain to be unified in iteration 3.
+
+Device capture caught two real defects: horizontal feature faces passed to a vertical-only primitive, then a length tolerance incorrectly applied to a Newell area normal, producing an empty GPU mesh for a tiny valid triangle. Plane orientation now selects the primitive and the normal uses area tolerance. The real A/B snapshots pass a surface-to-GPU mesh gate; a synthetic mixed-plane regression also passes. Concave wall remnants are tessellated before display, preventing fan triangulation from filling door cuts. Failed captures are retained as failures, not evidence of success. Verified captures use E/iteration2-verified. Source comparisons and the completed QA report follow below.
+
 ## Policy and holdout
 
 Initial source weights: exact/plan-section 4, elevations 3, independent multi-view 2, render 1, assumptions 0.25. Exact constraints remain hard. Initial finite budgets: 32 initial hypotheses, beam 8, 4 repair cycles, 8 local alternatives, 288 hypothesis evaluations, 2048 projections. Scoring raster starts at 128 square (maximum 256). These are bounded defaults, not benchmark constants. Changes must document generic motivation, A/B effects, runtime and policy version.

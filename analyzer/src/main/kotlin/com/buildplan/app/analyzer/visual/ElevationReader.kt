@@ -10,6 +10,9 @@ import com.buildplan.app.analyzer.fidelity.FactFidelity
 import com.buildplan.app.analyzer.raster.BinaryMask
 import com.buildplan.app.analyzer.raster.PixelBox
 import com.buildplan.app.analyzer.raster.RasterImage
+import com.buildplan.app.analyzer.candidate.Pt
+import com.buildplan.app.analyzer.candidate.SourceMask
+import com.buildplan.app.analyzer.reconstruction.internal.PlanarTopology
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -96,7 +99,16 @@ object ElevationReader {
             notes += "no building-coloured region found"
             return VisualAssetEvidence(url, role, viewpoint, w, h, emptyList(), 0.0, fidelity, notes) to Layers(classes, opened, opened, null, null, null, marginLeft, marginRight)
         }
-        val building = fillHoles(components.maskOf(chosen.first))
+        val selected=components.maskOf(chosen.first)
+        // Opening identifies a robust seed, but erases thin fascia and diagonal gable
+        // borders. Restore original fabric only near that seed before filling glazing.
+        // The bounded support prevents clouds/trees connected by a thin watermark from
+        // growing an unrestricted flood-fill into the sky.
+        val support=selected.dilate(OPEN_RADIUS_PX*2,OPEN_RADIUS_PX*2)
+        val restored=fabric.and(support)
+        val seedBox=chosen.third
+        for(y in 0 until h) for(x in 0 until w) if(x<seedBox.minX-2 || x>seedBox.maxX+2 || y<seedBox.minY-2) restored[x,y]=false
+        val building = fillHoles(restored)
         val groundTop = groundRow(building, marginLeft, marginRight, chosen.third)
         // Everything below the ground row is the path the building stands on, not the building.
         for (y in groundTop + 1 until h) for (x in 0 until w) building[x, y] = false
@@ -121,7 +133,7 @@ object ElevationReader {
             y
         }
         val smooth = median3(top)
-        val stacks = if (elevation) stacks(smooth) else emptyList()
+        val stacks = stacks(smooth)
         stacks.forEach { (x0, x1, base, peak) ->
             out += VisualObservation(VisualObservationKind.ROOF_STACK, norm(PixelBox(box.minX + x0, peak, box.minX + x1, base), w, h), 0.7, "narrow flat-topped spike above the roofline (${x1 - x0 + 1} px wide, ${base - peak} px tall)", fidelity)
         }
@@ -129,7 +141,7 @@ object ElevationReader {
         val apexY = profile.min()
         val apexColumns = profile.indices.filter { profile[it] <= apexY + 2 }
         val apexWidth = (apexColumns.max() - apexColumns.min() + 1).toDouble() / bw
-        val segments = if (elevation) simplify(profile, ROOFLINE_TOLERANCE_PX) else emptyList()
+        val segments = simplify(profile, ROOFLINE_TOLERANCE_PX)
         segments.forEach { (i0, i1) ->
             val y0 = profile[i0]
             val y1 = profile[i1]
@@ -141,7 +153,7 @@ object ElevationReader {
                 note = if (abs(slope) < FLAT_SLOPE) "flat" else if (slope < 0) "rising to the right" else "falling to the right",
             )
         }
-        if (elevation) {
+        run {
             val gable = gableRead(profile, segments, apexWidth)
             val hip = hipRead(profile, segments, apexWidth, bw)
             if (apexWidth < APEX_POINT_SHARE) {
@@ -154,7 +166,7 @@ object ElevationReader {
         }
 
         // 4. The roof region and the eave: the dark body hanging from the roofline.
-        val roofRegion = if (elevation) roofRegion(classes, building, box, image, profile) else null
+        val roofRegion = roofRegion(classes, building, box, image, profile)
         var eaveY: Int? = null
         if (roofRegion != null) {
             val rb = roofRegion.boundingBox()
@@ -225,7 +237,7 @@ object ElevationReader {
 
         // Blue reflections are often as bright as sky. Read them inside the closed
         // building mask independently of dark-wall contrast; retain narrow mullion gaps.
-        if (elevation) {
+        run {
             val glass = classes.mask(PixelClass.GLASS, PixelClass.SKY).and(building)
             val joined = glass.close(max(1, bw / 140), max(1, bh / 100)).components()
             for (label in 1..joined.count) {
@@ -240,9 +252,17 @@ object ElevationReader {
                 val bounds = norm(pb, w, h)
                 out.removeAll { it.kind == VisualObservationKind.OPENING_RECTANGLE && it.bounds.left >= bounds.left && it.bounds.right <= bounds.right && it.bounds.top >= bounds.top && it.bounds.bottom <= bounds.bottom }
                 if (out.any { it.kind == VisualObservationKind.OPENING_RECTANGLE && abs(it.bounds.centreX - bounds.centreX) < bounds.width / 4 && abs(it.bounds.centreY - bounds.centreY) < bounds.height / 4 && it.bounds.width >= bounds.width * 0.8 && it.bounds.height >= bounds.height * 0.8 }) continue
+                val component=joined.maskOf(label)
+                val boundary=mutableListOf<Pt>()
+                val stride=max(1,pb.width/24)
+                for(x in pb.minX..pb.maxX step stride) {
+                    val ys=(pb.minY..pb.maxY).filter { component[x,it] }
+                    if(ys.isNotEmpty()) { boundary+=Pt(x.toDouble()/w,ys.first().toDouble()/h); boundary+=Pt(x.toDouble()/w,ys.last().toDouble()/h) }
+                }
+                val outline=PlanarTopology.hull(boundary)?.vertices.orEmpty()
                 out += VisualObservation(VisualObservationKind.OPENING_RECTANGLE, bounds, min(0.85, 0.55 + fill * 0.3),
                     "blue reflection enclosed by building fabric; mullion gaps closed at image-relative scale", fidelity,
-                    note = "glazing group bounding box; sloped head and railing occlusion remain uncertain")
+                    note = "outer glazing hull from source component; railing occlusion remains uncertain",outline=outline)
             }
         }
 
@@ -262,13 +282,34 @@ object ElevationReader {
                 continue
             }
             out += VisualObservation(VisualObservationKind.CLADDING_PATCH, norm(pb, w, h), min(0.9, 0.5 + share * 5), "warm saturated region inside the silhouette (${fmt(share * 100, 1)} % of it)", fidelity)
-            if (elevation) frameAround(classes, building, box, pb, profile)?.let { (frameBox, thickness) ->
+            frameAround(classes, building, box, pb, profile)?.let { (frameBox, thickness) ->
                 out += VisualObservation(VisualObservationKind.FRAME_OR_PORTAL, norm(frameBox, w, h), 0.7, "light border between the roofline and a clad recess under the gable, ${fmt(thickness * 100, 0)} % of the building wide", fidelity, note = "thickness ${fmt(thickness)}")
             }
         }
 
         // 7. Long horizontal edges across the wall, and a pale strip riding on one.
-        if (elevation) {
+        if(out.any { it.kind==VisualObservationKind.GABLE_READ }) {
+            val bordered=(box.minX..box.maxX).filter { x ->
+                val topY=profile[(x-box.minX).coerceIn(0,profile.lastIndex)]
+                val end=min(box.maxY,topY+max(4,(bh*0.15).toInt()))
+                var white=0; var inside=false
+                for(y in topY..end) {
+                    if(classes[x,y]==PixelClass.WHITE) white++
+                    else if(white>=2 && classes[x,y] in setOf(PixelClass.WOOD,PixelClass.GLASS,PixelClass.SKY,PixelClass.DARK,PixelClass.OTHER)) { inside=true; break }
+                }
+                inside
+            }
+            notes+="gable light-border support: ${bordered.size} columns, span ${if(bordered.isEmpty()) 0 else bordered.last()-bordered.first()}, body width $bw"
+            if(bordered.size>=bw*0.2 && bordered.last()-bordered.first()>bw*0.35) {
+                val x0=bordered.first(); val x1=bordered.last()
+                val topPoints=(x0..x1 step max(1,(x1-x0)/24)).map { x -> Pt(x.toDouble()/w,profile[(x-box.minX).coerceIn(0,profile.lastIndex)].toDouble()/h) }
+                val hull=PlanarTopology.hull(topPoints+listOf(Pt(x0.toDouble()/w,groundY.toDouble()/h),Pt(x1.toDouble()/w,groundY.toDouble()/h)))
+                if(hull!=null && out.none { it.kind==VisualObservationKind.FRAME_OR_PORTAL }) out+=VisualObservation(VisualObservationKind.FRAME_OR_PORTAL,
+                    norm(PixelBox(x0,topPoints.minOf { (it.z*h).toInt() },x1,groundY),w,h),0.65,
+                    "continuous light gable border with cladding or glazing immediately inside",fidelity,outline=hull.vertices)
+            }
+        }
+        run {
             val wallTop = eaveY ?: box.minY
             val bands = horizontalBands(image, building, box, wallTop, groundY).filter { band ->
                 // The eave itself and the plinth line are edges too, and they are not bands.
@@ -280,9 +321,35 @@ object ElevationReader {
             railings(classes, building, box, bands).forEach { pb ->
                 out += VisualObservation(VisualObservationKind.RAILING_STRIP, norm(pb, w, h), 0.55, "pale translucent strip resting on a horizontal edge at mid height", fidelity)
             }
+            // A glass railing can be connected to the large glazing behind it. Separate
+            // its horizontal top rail only when a low mass/band corroborates its base.
+            out.filter { it.kind==VisualObservationKind.OPENING_RECTANGLE && it.outline.isNotEmpty() }.toList().forEach { glass ->
+                val pb=PixelBox((glass.bounds.left*w).toInt(),(glass.bounds.top*h).toInt(),min(w-1,(glass.bounds.right*w).toInt()),min(h-1,(glass.bounds.bottom*h).toInt()))
+                val mid=(pb.maxY-box.minY).toDouble()/bh
+                val supported=out.any { o -> o.kind==VisualObservationKind.DARK_MASS && abs(o.bounds.top*h-pb.maxY)<bh*0.05 } || bands.any { abs(it.y-pb.maxY)<4 }
+                if(!supported || mid !in 0.3..0.8 || pb.width.toDouble()/bw<0.18) return@forEach
+                val first=max(pb.minY+2,pb.maxY-(bh*0.16).toInt()); val last=pb.maxY-max(3,(bh*0.04).toInt())
+                if(first>last) return@forEach
+                val rail=(first..last).map { y ->
+                    val share=(pb.minX+1 until pb.maxX).count { x -> abs(image.luma(x,y-1)-image.luma(x,y+1))>=14 }.toDouble()/max(1,pb.width-2)
+                    y to share
+                }.filter { it.second>=0.65 }.maxByOrNull { it.second } ?: return@forEach
+                val strip=PixelBox(pb.minX,rail.first,pb.maxX,pb.maxY)
+                val glassPixels=classes.count(strip.minX,strip.minY,strip.maxX+1,strip.maxY+1,PixelClass.GLASS)+classes.count(strip.minX,strip.minY,strip.maxX+1,strip.maxY+1,PixelClass.SKY)
+                if(glassPixels.toDouble()/strip.area>=0.3 && strip.width.toDouble()/strip.height>=3) out+=VisualObservation(VisualObservationKind.RAILING_STRIP,norm(strip,w,h),0.6,
+                    "horizontal rail within glazing, with independently detected supporting lower mass or band",fidelity)
+            }
         }
 
-        return VisualAssetEvidence(url, role, viewpoint, w, h, out, assetConfidence, fidelity, notes) to
+        val maskSize=128
+        fun runs(predicate:(Int,Int)->Boolean):List<Int> {
+            val bits=BooleanArray(maskSize*maskSize) { i -> predicate(box.minX+(i%maskSize)*box.width/maskSize,box.minY+(i/maskSize)*box.height/maskSize) }
+            val encoded=mutableListOf<Int>(); var i=0
+            while(i<bits.size) { if(!bits[i]) { i++; continue }; val start=i; while(i<bits.size && bits[i]) i++; encoded+=start; encoded+=i-start }
+            return encoded
+        }
+        val mask=SourceMask(maskSize,runs { x,y -> building[x,y] })
+        return VisualAssetEvidence(url, role, viewpoint, w, h, out, assetConfidence, fidelity, notes,mask) to
             Layers(classes, opened, building, box, roofRegion, nonWall, marginLeft, marginRight)
     }
 
@@ -589,7 +656,11 @@ object ElevationReader {
         if (patch.minY > box.minY + box.height * 0.5) return null
         val roofAbove = (patch.minX..patch.maxX).map { x -> profile[(x - box.minX).coerceIn(0, profile.size - 1)] }
         if ((roofAbove.max() - roofAbove.min()) < patch.width * FRAME_MIN_ROOF_SLOPE) return null
-        val gapAbove = patch.minY - roofAbove.average()
+        val columnGaps=(patch.minX..patch.maxX).mapNotNull { x ->
+            val woodTop=(patch.minY..patch.maxY).firstOrNull { classes[x,it]==PixelClass.WOOD } ?: return@mapNotNull null
+            (woodTop-profile[(x-box.minX).coerceIn(0,profile.lastIndex)]).toDouble()
+        }.sorted()
+        val gapAbove=columnGaps.getOrNull(columnGaps.size/2) ?: return null
         if (gapAbove < 2 || gapAbove > box.height * 0.2) return null
         fun lightMargin(fromX: Int, step: Int, y: Int): Int {
             var n = 0

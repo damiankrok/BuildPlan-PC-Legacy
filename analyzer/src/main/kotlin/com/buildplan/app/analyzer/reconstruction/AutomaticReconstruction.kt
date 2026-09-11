@@ -50,9 +50,7 @@ object AutomaticReconstruction {
         val chosen = OpeningFusion.fuse(alternatives.firstOrNull { it.first == best?.id }?.second ?: input)
         if (best == null) diagnostics += "No hypothesis passed physical constraints; original trace retained for diagnostics, not approved for use"
         if (lowerLevels.size < 2 && roof?.secondaryMasses?.isNotEmpty() == true) diagnostics += "Secondary roof level lacks two corroborating elevations"
-        diagnostics += "Perspective renders have feature evidence only; perspective camera fitting is not implemented"
         diagnostics += "Silhouette score is a normalized orthographic profile comparison; occluded facade features may be absent"
-        diagnostics += "Opening composition, architectural features, full mass collision and perspective render scores are unavailable; this is partial self-verification"
         if (chosen.openings.any { it.height.value == null }) diagnostics += "Some opening heights remain internally unresolved"
         val masses = masses(chosen)
         val envelopes = envelopes(chosen)
@@ -67,12 +65,19 @@ object AutomaticReconstruction {
         )
         val margin = if (ranked.size > 1) ranked[0].score - ranked[1].score else 0.0
         if (ranked.size > 1 && margin < 0.03) diagnostics += "Low hypothesis margin; runner-up retained"
-        return chosen.copy(masses = masses, facadeEnvelopes = envelopes,
+        val result = chosen.copy(masses = masses, facadeEnvelopes = envelopes,
             reconstruction = ReconstructionState(graph, massBest?.masses.orEmpty(), policy),
             selfVerification = SelfVerificationResult(coverage, best?.id ?: "unresolved", scores,
                 // Six independent score families are needed for full source verification.
                 // Available coarse scores cannot imply high overall confidence on their own.
                 min(0.75, (best?.score ?: 0.0) * (best?.scores?.size ?: 0) / 6.0), margin, diagnostics, alternatives.size))
+        val featured=FacadeReconstruction.reconstruct(result)
+        val resolved=featured.copy(resolvedGeometry=GeometryResolver.facades(featured))
+        val budget=ProjectionBudget(policy.cameraProjections)
+        val qa=SourceScorer.score(resolved,source,budget)
+        return resolved.copy(selfVerification=resolved.selfVerification!!.copy(sourceScores=qa.scores+("overallScore" to qa.overall),metricResiduals=qa.residuals,
+            hardViolations=qa.hard,unresolvedDiagnostics=diagnostics+qa.diagnostics,searchCounts=mapOf("hypotheses" to massHypotheses.size,"cameraProjections" to budget.used),
+            overallConfidence=qa.overall*min(1.0,qa.scores.size/12.0)))
     }
 
     private fun lowerRoofLevels(c: ProjectAnalysisCandidate): List<Pair<String, Double>> {

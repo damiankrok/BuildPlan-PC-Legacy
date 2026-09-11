@@ -537,7 +537,8 @@ private fun List<PlanPoint>.signedPlanArea(): Double =
 private fun List<ModelPoint>.newellUnitNormal(): FloatArray? {
     val normal = newellNormal()
     val length = sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2])
-    if (length <= GeometryTolerance.LENGTH_METERS) return null
+    // Newell magnitude is twice an area, not a length.
+    if (length <= 2.0 * GeometryTolerance.AREA_SQUARE_METERS) return null
     return floatArrayOf(
         (normal[0] / length).toFloat(),
         (normal[1] / length).toFloat(),
