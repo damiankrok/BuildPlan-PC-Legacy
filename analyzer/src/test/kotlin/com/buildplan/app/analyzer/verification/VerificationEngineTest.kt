@@ -115,13 +115,19 @@ class VerificationEngineTest {
         assertTrue("and which root question", q.id in face.rootQuestionIds)
         val afterNet = next.verified.quantity("project:facadeNet")!!.after
         assertNotEquals("the facade net changed", beforeNet.value, afterNet.value)
-        // With every exterior height supplied, nothing about the envelope rests on an assumption any more.
+        // Heights alone cannot settle this fixture's joinery: two windows hit the
+        // wall/roof profile at the assumed sill. The resolved area must keep that
+        // uncertainty instead of reverting to an unclipped width*height takeoff.
         var all = next
         all.questions.filter { it.isKind(RootQuestionKind.OPENING_HEIGHT) && it.groupMemberIds.any { id -> exterior.any { o -> o.id == id } } && !all.isAnswered(it.id) }
             .forEach { all = all.provide(it.id, 1.50) }
         val joinery = all.verified.quantity("project:exteriorJoinery")!!
-        assertNotEquals(FactFidelity.DISPLAY_ASSUMPTION, joinery.after.fidelity)
-        assertEquals(VerifiedState.DERIVED_FROM_USER_CONFIRMED, joinery.state)
+        val resolved=com.buildplan.app.analyzer.service.CandidateGeometryQueries.resolvedGeometry(all.verified.effectiveCandidate)!!
+        assertTrue(resolved.diagnostics.any { it.contains("clipped by owning wall") })
+        assertEquals(FactFidelity.DISPLAY_ASSUMPTION, joinery.after.fidelity)
+        assertEquals(VerifiedState.ASSUMPTION, joinery.state)
+        val panes=resolved.surfaces.filter { it.kind==com.buildplan.app.analyzer.candidate.ResolvedSurfaceKind.OPENING && it.exterior }
+        assertEquals(panes.sumOf { it.area },joinery.after.requireValue(),1e-8)
         assertTrue(joinery.after.value!! > 0.0)
     }
 

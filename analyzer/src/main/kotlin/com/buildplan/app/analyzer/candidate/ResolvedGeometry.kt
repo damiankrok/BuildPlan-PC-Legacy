@@ -16,7 +16,7 @@ data class FacadeFeatureCandidate(val id:String,val kind:FacadeFeatureKind,val f
 enum class ResolvedSurfaceKind { WALL, OPENING, ROOF, FLOOR, CEILING, ROOM_WALL_FACE, FEATURE, STAIR, SLAB }
 data class ResolvedSurface(val id:String,val ownerId:String,val floorId:String?,val kind:ResolvedSurfaceKind,
     val vertices:List<Pt3>,val thickness:Double,val evidenceIds:List<String>,val fidelity:FactFidelity,
-    val roomId:String?=null,val exterior:Boolean=false) {
+    val roomId:String?=null,val exterior:Boolean=false,val areaFidelity:FactFidelity=fidelity) {
     init { require(vertices.size>=3 && thickness>=0 && thickness.isFinite()) }
     val area:Double get() {
         var nx=0.0; var ny=0.0; var nz=0.0

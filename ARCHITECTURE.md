@@ -5,6 +5,20 @@ docelowej architektury.
 
 ## Stan na dziś
 
+STAGE-025B dodaje lokalny łańcuch `SourcePackage -> EvidenceGraph -> constraints /
+hypotheses -> projection / source scoring -> bounded repair -> resolved geometry`.
+Geometria końcowa zawiera fizyczne powierzchnie i osobno opisane powierzchnie
+wykończeniowe pomieszczeń; dwa adaptery odczytują te same wielokąty do podglądu
+i przedmiaru. Zmiana kandydata unieważnia fingerprint obu konsumentów. Dane
+źródłowe i niepewność pozostają w snapshocie, bez wywołania zdalnego AI.
+
+Operacje polygonizacji wykonuje JTS 1.20.0 za wewnętrznym `PlanarTopology`;
+publiczne kontrakty, snapshot i aplikacja używają wyłącznie typów BuildPlan.
+Silnik poszukiwania jest ograniczony i deterministyczny. Obecny słownik napraw
+obejmuje grupy otworów, cechy elewacji, interpretacje płyt/balkonów i elementy dachu;
+nie rozwiązuje jeszcze dowolnej kompozycji brył ani pełnej topologii schodów.
+Szczegółowe ograniczenia są opisane w raporcie 025B, a nie maskowane wynikiem QA.
+
 Jedna natywna aplikacja Android: powłoka UI (STAGE-001), kanoniczna warstwa
 domenowa (STAGE-002, korekta własności elementów budynku w STAGE-002A) oraz
 kontrakt geometrii budynku (STAGE-011). Do tego dwa zbiory danych w źródłach

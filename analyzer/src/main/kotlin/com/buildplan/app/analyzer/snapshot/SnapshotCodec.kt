@@ -113,7 +113,7 @@ data class ProjectAnalysisSnapshot(
 ) {
     companion object {
         const val SCHEMA_VERSION = 5
-        const val ANALYZER_VERSION = "0.5.0-stage025b-5"
+        const val ANALYZER_VERSION = "0.5.1-stage025b-6"
     }
 }
 
@@ -285,7 +285,7 @@ object SnapshotCodec {
             "surfaces" toArray g.surfaces.map { s -> json {
                 "id" to s.id; "ownerId" to s.ownerId; "floorId" to s.floorId; "kind" to s.kind
                 "vertices" toArray s.vertices.map { p -> json { "x" to p.x; "y" to p.y; "z" to p.z } }
-                "thickness" to s.thickness; "evidenceIds" toStrings s.evidenceIds; "fidelity" to s.fidelity; "roomId" to s.roomId; "exterior" to s.exterior
+                "thickness" to s.thickness; "evidenceIds" toStrings s.evidenceIds; "fidelity" to s.fidelity; "roomId" to s.roomId; "exterior" to s.exterior; "areaFidelity" to s.areaFidelity
             } }
         } }
         "roofElements" toArray c.roofElements.map { e -> json {
@@ -350,7 +350,7 @@ object SnapshotCodec {
         facadeFeatures = o.arr("facadeFeatures")?.objects?.map { f -> FacadeFeatureCandidate(f.str("id")!!,FacadeFeatureKind.valueOf(f.str("kind")!!),f.str("facadeId")!!,f.str("floorId")!!,polygonFrom(f.arr("profile")!!),
             f.num("depth")!!,strings(f,"evidenceIds"),f.num("confidence")!!,FactFidelity.valueOf(f.str("fidelity")!!),FactFidelity.valueOf(f.str("depthFidelity")!!)) }.orEmpty(),
         resolvedGeometry = o.obj("resolvedGeometry")?.let { g -> ResolvedBuildingGeometry(g.arr("surfaces")!!.objects.map { s -> ResolvedSurface(s.str("id")!!,s.str("ownerId")!!,s.str("floorId"),ResolvedSurfaceKind.valueOf(s.str("kind")!!),
-            s.arr("vertices")!!.objects.map { Pt3(it.num("x")!!,it.num("y")!!,it.num("z")!!) },s.num("thickness")!!,strings(s,"evidenceIds"),FactFidelity.valueOf(s.str("fidelity")!!),s.str("roomId"),s.bool("exterior")!!) },g.str("lineage")!!,strings(g,"diagnostics"),g.arr("stairTopology")?.objects?.map { s ->
+            s.arr("vertices")!!.objects.map { Pt3(it.num("x")!!,it.num("y")!!,it.num("z")!!) },s.num("thickness")!!,strings(s,"evidenceIds"),FactFidelity.valueOf(s.str("fidelity")!!),s.str("roomId"),s.bool("exterior")!!,FactFidelity.valueOf(s.str("areaFidelity") ?: s.str("fidelity")!!)) },g.str("lineage")!!,strings(g,"diagnostics"),g.arr("stairTopology")?.objects?.map { s ->
                 StairTopologyCandidate(s.str("stairId")!!,s.str("fromFloorId"),s.str("toFloorId"),polygonFrom(s.arr("stairwell")!!),s.arr("flights")!!.items.map { polygonFrom(it as JsonValue.Arr) },s.arr("landings")!!.items.map { polygonFrom(it as JsonValue.Arr) },s.arr("slabOpenings")!!.items.map { polygonFrom(it as JsonValue.Arr) },s.str("direction")!!,s.bool("accepted")!!,strings(s,"diagnostics"))
             }.orEmpty()) },
         roofElements = o.arr("roofElements")?.objects?.map { e -> RoofElementCandidate(e.str("id")!!,RoofElementKind.valueOf(e.str("kind")!!),e.str("roofFacetId")!!,

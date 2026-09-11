@@ -2,12 +2,13 @@ package com.buildplan.app.analyzer.reconstruction
 
 import com.buildplan.app.analyzer.candidate.*
 import com.buildplan.app.analyzer.fidelity.FactFidelity
+import com.buildplan.app.analyzer.fidelity.Measured
 import com.buildplan.app.analyzer.reconstruction.internal.PlanarTopology
 import com.buildplan.app.analyzer.site.SourcePackage
 import kotlin.math.abs
 import kotlin.math.min
 
-internal data class ReconstructionConstraints(val floors:Map<String,Polygon>,val storeys:Int,val roofFamily:RoofFamily?,val exactWidths:Map<String,Pair<Double,Double>>) {
+internal data class ReconstructionConstraints(val floors:Map<String,Polygon>,val storeys:Int,val roofFamily:RoofFamily?,val exactWidths:Map<String,Pair<Double,Double>>,val exactFields:Map<String,Measured> = emptyMap()) {
     fun violations(c:ProjectAnalysisCandidate):List<String> = buildList {
         if(c.floors.size!=storeys) add("exact storey count contradicted")
         if(roofFamily!=null && c.roof?.family!=roofFamily) add("published roof family contradicted")
@@ -18,12 +19,21 @@ internal data class ReconstructionConstraints(val floors:Map<String,Polygon>,val
         }
         exactWidths.forEach { (id,metric) -> val current=c.openings.firstOrNull { it.id==id }?.width?.value
             if(current==null || abs(current-metric.first)>metric.second) add("exact opening dimension contradicted:$id") }
+        val currentFields=fields(c)
+        exactFields.forEach { (name,metric) -> val value=currentFields[name]?.value
+            if(value==null || abs(value-metric.requireValue())>(metric.uncertainty ?: 0.01)) add("exact metric contradicted:$name") }
         c.openings.forEach { o -> if((o.width.value ?: 1.0)<=0 || (o.height.value ?: 1.0)<=0) add("non-positive opening dimension:${o.id}") }
+        c.reconstruction?.masses.orEmpty().filter { it.use==MassUse.ENCLOSED }.forEach { mass ->
+            val footprint=floors[mass.floorId]
+            if(footprint!=null && PlanarTopology.difference(mass.outline,footprint).sumOf { it.area }>0.02) add("enclosed mass outside structural plan closure:${mass.id}")
+        }
     }
     companion object {
+        private fun fields(c:ProjectAnalysisCandidate)=c.dimensions.associate { "${it.scope}:${it.name}" to it.measured }+
+            listOfNotNull("level:height" to c.levels.buildingHeight,"level:ridge" to c.levels.ridge,"level:eave" to c.levels.eave,c.roof?.pitchDegrees?.let { "roof:pitch" to it }).toMap()
         fun from(c:ProjectAnalysisCandidate,source:SourcePackage)=ReconstructionConstraints(c.floors.mapNotNull { f->f.footprint?.let { f.id to it } }.toMap(),
             source.floors.size.takeIf { it>0 } ?: c.floors.size,c.roof?.family?.takeIf { it!=RoofFamily.UNKNOWN },
-            c.openings.filter { it.width.fidelity==FactFidelity.SOURCE_EXACT }.associate { it.id to (it.width.requireValue() to (it.width.uncertainty ?: 0.02)) })
+            c.openings.filter { it.width.fidelity==FactFidelity.SOURCE_EXACT }.associate { it.id to (it.width.requireValue() to (it.width.uncertainty ?: 0.02)) },fields(c).filterValues { it.fidelity==FactFidelity.SOURCE_EXACT && it.value!=null })
     }
 }
 
@@ -88,7 +98,9 @@ internal object ReconstructionSearch {
         val repaired=BoundedRepair.solve(first,policy,propose={ c -> buildList {
             if(c.openingGroups!=target.openingGroups) add(RepairProposal("EXPAND_SOURCE_OPENING_GROUPS",c.copy(openingGroups=target.openingGroups)))
             val families=target.facadeFeatures.groupBy { if(it.kind==FacadeFeatureKind.BALCONY || it.kind==FacadeFeatureKind.RAILING) "BALCONY_RAILING" else it.kind.name }
-            families.forEach { (name,features) -> if(features.any { f->c.facadeFeatures.none { it.id==f.id } }) add(RepairProposal("ADD_SOURCE_$name",c.copy(facadeFeatures=(c.facadeFeatures+features).distinctBy { it.id }))) }
+            families.forEach { (name,features) -> if(features.any { f->c.facadeFeatures.none { it.id==f.id } }) {
+                MassSolver.featureAlternatives(c,features).forEach { (use,candidate) -> add(RepairProposal("ADD_SOURCE_$name:$use",candidate)) }
+            } }
             target.roofElements.groupBy { it.kind }.forEach { (kind,elements) ->
                 if(elements.any { e->c.roofElements.none { it.id==e.id } }) add(RepairProposal("ADD_SOURCE_ROOF_$kind",c.copy(roofElements=(c.roofElements+elements).distinctBy { it.id })))
             }

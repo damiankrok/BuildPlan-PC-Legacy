@@ -10,7 +10,7 @@ internal object ResolvedQuantityTakeoff {
     fun compute(c:ProjectAnalysisCandidate,g:ResolvedBuildingGeometry):ProjectQuantities {
         val surfaces=g.surfaces
         fun measure(value:Double,parts:List<ResolvedSurface>,unit:MeasureUnit=MeasureUnit.SQUARE_METER)=Measured(value,unit,
-            if(parts.isEmpty()) FactFidelity.SOURCE_DERIVED else FactFidelity.weakest(parts.map { it.fidelity }),
+            if(parts.isEmpty()) FactFidelity.SOURCE_DERIVED else FactFidelity.weakest(parts.map { if(unit==MeasureUnit.SQUARE_METER) it.areaFidelity else it.fidelity }),
             Provenance.derived(g.lineage,parts.map { it.id }),note="Resolved geometry; ${parts.size} surfaces")
         fun area(parts:List<ResolvedSurface>)=measure(parts.sumOf { it.area },parts)
         fun missing(why:String,unit:MeasureUnit=MeasureUnit.SQUARE_METER)=Measured.missing(unit,why)
@@ -37,6 +37,7 @@ internal object ResolvedQuantityTakeoff {
         }
         fun type(s:ResolvedSurface):OpeningType {
             c.openings.firstOrNull { it.id==s.ownerId }?.let { return it.type }
+            if(c.roofElements.any { it.id==s.ownerId && it.kind==RoofElementKind.ROOFLIGHT }) return OpeningType.ROOFLIGHT
             val group=c.openingGroups.firstOrNull { it.id==s.ownerId } ?: return OpeningType.UNKNOWN
             val semantics=group.evidenceIds.mapNotNull { id -> c.reconstruction?.graph?.nodes?.firstOrNull { it.id==id }?.semantic }
             return when { "GARAGE_GATE_RECTANGLE" in semantics->OpeningType.GARAGE_GATE; group.doorLeaf!=null->OpeningType.DOOR; else->OpeningType.WINDOW }
@@ -51,6 +52,7 @@ internal object ResolvedQuantityTakeoff {
         }
         val roof=surfaces.filter { it.kind==ResolvedSurfaceKind.ROOF }
         val gross=area(exteriorWalls+exteriorOpenings); val net=area(exteriorWalls); val opening=area(exteriorOpenings)
+        val joinery=area(physicalOpenings.filter { it.exterior && type(it)!=OpeningType.PASSAGE })
         val mappedSurfaces=surfaces.filter { it.kind in setOf(ResolvedSurfaceKind.WALL,ResolvedSurfaceKind.OPENING,ResolvedSurfaceKind.ROOM_WALL_FACE,ResolvedSurfaceKind.FLOOR,ResolvedSurfaceKind.CEILING,ResolvedSurfaceKind.ROOF) }.map { s ->
             val type=when(s.kind) { ResolvedSurfaceKind.WALL->if(s.exterior) SurfaceType.FACADE else SurfaceType.WALL_FACE; ResolvedSurfaceKind.OPENING->SurfaceType.OPENING; ResolvedSurfaceKind.ROOM_WALL_FACE->SurfaceType.WALL_FACE
                 ResolvedSurfaceKind.FLOOR->SurfaceType.FLOOR; ResolvedSurfaceKind.ROOF->SurfaceType.ROOF_FACET
@@ -71,7 +73,7 @@ internal object ResolvedQuantityTakeoff {
         }
         return ProjectQuantities(mappedSurfaces,rooms,floorQuantities,roof.map { it.id to it.area },if(roof.isEmpty()) missing("roof unresolved") else area(roof),
             length(roofCandidate?.ridgeLines?.sumOf { it.length } ?: 0.0),length(roofCandidate?.hipLines?.sumOf { it.length } ?: 0.0),length(roofCandidate?.eaveLength?.value ?: 0.0),
-            opening,gross,net,net,area(roomFloors),FacadeScope(net,gross,net,opening,
+            joinery,gross,net,net,area(roomFloors),FacadeScope(net,gross,net,opening,
                 missing("gable subtotal not separated from final facade surfaces"),
                 area(surfaces.filter { it.kind==ResolvedSurfaceKind.ROOM_WALL_FACE && it.exterior && c.room(it.roomId.orEmpty())?.kind==com.buildplan.app.analyzer.site.RoomKind.GARAGE }),
                 missing("secondary facade subtotal requires mass-face ownership"),missing("terrain/plinth boundary is not source-resolved")),notes+g.diagnostics)

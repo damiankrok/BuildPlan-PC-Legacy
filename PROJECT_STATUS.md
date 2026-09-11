@@ -1,5 +1,19 @@
 # Status projektu
 
+## STAGE-025B — architektura rekonstrukcji, nadal PARTIAL
+
+Snapshot 5 / analizator `0.5.1-stage025b-6` zawiera graf dowodów, regiony brył
+z zakresami wysokości, globalne przypisanie pokoi, grupy przeszkleń, cechy elewacji,
+elementy dachu i ograniczoną pętlę napraw ocenianą względem oryginalnych źródeł.
+Jedna rozwiązana geometria zasila podgląd i przedmiary po naprawie. JTS pozostaje
+szczegółem implementacji `:analyzer`. Wykonano sześć iteracji rozwoju na A/B.
+
+Nie osiągnięto pełnej zgodności brył ze źródłami: przednia nakładająca się bryła A,
+lukarny B, część przeszkleń, kominów, pomieszczeń i schodów pozostają P1.
+Wynik liczbowy QA nie jest prawdopodobieństwem ani decyzją PASS. Model referencyjny
+nie uczestniczy w automatycznym scoringu. Pełny stan, freeze/holdout, testy i dowody:
+[STAGE_025B_REPORT.md](STAGE_025B_REPORT.md).
+
 ## STAGE-025A — częściowa automatyczna rekonstrukcja
 
 Trzy korekty analizatora: obwiednie elewacji do dachu i hipotezy poziomu niższej bryły;

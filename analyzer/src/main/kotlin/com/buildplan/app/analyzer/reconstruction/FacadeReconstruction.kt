@@ -9,6 +9,12 @@ import kotlin.math.max
 import kotlin.math.min
 
 internal object FacadeReconstruction {
+    fun outward(f:FacadeEnvelopeCandidate,c:ProjectAnalysisCandidate):Pt {
+        val d=(f.segment.b-f.segment.a)*(1/f.segment.length)
+        val normal=Pt(d.z,-d.x)
+        val expected=when(side(f,c)) { FacadeSide.NORTH->Pt(0.0,-1.0); FacadeSide.SOUTH->Pt(0.0,1.0); FacadeSide.EAST->Pt(1.0,0.0); FacadeSide.WEST->Pt(-1.0,0.0) }
+        return if(normal.x*expected.x+normal.z*expected.z>=0) normal else normal*(-1.0)
+    }
     fun side(f:FacadeEnvelopeCandidate,c:ProjectAnalysisCandidate):FacadeSide {
         val center=c.floor(f.floorId)?.footprint?.centroid ?: Pt(0.0,0.0)
         val mid=(f.segment.a+f.segment.b)*0.5

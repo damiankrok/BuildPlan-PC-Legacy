@@ -8,6 +8,35 @@ import kotlin.math.min
 
 /** Vertical intervals are independent of XY overlap. A slab is never an enclosed volume. */
 internal object MassSolver {
+    /** Source-backed horizontal features remain competing mass uses until scored. */
+    fun featureAlternatives(c:ProjectAnalysisCandidate,features:List<FacadeFeatureCandidate>):List<Pair<String,ProjectAnalysisCandidate>> {
+        val state=c.reconstruction ?: return listOf("FEATURE" to c.copy(facadeFeatures=(c.facadeFeatures+features).distinctBy { it.id }))
+        val slabs=features.filter { it.kind==FacadeFeatureKind.BALCONY || it.kind==FacadeFeatureKind.CANOPY }
+        if(slabs.isEmpty()) return listOf("FEATURE" to c.copy(facadeFeatures=(c.facadeFeatures+features).distinctBy { it.id }))
+        return listOf(MassUse.SLAB,MassUse.OPEN_COVERED,MassUse.FACADE_PROJECTION,MassUse.ENCLOSED).map { use ->
+            val chosen=features.map { if(it in slabs && use==MassUse.FACADE_PROJECTION) it.copy(depth=0.02) else it }
+            val regions=slabs.mapNotNull { s ->
+                val facade=c.facadeEnvelopes.firstOrNull { it.id==s.facadeId } ?: return@mapNotNull null
+                val d=(facade.segment.b-facade.segment.a)*(1/facade.segment.length)
+                val n=FacadeReconstruction.outward(facade,c)
+                val depth=if(use==MassUse.FACADE_PROJECTION) 0.02 else s.depth
+                val b=s.profile.bounds; val a=facade.segment.a+d*b.minX; val end=facade.segment.a+d*b.maxX
+                val footprint=Polygon(listOf(a,end,end+n*depth,a+n*depth)).normalisedWinding()
+                val base=if(use==MassUse.ENCLOSED || use==MassUse.OPEN_COVERED) c.levels.groundFloor.value ?: b.minZ else b.minZ
+                MassRegion("feature-mass:${s.id}",footprint,base,max(base+0.01,b.maxZ),use,RoofFamily.FLAT,s.floorId,s.evidenceIds,s.confidence)
+            }
+            use.name to c.copy(facadeFeatures=(c.facadeFeatures+chosen).distinctBy { it.id },reconstruction=state.copy(masses=topology(state.masses.filterNot { m -> regions.any { it.id==m.id } }+regions)))
+        }
+    }
+
+    fun sourceFeatureScore(c:ProjectAnalysisCandidate):Double? {
+        val values=c.reconstruction?.masses.orEmpty().filter { it.id.startsWith("feature-mass:") }.mapNotNull { m ->
+            val feature=c.facadeFeatures.firstOrNull { "feature-mass:${it.id}"==m.id } ?: return@mapNotNull null
+            val hasRailing=c.facadeFeatures.any { it.kind==FacadeFeatureKind.RAILING && it.facadeId==feature.facadeId }
+            when(m.use) { MassUse.SLAB->1.0; MassUse.OPEN_COVERED->if(hasRailing) 0.75 else 1.0; MassUse.FACADE_PROJECTION->0.35; MassUse.ENCLOSED->0.0; MassUse.TERRACE->0.5 }
+        }
+        return values.takeIf { it.isNotEmpty() }?.average()
+    }
     fun topology(regions: List<MassRegion>): List<MassRegion> = regions.map { a ->
         val near = regions.filter { it.id!=a.id && PlanarTopology.distance(a.outline,it.outline)<0.05 }
         a.copy(adjacentIds=near.filter { min(it.top,a.top)>=max(it.base,a.base)-0.05 }.map { it.id },

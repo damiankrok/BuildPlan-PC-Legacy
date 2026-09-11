@@ -29,6 +29,10 @@ internal object SourceScorer {
         }
         if(planCoverage.isNotEmpty()) add("planTopologyScore",planCoverage.average(),EvidenceClass.PLAN_SECTION)
         if(masses.isNotEmpty()) add("massingScore",planCoverage.takeIf { it.isNotEmpty() }?.average() ?: 0.0,EvidenceClass.PLAN_SECTION)
+        // This family is always present when a source-backed balcony/canopy can be
+        // proposed, preventing improvements merely by adding a new score denominator.
+        val sourceSlab=c.visual.assets.any { a -> a.of(VisualObservationKind.RAILING_STRIP).any { it.confidence>=0.55 } }
+        if(sourceSlab) add("massFeatureScore",MassSolver.sourceFeatureScore(c) ?: 0.0,EvidenceClass.ELEVATION)
         val expectedRooms=source.floors.sumOf { it.rooms.size }
         if(expectedRooms>0) add("roomTopologyScore",c.rooms.count { it.polygon!=null }.toDouble()/expectedRooms,EvidenceClass.PLAN_SECTION)
         val assets=c.visual.assets.filter { it.structuralMask!=null }.sortedByDescending { it.widthPx*it.heightPx }

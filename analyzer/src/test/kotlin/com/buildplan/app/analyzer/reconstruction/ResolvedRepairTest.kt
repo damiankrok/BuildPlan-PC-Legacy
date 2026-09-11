@@ -73,4 +73,26 @@ class ResolvedRepairTest {
         assertTrue(rejected.slabOpenings.isEmpty())
         assertTrue(rejected.diagnostics.any { it.contains("collision") })
     }
+    @Test fun `source slab alternatives preserve overlap and reject invented enclosed plan area`() {
+        val c=candidate().copy(reconstruction=ReconstructionState(EvidenceGraph(emptyList(),emptyList()),emptyList()))
+        val feature=FacadeFeatureCandidate("balcony",FacadeFeatureKind.BALCONY,"front","floor",Polygon(listOf(Pt(1.0,2.8),Pt(5.0,2.8),Pt(5.0,3.0),Pt(1.0,3.0))),0.7,listOf("drawing"),0.7,FactFidelity.SOURCE_DERIVED)
+        val alternatives=MassSolver.featureAlternatives(c,listOf(feature))
+        assertEquals(setOf("SLAB","OPEN_COVERED","FACADE_PROJECTION","ENCLOSED"),alternatives.map { it.first }.toSet())
+        val constraints=ReconstructionConstraints(mapOf("floor" to ring()),1,null,emptyMap())
+        assertTrue(constraints.violations(alternatives.first { it.first=="ENCLOSED" }.second).any { it.contains("outside structural plan") })
+        assertTrue(constraints.violations(alternatives.first { it.first=="SLAB" }.second).isEmpty())
+        assertNotEquals(GeometryResolver.resolve(alternatives.first { it.first=="ENCLOSED" }.second).surfaces,
+            GeometryResolver.resolve(alternatives.first { it.first=="SLAB" }.second).surfaces)
+    }
+    @Test fun `unclipped confirmed opening area is known while its sill position remains assumed`() {
+        val wall=WallCandidate("wall","floor",Segment(Pt(0.0,10.0),Pt(8.0,10.0)),m(8.0),m(0.2),WallClass.EXTERIOR,m(0.0),m(3.0),emptyList(),emptyList(),true,listOf("opening"),FactFidelity.SOURCE_TRACED)
+        val width=Measured(1.0,MeasureUnit.METER,FactFidelity.SOURCE_EXACT,Provenance("source","dimension","fixture"))
+        val height=Measured(1.5,MeasureUnit.METER,FactFidelity.USER_CONFIRMED,Provenance(null,"decision","fixture"))
+        val o=OpeningCandidate("opening","wall","floor",OpeningType.WINDOW,m(1.0),width,height,Measured.missing(MeasureUnit.METER,"no sill"),emptyList(),true,FactFidelity.SOURCE_TRACED)
+        val c=candidate().let { it.copy(walls=listOf(wall),openings=listOf(o),facadeEnvelopes=listOf(it.facadeEnvelopes.first().copy(openingIds=listOf(o.id)))) }
+        val pane=GeometryResolver.facades(c).surfaces.single { it.kind==ResolvedSurfaceKind.OPENING }
+        assertEquals(1.5,pane.area,1e-8)
+        assertEquals(FactFidelity.DISPLAY_ASSUMPTION,pane.fidelity)
+        assertNotEquals(FactFidelity.DISPLAY_ASSUMPTION,pane.areaFidelity)
+    }
 }

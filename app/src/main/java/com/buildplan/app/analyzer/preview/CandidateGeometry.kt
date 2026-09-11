@@ -92,6 +92,7 @@ internal class CandidateGeometry private constructor(
                     ResolvedSurfaceKind.ROOF -> BuildingElementKind.ROOF; ResolvedSurfaceKind.SLAB -> BuildingElementKind.SLAB; ResolvedSurfaceKind.STAIR -> BuildingElementKind.STAIRS; else -> BuildingElementKind.OTHER }
                 elements+=BuildingElement(id,kind,owner,first.floorId?.let { BuildingElementScope.OnFloor(fid(it)) } ?: BuildingElementScope.WholeBuilding)
                 surfaces.forEach { s ->
+                    if(s.kind==ResolvedSurfaceKind.OPENING && candidate.openings.any { it.id==s.ownerId && it.type==OpeningType.PASSAGE }) return@forEach
                     val points=s.vertices.map { ModelPoint(it.x,it.y,it.z) }
                     val planArea=points.indices.sumOf { i -> val a=points[i]; val b=points[(i+1)%points.size]; a.x*b.z-b.x*a.z }*0.5
                     if(s.kind==ResolvedSurfaceKind.OPENING) primitives+=OpeningPanelGeometry(id,points)

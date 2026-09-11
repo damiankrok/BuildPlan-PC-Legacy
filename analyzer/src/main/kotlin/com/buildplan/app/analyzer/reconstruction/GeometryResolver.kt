@@ -71,6 +71,10 @@ internal object GeometryResolver {
                 }
             }
         }
+        c.reconstruction?.masses.orEmpty().filter { it.id.startsWith("feature-mass:") && it.use==MassUse.ENCLOSED }.forEach { m ->
+            m.outline.edges.forEachIndexed { i,e -> add("${m.id}:enclosure:$i",m.id,m.floorId,ResolvedSurfaceKind.WALL,
+                listOf(Pt3(e.a.x,m.base,e.a.z),Pt3(e.b.x,m.base,e.b.z),Pt3(e.b.x,m.top,e.b.z),Pt3(e.a.x,m.top,e.a.z)),0.0,m.evidenceIds,FactFidelity.DISPLAY_ASSUMPTION,external=true) }
+        }
         c.floors.forEach { f ->
             val base=f.floorElevation.value ?: 0.0
             val clear=if(f.id==topFloor) c.levels.atticFlatCeilingHeight.value ?: f.clearHeight.value ?: 2.7 else f.clearHeight.value ?: 2.7
@@ -167,7 +171,7 @@ internal object GeometryResolver {
             if(!PlanarTopology.valid(wall)) { diagnostics+="Invalid facade ring:${f.id}"; return@forEach }
             val groups=c.openingGroups.filter { it.facadeId==f.id }
             val claimed=groups.flatMap { it.memberOpeningIds }.toSet()
-            data class Hole(val id:String,val polygon:Polygon,val evidence:List<String>,val fidelity:FactFidelity)
+            data class Hole(val id:String,val polygon:Polygon,val evidence:List<String>,val fidelity:FactFidelity,val areaFidelity:FactFidelity=fidelity)
             val holes=groups.map { Hole(it.id,it.outer,it.evidenceIds,it.fidelity) }.toMutableList()
             f.openingIds.filter { it !in claimed }.forEach openingLoop@ { id ->
                 val o=c.openings.firstOrNull { it.id==id } ?: return@openingLoop
@@ -179,20 +183,23 @@ internal object GeometryResolver {
                 if(b-a<0.02 || height<=0.0) return@openingLoop
                 val p=Polygon(listOf(Pt(a,base),Pt(b,base),Pt(b,base+height),Pt(a,base+height)))
                 val clipped=PlanarTopology.intersection(p,wall).maxByOrNull { it.area } ?: return@openingLoop
+                if(abs(clipped.area-p.area)>0.001) diagnostics+="Opening $id clipped by owning wall; height/sill and wall profile remain inconsistent"
                 if(holes.any { PlanarTopology.intersection(it.polygon,clipped).sumOf { p->p.area }>0.01 }) {
                     diagnostics+="Trace opening $id overlaps a source group; source group retained"; return@openingLoop
                 }
-                holes+=Hole(id,clipped,listOf(id),if(o.height.value==null || o.sillHeight.value==null) FactFidelity.DISPLAY_ASSUMPTION else FactFidelity.weakest(listOf(o.height.fidelity,o.sillHeight.fidelity)))
+                val positionFidelity=if(o.height.value==null || o.sillHeight.value==null) FactFidelity.DISPLAY_ASSUMPTION else FactFidelity.weakest(listOf(o.width.fidelity,o.height.fidelity,o.sillHeight.fidelity))
+                val areaFidelity=if(o.height.value!=null && abs(clipped.area-(b-a)*height)<0.001) FactFidelity.weakest(listOf(o.width.fidelity,o.height.fidelity)) else positionFidelity
+                holes+=Hole(id,clipped,listOf(id),positionFidelity,areaFidelity)
             }
             val direction=(f.segment.b-f.segment.a)*(1/f.segment.length)
-            val outward=Pt(direction.z,-direction.x)
+            val outward=FacadeReconstruction.outward(f,c)
             fun points(p:Polygon,depth:Double=0.0)=p.vertices.map { Pt3(f.segment.a.x+direction.x*it.x+outward.x*depth,it.z,f.segment.a.z+direction.z*it.x+outward.z*depth) }
             var solid=listOf(wall)
             holes.forEach { hole -> solid=solid.flatMap { PlanarTopology.difference(it,hole.polygon) } }
             solid=solid.flatMap(PlanarTopology::convexParts)
             solid.forEachIndexed { i,p -> surfaces+=ResolvedSurface("${f.id}:solid:$i",f.id,f.floorId,ResolvedSurfaceKind.WALL,points(p),f.thickness.value ?: 0.25,
                 listOf(f.floorId)+holes.flatMap { it.evidence },FactFidelity.weakest(listOf(f.baseLevel.fidelity,f.thickness.fidelity)+holes.map { it.fidelity }),exterior=true) }
-            holes.forEach { h -> surfaces+=ResolvedSurface("${f.id}:opening:${h.id}",h.id,f.floorId,ResolvedSurfaceKind.OPENING,points(h.polygon),0.0,h.evidence,h.fidelity,exterior=true) }
+            holes.forEach { h -> surfaces+=ResolvedSurface("${f.id}:opening:${h.id}",h.id,f.floorId,ResolvedSurfaceKind.OPENING,points(h.polygon),0.0,h.evidence,h.fidelity,exterior=true,areaFidelity=h.areaFidelity) }
             c.facadeFeatures.filter { it.facadeId==f.id }.forEach { feature ->
                 val profiles=if(feature.kind==FacadeFeatureKind.FRAME) {
                     val b=feature.profile.bounds; val border=min(b.width,b.depth)*0.06

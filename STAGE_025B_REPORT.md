@@ -31,6 +31,14 @@ Device capture caught two real defects: horizontal feature faces passed to a ver
 
 ## Policy and holdout
 
+Final full-gate verification exposed an obsolete quantity assertion: supplying opening heights was assumed to remove all joinery uncertainty, even when the preview clipped those openings at an assumed sill or roof profile. The resolver now distinguishes coordinate fidelity from area fidelity: an uncut known-width/known-height pane has a known area despite an assumed sill; a clipped pane retains uncertainty and a named diagnostic. A synthetic test proves the former; the existing verification test now proves the latter and checks that the reported area equals the resolved polygons. Open passages are deducted from walls but are neither joinery nor rendered glass. This fixes the geometry/quantity semantics rather than marking clipped geometry user-confirmed. Analyzer version is `0.5.1-stage025b-6` to invalidate older cached reports.
+
+## Iteration 6 — competing open/slab/enclosed interpretations
+
+Source-backed horizontal facade features generate four bounded alternatives: slab, open covered volume, facade projection and enclosed volume. Their vertical regions preserve projected overlap without double-counting enclosed volume. Source railing corroboration prefers a slab; physical plan closure rejects an invented enclosed balcony. The alternatives reach actual geometry resolution (including enclosure walls in the rejected variant), projection and repair acceptance. A selected SLAB over OPEN_COVERED and FACADE_PROJECTION; ENCLOSED was hard-rejected for extending outside structural plan closure. This closes the missing alternative-use path, but does not recover A's unsupported front mass depth or B's missing roof composition.
+
+Exact measured fields and opening widths are protected across repairs. These checks preserve established metric facts; the initial raster-to-metre calibration and incomplete semantic ownership still limit architectural correctness. No seventh development iteration is used. Final test, freeze, holdout and visual evidence results are recorded below.
+
 ## Iteration 5 — secondary roof evidence and false-feature rejection
 
 Added source-neutral secondary roof elements: perpendicular elevation constraints locate stack footprints; facade coordinate/height rays intersect individual roof planes for rooflights. These remain separate from the primary roof solver. Accepted elements participate in projection, feature scoring, resolved roof holes and quantities. Source observations now retain their actual outline in the evidence graph, and resolved masses/facades/groups/elements are linked back to their supporting observations.
