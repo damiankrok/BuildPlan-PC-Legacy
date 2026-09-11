@@ -1,5 +1,7 @@
 package com.buildplan.app.analyzer.snapshot
 
+import com.buildplan.app.analyzer.candidate.*
+
 import com.buildplan.app.analyzer.asset.AssetManifest
 import com.buildplan.app.analyzer.asset.AssetRecord
 import com.buildplan.app.analyzer.asset.AssetRole
@@ -110,8 +112,8 @@ data class ProjectAnalysisSnapshot(
     val timingsMillis: Map<String, Long>,
 ) {
     companion object {
-        const val SCHEMA_VERSION = 4
-        const val ANALYZER_VERSION = "0.4.1-stage025a"
+        const val SCHEMA_VERSION = 5
+        const val ANALYZER_VERSION = "0.5.0-stage025b-1"
     }
 }
 
@@ -263,6 +265,7 @@ object SnapshotCodec {
         "dimensions" toArray c.dimensions.map { d -> json { "scope" to d.scope; "name" to d.name; "measured" to measuredJson(d.measured) } }
         "issues" toArray c.issues.map { i -> json { "severity" to i.severity; "stage" to i.stage; "subject" to i.subject; "message" to i.message } }
         "visual" to visualJson(c.visual)
+        "reconstruction" to c.reconstruction?.let(::reconstructionJson)
         "masses" toArray c.masses.map { mass -> json {
             "id" to mass.id; "footprint" to polygonJson(mass.footprint); "baseLevel" to measuredJson(mass.baseLevel)
             "topLevel" to measuredJson(mass.topLevel); "roofKind" to mass.roofKind
@@ -309,6 +312,7 @@ object SnapshotCodec {
         dimensions = o.arr("dimensions")?.objects?.map { d -> NamedDimension(d.str("scope")!!, d.str("name")!!, m(d, "measured")) }.orEmpty(),
         issues = o.arr("issues")?.objects?.map { i -> AnalysisIssue(IssueSeverity.valueOf(i.str("severity")!!), i.str("stage")!!, i.str("subject"), i.str("message")!!) }.orEmpty(),
         visual = o.obj("visual")?.let(::visualFrom) ?: VisualEvidence.NONE,
+        reconstruction = o.obj("reconstruction")?.let(::reconstructionFrom),
         masses = o.arr("masses")?.objects?.map { mass -> BuildingMassCandidate(
             mass.str("id")!!, polygonFrom(mass.arr("footprint")!!), m(mass, "baseLevel"), m(mass, "topLevel"),
             RoofFamily.valueOf(mass.str("roofKind")!!), strings(mass, "adjacentMassIds"), strings(mass, "sourceAssets"), mass.num("confidence")!!,
@@ -326,6 +330,40 @@ object SnapshotCodec {
     )
 
     private fun strings(o: JsonValue.Obj, key: String): List<String> = o.arr(key)?.items?.map { (it as JsonValue.Str).value }.orEmpty()
+
+    private fun reconstructionJson(s: ReconstructionState): JsonValue.Obj = json {
+        "nodes" toArray s.graph.nodes.map { n -> json {
+            "id" to n.id; "kind" to n.kind; "sourceId" to n.sourceId; "sourceClass" to n.sourceClass
+            "fidelity" to n.fidelity; "confidence" to n.confidence; "method" to n.method; "uncertainty" to n.uncertainty
+            "contradiction" to n.contradiction; "geometry" toArray n.geometry.map { p -> json { "x" to p.x; "z" to p.z } }
+            "frame" to n.frame; "measurement" to n.measurement?.let(::measuredJson); "semantic" to n.semantic
+        } }
+        "edges" toArray s.graph.edges.map { e -> json { "from" to e.from; "to" to e.to; "relation" to e.relation; "confidence" to e.confidence; "reason" to e.reason } }
+        "regions" toArray s.masses.map { m -> json {
+            "id" to m.id; "outline" to polygonJson(m.outline); "base" to m.base; "top" to m.top; "use" to m.use; "roof" to m.roof; "floorId" to m.floorId
+            "evidenceIds" toStrings m.evidenceIds; "confidence" to m.confidence; "adjacentIds" toStrings m.adjacentIds; "overlappingIds" toStrings m.overlappingIds
+        } }
+        "policy" to json {
+            val p=s.policy
+            "version" to p.version; "initialHypotheses" to p.initialHypotheses; "beamWidth" to p.beamWidth; "repairCycles" to p.repairCycles
+            "localAlternatives" to p.localAlternatives; "hypothesisEvaluations" to p.hypothesisEvaluations; "cameraProjections" to p.cameraProjections
+            "rasterSize" to p.rasterSize; "improvementEpsilon" to p.improvementEpsilon
+            "weights" to json { p.weights.forEach { (k,v) -> k.name to v } }
+        }
+    }
+    private fun reconstructionFrom(o: JsonValue.Obj): ReconstructionState {
+        val nodes=o.arr("nodes")!!.objects.map { n -> EvidenceNode(n.str("id")!!,EvidenceKind.valueOf(n.str("kind")!!),n.str("sourceId")!!,
+            EvidenceClass.valueOf(n.str("sourceClass")!!),FactFidelity.valueOf(n.str("fidelity")!!),n.num("confidence")!!,n.str("method")!!,n.num("uncertainty"),
+            ContradictionStatus.valueOf(n.str("contradiction")!!),n.arr("geometry")!!.objects.map { Pt(it.num("x")!!,it.num("z")!!) },n.str("frame")!!,
+            n.obj("measurement")?.let(::measuredFrom),n.str("semantic")!!) }
+        val edges=o.arr("edges")!!.objects.map { e -> EvidenceEdge(e.str("from")!!,e.str("to")!!,EvidenceRelation.valueOf(e.str("relation")!!),e.num("confidence")!!,e.str("reason")!!) }
+        val regions=o.arr("regions")!!.objects.map { m -> MassRegion(m.str("id")!!,polygonFrom(m.arr("outline")!!),m.num("base")!!,m.num("top")!!,
+            MassUse.valueOf(m.str("use")!!),RoofFamily.valueOf(m.str("roof")!!),m.str("floorId")!!,strings(m,"evidenceIds"),m.num("confidence")!!,strings(m,"adjacentIds"),strings(m,"overlappingIds")) }
+        val p=o.obj("policy")!!
+        return ReconstructionState(EvidenceGraph(nodes,edges),regions,ReconstructionPolicy(p.str("version")!!,p.int("initialHypotheses")!!,p.int("beamWidth")!!,p.int("repairCycles")!!,
+            p.int("localAlternatives")!!,p.int("hypothesisEvaluations")!!,p.int("cameraProjections")!!,p.int("rasterSize")!!,p.num("improvementEpsilon")!!,
+            p.obj("weights")!!.fields.map { (k,v) -> EvidenceClass.valueOf(k) to (v as JsonValue.Num).value }.toMap()))
+    }
 
     private fun floorJson(f: FloorCandidate): JsonValue.Obj = json {
         "id" to f.id; "name" to f.name; "order" to f.order

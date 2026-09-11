@@ -26,6 +26,8 @@ dependencies {
     // Android API 21+, no native code. An implementation detail of the site
     // adapter: nothing in the service API mentions a jsoup type.
     implementation(libs.jsoup)
+    // Pure Java, EDL-1.0 / EPL-2.0. Confined to reconstruction/internal.
+    implementation("org.locationtech.jts:jts-core:1.20.0")
 
     // The cancellation and progress contract of `service/`. Already resolved to this
     // version on the app runtime classpath through Compose and Lifecycle.

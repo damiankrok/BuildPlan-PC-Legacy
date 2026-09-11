@@ -15,7 +15,12 @@ import kotlin.math.min
 /** Bounded reconstruction over existing source traces. No oracle or remote interpreter. */
 object AutomaticReconstruction {
     fun reconstruct(input: ProjectAnalysisCandidate, source: SourcePackage): ProjectAnalysisCandidate {
-        val alternatives = mutableListOf("plan-levels" to input)
+        val graph = EvidenceGraphBuilder.build(input, source)
+        val policy = ReconstructionPolicy()
+        val massHypotheses = MassSolver.hypotheses(input, graph, policy)
+        val massBest = massHypotheses.firstOrNull { it.hardViolations.isEmpty() }
+        val reconstructedInput = massBest?.candidate ?: input
+        val alternatives = mutableListOf("plan-levels" to reconstructedInput)
         val diagnostics = mutableListOf<String>()
         // Lower roof levels are ambiguous when the section has no legible numeric labels.
         // A level is proposed only when two distinct elevations corroborate it.
@@ -63,6 +68,7 @@ object AutomaticReconstruction {
         val margin = if (ranked.size > 1) ranked[0].score - ranked[1].score else 0.0
         if (ranked.size > 1 && margin < 0.03) diagnostics += "Low hypothesis margin; runner-up retained"
         return chosen.copy(masses = masses, facadeEnvelopes = envelopes,
+            reconstruction = ReconstructionState(graph, massBest?.masses.orEmpty(), policy),
             selfVerification = SelfVerificationResult(coverage, best?.id ?: "unresolved", scores,
                 // Six independent score families are needed for full source verification.
                 // Available coarse scores cannot imply high overall confidence on their own.
