@@ -21,6 +21,8 @@ internal object GeometryResolver {
         val exterior=facades(c)
         val surfaces=exterior.surfaces.toMutableList()
         val diagnostics=exterior.diagnostics.toMutableList()
+        val stairTopology=StairTopologySolver.resolve(c)
+        diagnostics+=stairTopology.flatMap { s -> s.diagnostics.map { "${s.stairId}:$it" } }
         val roof=c.roof?.let(::RoofHeightField)
         val topFloor=c.floors.maxByOrNull { it.order }?.id
         fun add(id:String,owner:String,floor:String?,kind:ResolvedSurfaceKind,vertices:List<Pt3>,thickness:Double,evidence:List<String>,fidelity:FactFidelity,room:String?=null,external:Boolean=false) {
@@ -55,7 +57,9 @@ internal object GeometryResolver {
             fun ceiling(p:Pt)=if(f.id==topFloor) min(base+clear,roof?.heightAt(p) ?: (base+clear)).coerceAtLeast(base) else base+clear
             val slab=c.levels.upperSlabThickness.value ?: 0.25
             f.footprint?.let { p ->
-                PlanarTopology.convexParts(p).forEachIndexed { i,part ->
+                var slabParts=listOf(p)
+                stairTopology.filter { it.accepted && it.toFloorId==f.id }.flatMap { it.slabOpenings }.forEach { hole -> slabParts=slabParts.flatMap { PlanarTopology.difference(it,hole) } }
+                slabParts.flatMap(PlanarTopology::convexParts).forEachIndexed { i,part ->
                     add("${f.id}:slab:$i","${f.id}-slab",f.id,ResolvedSurfaceKind.SLAB,part.vertices.map { Pt3(it.x,base,it.z) },slab,listOf(f.id),c.levels.upperSlabThickness.fidelity)
                     add("${f.id}:slab-bottom:$i","${f.id}-slab",f.id,ResolvedSurfaceKind.SLAB,part.vertices.reversed().map { Pt3(it.x,base-slab,it.z) },slab,listOf(f.id),c.levels.upperSlabThickness.fidelity)
                 }
@@ -109,7 +113,7 @@ internal object GeometryResolver {
             val p=listOf(Pt3(s.zone.minX,base+0.15,s.zone.minZ),Pt3(s.zone.maxX,base+0.15,s.zone.minZ),Pt3(s.zone.maxX,base+0.15,s.zone.maxZ),Pt3(s.zone.minX,base+0.15,s.zone.maxZ))
             add("${s.id}:zone",s.id,s.floorId,ResolvedSurfaceKind.STAIR,p,0.15,listOf(s.id),s.fidelity)
         }
-        return ResolvedBuildingGeometry(surfaces,lineage(c),diagnostics)
+        return ResolvedBuildingGeometry(surfaces,lineage(c),diagnostics,stairTopology)
     }
 
     private fun planeHeight(vertices:List<Pt3>):((Pt)->Double)? {

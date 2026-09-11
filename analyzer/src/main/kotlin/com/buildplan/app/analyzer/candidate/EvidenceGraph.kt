@@ -62,7 +62,7 @@ data class MassRegion(
 
 /** Search configuration is source-neutral, versioned, finite and frozen before a holdout run. */
 data class ReconstructionPolicy(
-    val version: String = "025b-3",
+    val version: String = "025b-4",
     val initialHypotheses: Int = 32, val beamWidth: Int = 8, val repairCycles: Int = 4,
     val localAlternatives: Int = 8, val hypothesisEvaluations: Int = 288, val cameraProjections: Int = 2048,
     val rasterSize: Int = 128, val improvementEpsilon: Double = 0.0001,

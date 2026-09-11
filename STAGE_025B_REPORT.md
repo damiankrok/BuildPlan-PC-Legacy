@@ -31,6 +31,12 @@ Device capture caught two real defects: horizontal feature faces passed to a ver
 
 ## Policy and holdout
 
+## Iteration 4 — global room assignment and stair rejection
+
+Replaced room-by-room greedy selection with a complete-floor cost matrix over singleton and connected region groups, then deterministic exclusive assignment with a 128-state beam, 32 alternatives per room and 4096 unique connected groups (up to six regions). All area tolerances retain their published floor/usable semantics. A structural cue penalty was increased from 0.02 to 0.15 after A/B exposed a stair room being moved away from its detected treads merely for a slightly smaller area residual. This applies inside the admissible area band and cannot override it. No holdout data was used.
+
+A retains 15/18 rooms; B recovers 15/20 rather than 14/20. This is bounded global optimization, not proof of label identity: near-cost alternative assignments remain diagnostics. Stair topology now separates shaft, flights, landing remainder and slab openings, and rejects wall-colliding or uncorroborated floor transitions. A/B still do not recover a complete accepted flight topology; no invented ascent direction is rendered. The remaining failure is explicit P1, not hidden by the improved room count. Synthetic collision and slab-opening tests pass.
+
 ## Iteration 3 — bounded repair and final geometry
 
 The runtime evaluates a plan-only and source-opening hypothesis, then proposes source-backed feature families. Each trial resolves the full geometry, projects it with a shared bounded camera budget, and accepts only a source-score improvement with valid hard constraints and no weaker plan/room score. A accepted bands, frames, then balcony/railing (0.773712 to 0.838350, 8 evaluations/280 projections); B accepted bands (3 evaluations/250 projections). Four cycles include convergence, not four arbitrary vertex edits. Rejected sibling repairs remain in the trace. The initial viewpoint fit is reused for fair local comparisons. This is a real but still narrow repair vocabulary.

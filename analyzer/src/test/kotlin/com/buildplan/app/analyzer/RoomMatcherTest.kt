@@ -18,6 +18,14 @@ import org.junit.Test
  */
 class RoomMatcherTest {
 
+    @Test fun `global assignment retains a constrained room instead of consuming its only region in a merge`() {
+        val rooms=listOf(room("One",10.0),room("Two",9.0),room("Three",20.0))
+        val result=RoomMatcher.match(listOf(9.1,10.1,19.9),listOf(0 to 1),rooms,false)
+        assertEquals(3,result.matches.size)
+        assertEquals(listOf(0),result.matches.single { it.roomIndices==listOf(1) }.regionIndices)
+        assertEquals(result,RoomMatcher.match(listOf(9.1,10.1,19.9),listOf(0 to 1),rooms,false))
+    }
+
     private fun room(name: String, usable: Double?, floor: Double? = null, kind: RoomKind = RoomKind.OTHER, ordinal: Int? = null) = PublishedRoom(
         ordinal = ordinal,
         name = name,

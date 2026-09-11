@@ -7,33 +7,11 @@ import kotlin.math.abs
 import kotlin.math.ln
 
 /**
- * Associates enclosed plan regions with the storey's published room table.
- *
- * The only signal available without reading the plan's printed room numbers
- * is area, so the matcher is explicit about what area can and cannot decide.
- * The plan is deliberately *over-segmented* — every wall line is extended
- * across the gaps in it — so a room is usually one region and sometimes a
- * few regions joined across those virtual lines, and only an open plan that
- * the source draws with no wall line at all ends up as one region shared by
- * several rooms.
- *
- * - a region is matched to a room when exactly one unmatched room's published
- *   area is within [tolerance] of the region's, and no second room is close
- *   enough to be confused with it;
- * - an unmatched room is then tried as a *connected* group of unmatched
- *   regions — connected across sealed gaps, never across a wall — whose
- *   areas sum to the room's;
- * - a large region that still matches no single room is tried as the union
- *   of several rooms drawn without walls between them; the rooms are then
- *   reported as sharing that region and flagged uncertain;
- * - two rooms with the same published area (a hall and a bedroom both at
- *   9.18 m2) are an ambiguity: assigned by table order and flagged, with a
- *   question raised.
- *
- * Attic rooms are compared against their published *floor* area when the
- * site prints one, because their usable area excludes the strip under the
- * slope and is not the polygon the plan draws. When only usable area exists
- * the comparison is one-sided: a region may be larger, never smaller.
+ * Global assignment of published rooms to disjoint plan regions or connected groups.
+ * Area is constrained by its source semantics (floor versus usable attic area).
+ * Gate, stair and circulation cues affect costs. A bounded beam retains competing
+ * assignments; unresolved ties and runner-up information are kept internally.
+ * No architecture answer is consumed by this matcher.
  */
 object RoomMatcher {
 
@@ -138,130 +116,49 @@ object RoomMatcher {
             else -> null
         }
 
-        fun preferred(t: Target, candidates: List<List<Int>>): List<List<Int>> {
-            val cue = cueFor(t) ?: return candidates
-            val cued = candidates.filter { hasCue(it, cue) }
-            return if (cued.isEmpty()) candidates else cued
-        }
-
-        // One room at a time, and rooms that structural evidence can *place* go first.
-        //
-        // Ordering by area alone lets a room matched on nothing but its number take the very
-        // region another room can prove it belongs to: on a storey with a 7.78 m2 wardrobe and a
-        // 7.05 m2 hall, the wardrobe was settled first and took the region every other room opens
-        // onto — leaving the hall, which that region demonstrably is, with nothing. A cue is still
-        // never a veto and never overrides an area that does not fit; it only decides who chooses
-        // first among rooms that all fit.
-        val gateCueExists = cues.values.any { RegionCue.GATE in it }
-
-        // Pass 0: mutually unique singles. A region that fits exactly one room, when that room
-        // fits exactly one region, is settled before any larger room can absorb it into a group.
-        var settled = true
-        while (settled) {
-            settled = false
-            val freeRegions = regionAreasM2.indices.filter { it !in usedRegions }
-            val freeTargets = targets.filter { it.index !in usedRooms }
-            for (t in freeTargets) {
-                val fits = freeRegions.filter { distance(regionAreasM2[it], t) != null }
-                if (fits.size != 1) continue
-                val r = fits.single()
-                val roomsForRegion = freeTargets.filter { distance(regionAreasM2[r], it) != null }
-                if (roomsForRegion.size != 1) continue
-                val error = distance(regionAreasM2[r], t)!!
-                val fidelity = if (strong(error)) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN
-                matches += Match(
-                    listOf(r), listOf(t.index), fidelity,
-                    "region ${r + 1}: ${"%.2f".format(java.util.Locale.ROOT, regionAreasM2[r])} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (regionAreasM2[r] / t.area - 1) * 100)} %); unique fit",
-                    signals = listOf(
-                        "published area residual ${"%.1f".format(java.util.Locale.ROOT, (regionAreasM2[r] / t.area - 1) * 100)} %",
-                        "mutually unique: this room fits only this region and this region fits only this room",
-                    ),
-                )
-                usedRooms += t.index
-                usedRegions += r
-                settled = true
-                break
-            }
-        }
-
-        // One room at a time, largest first: the best fit among single free regions and connected
-        // groups of free regions, so a room split by a wall-line gap is not lost to a loose single
-        // match on one of its halves. A garage goes first when the plan shows a gate.
-        //
-        // Two alternatives were tried against both houses and both reverted. Letting rooms with a
-        // structural cue choose first cost Project A a bathroom, and choosing the globally
-        // cheapest (room, region) pair each round recovered one room on B while losing a kitchen
-        // and two bedrooms on A. Both are still greedy — they only move the bias — and neither
-        // earned the regression, so the ordering stays as it is and the ambiguity B's attic
-        // really has is reported as ambiguity rather than reshuffled.
-        val roomOrder = targets.sortedWith(
-            compareByDescending<Target> { gateCueExists && rooms[it.index].kind == RoomKind.GARAGE }.thenByDescending { it.area },
-        )
-        for (t in roomOrder) {
-            if (t.index in usedRooms) continue
-            val free = regionAreasM2.indices.filter { it !in usedRegions }
-            val singles = free.map { listOf(it) }
-            val groups = connectedGroups(free, neighbours)
-            val fitting = (singles + groups).mapNotNull { set -> distance(set.sumOf { regionAreasM2[it] }, t)?.let { set to it } }
-            if (fitting.isEmpty()) continue
-            // Singles win ties against groups; groups need a clearly better fit to be chosen.
-            val ranked = preferred(t, fitting.map { it.first }).map { set -> set to fitting.first { it.first == set }.second }
-                .sortedWith(compareBy({ it.second + if (it.first.size > 1) GROUP_PENALTY else 0.0 }, { it.first.size }))
-            val (set, error) = ranked.first()
-            val area = set.sumOf { regionAreasM2[it] }
-
-            // Every other unmatched room these same regions would also fit. Reported whether or not
-            // one was close enough to call the match ambiguous, because a reader checking a room
-            // needs to see what else it could have been, not only that something else could.
-            val alternatives = targets
-                .filter { o -> o.index != t.index && o.index !in usedRooms }
-                .mapNotNull { o -> distance(area, o)?.let { d -> o to d } }
-                .sortedBy { it.second }
-                .take(3)
-                .map { (o, _) ->
-                    val cue = cueFor(o)
-                    Alternative(
-                        o.index, rooms[o.index].name, o.area, area / o.area - 1,
-                        buildString {
-                            append("area fits within tolerance")
-                            if (cue != null && !hasCue(set, cue)) append("; but these regions carry no $cue cue, which this kind of room expects")
-                        },
-                    )
+        // Global bounded assignment over the room/region-group cost matrix. A region
+        // can be used once across the complete floor, so an early room cannot greedily
+        // steal the only feasible region of another room.
+        data class Choice(val target:Target,val regions:List<Int>,val error:Double,val cost:Double)
+        data class Assignment(val choices:List<Choice>,val used:Set<Int>,val cost:Double,val missed:Int)
+        val allRegions=regionAreasM2.indices.toList()
+        val sets=allRegions.map { listOf(it) }+connectedGroups(allRegions,neighbours)
+        if(sets.size>=4096) ambiguities+="Region-group enumeration reached its finite 4096-state cap; some alternatives were not evaluated."
+        val options=targets.associate { t -> t.index to sets.mapNotNull { set ->
+            val error=distance(set.sumOf { regionAreasM2[it] },t) ?: return@mapNotNull null
+            val cue=cueFor(t)
+            val cueCost=if(cue==null) 0.0 else if(hasCue(set,cue)) -CUE_BONUS else CUE_PENALTY
+            Choice(t,set,error,error+GROUP_PENALTY*(set.size-1)+cueCost)
+        }.sortedWith(compareBy<Choice> { it.cost }.thenBy { it.regions.joinToString(",") }).take(32) }
+        val order=targets.sortedWith(compareBy<Target> { options[it.index]!!.size }.thenBy { it.index })
+        var beam=listOf(Assignment(emptyList(),emptySet(),0.0,0))
+        val comparator=compareBy<Assignment> { it.missed }.thenBy { it.cost }.thenBy { a->a.choices.joinToString(";") { "${it.target.index}:${it.regions}" } }
+        order.forEach { t ->
+            beam=beam.flatMap { state ->
+                listOf(state.copy(missed=state.missed+1))+options.getValue(t.index).filter { choice -> choice.regions.none { it in state.used } }.map { choice ->
+                    Assignment(state.choices+choice,state.used+choice.regions,state.cost+choice.cost,state.missed)
                 }
-            val signals = buildList {
-                add("published area residual ${"%.1f".format(java.util.Locale.ROOT, (area / t.area - 1) * 100)} %")
-                if (set.size > 1) add("${set.size} regions joined across wall-line gaps")
-                cueFor(t)?.let { c -> if (hasCue(set, c)) add("$c cue on the region") else add("no $c cue, which this kind of room expects") }
-            }
-            // Ambiguity: another unmatched room of almost the same area would fit these regions as well.
-            val rival = targets.firstOrNull { o -> o.index != t.index && o.index !in usedRooms && abs(o.area - t.area) / t.area < 0.06 && distance(area, o) != null }
-            val label = if (set.size == 1) "region ${set.first() + 1}" else "regions ${set.joinToString { "${it + 1}" }} joined across wall-line gaps"
-            val polishLabel = if (set.size == 1) "regionu ${set.first() + 1}" else "regionów ${set.joinToString { "${it + 1}" }}"
-            if (rival != null) {
-                // A cue the rival lacks and this room has is exactly the second signal that is
-                // allowed to settle an area tie; without one the two stay indistinguishable.
-                val cue = cueFor(t)
-                val settledByCue = cue != null && hasCue(set, cue) && cueFor(rival) != cue
-                matches += Match(
-                    set, listOf(t.index),
-                    if (settledByCue) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN,
-                    "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 fits ${rooms[t.index].name} and ${rooms[rival.index].name} (~${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); " +
-                        if (settledByCue) "settled by the $cue cue" else "assigned by table order",
-                    alternatives, signals,
-                )
-                if (!settledByCue) {
-                    ambiguities += "Pomieszczenia ${rooms[t.index].name} i ${rooms[rival.index].name} mają zbliżoną powierzchnię (${"%.2f".format(java.util.Locale.ROOT, t.area)} m2); przypisanie $polishLabel jest niepewne."
-                }
-            } else {
-                val fidelity = if (set.size == 1 && strong(error)) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN
-                matches += Match(
-                    set, listOf(t.index), fidelity,
-                    "$label: ${"%.2f".format(java.util.Locale.ROOT, area)} m2 vs published ${"%.2f".format(java.util.Locale.ROOT, t.area)} m2 (${"%.1f".format(java.util.Locale.ROOT, (area / t.area - 1) * 100)} %)",
-                    alternatives, signals,
-                )
-            }
-            usedRooms += t.index
-            usedRegions += set
+            }.sortedWith(comparator).take(128)
+        }
+        val best=beam.firstOrNull()
+        val runnerUp=beam.drop(1).firstOrNull()
+        best?.choices?.forEach { choice ->
+            val t=choice.target; val set=choice.regions
+            val area=set.sumOf { regionAreasM2[it] }
+            val alternatives=targets.filter { it.index!=t.index }.mapNotNull { other -> distance(area,other)?.let { d ->
+                Alternative(other.index,rooms[other.index].name,other.area,area/other.area-1,"area fits; global assignment also considers competing regions and topology cues") to d
+            } }.sortedBy { it.second }.take(3).map { it.first }
+            val alternativeAssignment=runnerUp?.takeIf { it.missed==best.missed && it.cost-best.cost<0.02 }
+            val changed=alternativeAssignment!=null && alternativeAssignment.choices.none { it.target.index==t.index && it.regions==set }
+            val cue=cueFor(t)
+            val settledByCue=cue!=null && hasCue(set,cue) && alternatives.all { cueFor(targets.first { target->target.index==it.roomIndex })!=cue }
+            if(changed && !settledByCue) ambiguities+="Globalne przypisanie pomieszczenia ${rooms[t.index].name} ma zbliżony wariant alternatywny; wybór jest deterministyczny, ale niepewny."
+            matches+=Match(set,listOf(t.index),if(set.size==1 && strong(choice.error) && (!changed || settledByCue)) FactFidelity.SOURCE_TRACED else FactFidelity.TRACE_UNCERTAIN,
+                "global floor assignment; area residual ${area/t.area-1}; cost ${choice.cost}; runner-up margin ${runnerUp?.let { it.cost-best.cost }}",alternatives,
+                buildList { add("published area residual ${area/t.area-1}"); add("global exclusive region assignment, beam <=128 and <=32 choices per room")
+                    if(set.size>1) add("${set.size} regions joined across wall-line gaps")
+                    if(cue!=null) add(if(hasCue(set,cue)) "$cue cue on the region" else "no $cue cue") })
+            usedRooms+=t.index; usedRegions+=set
         }
 
         // Pass 3: open-plan unions for regions still unmatched, largest first.
@@ -288,7 +185,9 @@ object RoomMatcher {
 
     /** A cue found where a room's kind expects one is worth this much off the cost; missing, this much on. */
     private const val CUE_BONUS = 0.03
-    private const val CUE_PENALTY = 0.02
+    // Within the admissible 12% area band, a drawn structural cue should beat a
+    // slightly smaller area residual. It still cannot admit an out-of-band room.
+    private const val CUE_PENALTY = 0.15
 
     /** A group must fit this much better (in log-ratio) than a single to be preferred over it. */
     private const val GROUP_PENALTY = 0.02
@@ -298,15 +197,20 @@ object RoomMatcher {
 
     /** Every connected set of two to [MAX_GROUP] free regions, connected through gap adjacency. */
     private fun connectedGroups(free: List<Int>, neighbours: Map<Int, Set<Int>>): List<List<Int>> {
-        val out = LinkedHashSet<List<Int>>()
-        fun grow(group: List<Int>) {
-            if (group.size >= 2) out += group.sorted()
-            if (group.size >= MAX_GROUP) return
-            val frontier = group.flatMap { neighbours[it].orEmpty() }.filter { it in free && it !in group }.distinct()
-            for (next in frontier) grow(group + next)
+        val seen=linkedSetOf<List<Int>>()
+        val pending=ArrayDeque<List<Int>>()
+        free.sorted().forEach { val group=listOf(it); seen+=group; pending.add(group) }
+        while(pending.isNotEmpty() && seen.size<4096) {
+            val group=pending.removeFirst()
+            if(group.size>=MAX_GROUP) continue
+            val frontier=group.flatMap { neighbours[it].orEmpty() }.filter { it in free && it !in group }.distinct().sorted()
+            for(next in frontier) {
+                if(seen.size>=4096) break
+                val expanded=(group+next).sorted()
+                if(seen.add(expanded)) pending.add(expanded)
+            }
         }
-        free.forEach { grow(listOf(it)) }
-        return out.toList()
+        return seen.filter { it.size>=2 }
     }
 
     /** The subset of rooms (by index) whose areas sum closest to [target] within [tolerance]; up to 4 rooms. */

@@ -59,4 +59,18 @@ class ResolvedRepairTest {
         assertEquals(0,result.trace.count { it.accepted })
         assertEquals(score.diagnostics,result.selected.score.diagnostics)
     }
+    @Test fun `corroborated stair slab opening survives but a wall collision rejects it`() {
+        val c=candidate(); val upper=c.floors.first().copy(id="upper",order=1,floorElevation=m(3.0))
+        val stair=StairCandidate("stairs","floor",Box(1.0,1.0,3.0,5.0),Measured.assumed(12.0,MeasureUnit.COUNT,"fixture"),"unknown","floor","upper",listOf(Box(1.0,1.0,3.0,5.0)),null,setOf(StairEvidence.TREAD_LINES,StairEvidence.CROSS_FLOOR_ALIGNMENT),FactFidelity.SOURCE_TRACED,"fixture",emptyList())
+        val clear=c.copy(floors=c.floors+upper,stairs=listOf(stair))
+        val topology=StairTopologySolver.resolve(clear).single()
+        assertTrue(topology.accepted)
+        assertEquals(8.0,topology.slabOpenings.sumOf { it.area },1e-8)
+        assertTrue(topology.diagnostics.any { it.contains("direction unresolved") })
+        val wall=WallCandidate("collision","floor",Segment(Pt(0.0,3.0),Pt(4.0,3.0)),m(4.0),m(0.2),WallClass.PARTITION,m(0.0),m(3.0),emptyList(),emptyList(),false,emptyList(),FactFidelity.SOURCE_TRACED)
+        val rejected=StairTopologySolver.resolve(clear.copy(walls=listOf(wall))).single()
+        assertFalse(rejected.accepted)
+        assertTrue(rejected.slabOpenings.isEmpty())
+        assertTrue(rejected.diagnostics.any { it.contains("collision") })
+    }
 }

@@ -23,6 +23,10 @@ data class ResolvedSurface(val id:String,val ownerId:String,val floorId:String?,
     }
 }
 /** A resolved surface has one owner and one geometry; room finish faces are explicitly separate surfaces. */
-data class ResolvedBuildingGeometry(val surfaces:List<ResolvedSurface>,val lineage:String,val diagnostics:List<String>) {
+data class StairTopologyCandidate(val stairId:String,val fromFloorId:String?,val toFloorId:String?,val stairwell:Polygon,
+    val flights:List<Polygon>,val landings:List<Polygon>,val slabOpenings:List<Polygon>,val direction:String,
+    val accepted:Boolean,val diagnostics:List<String>)
+
+data class ResolvedBuildingGeometry(val surfaces:List<ResolvedSurface>,val lineage:String,val diagnostics:List<String>,val stairTopology:List<StairTopologyCandidate> = emptyList()) {
     init { require(surfaces.map { it.id }.distinct().size==surfaces.size) }
 }
