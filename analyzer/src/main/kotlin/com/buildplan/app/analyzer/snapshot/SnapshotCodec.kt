@@ -5,6 +5,10 @@ import com.buildplan.app.analyzer.asset.AssetRecord
 import com.buildplan.app.analyzer.asset.AssetRole
 import com.buildplan.app.analyzer.asset.RetrievalState
 import com.buildplan.app.analyzer.candidate.AffectedRegion
+import com.buildplan.app.analyzer.candidate.BuildingMassCandidate
+import com.buildplan.app.analyzer.candidate.FacadeEnvelopeCandidate
+import com.buildplan.app.analyzer.candidate.ReconstructionHypothesisScore
+import com.buildplan.app.analyzer.candidate.SelfVerificationResult
 import com.buildplan.app.analyzer.candidate.AnalysisIssue
 import com.buildplan.app.analyzer.candidate.AppearanceCandidate
 import com.buildplan.app.analyzer.candidate.AppearanceKind
@@ -106,8 +110,8 @@ data class ProjectAnalysisSnapshot(
     val timingsMillis: Map<String, Long>,
 ) {
     companion object {
-        const val SCHEMA_VERSION = 3
-        const val ANALYZER_VERSION = "0.3.0-stage025"
+        const val SCHEMA_VERSION = 4
+        const val ANALYZER_VERSION = "0.4.1-stage025a"
     }
 }
 
@@ -259,6 +263,27 @@ object SnapshotCodec {
         "dimensions" toArray c.dimensions.map { d -> json { "scope" to d.scope; "name" to d.name; "measured" to measuredJson(d.measured) } }
         "issues" toArray c.issues.map { i -> json { "severity" to i.severity; "stage" to i.stage; "subject" to i.subject; "message" to i.message } }
         "visual" to visualJson(c.visual)
+        "masses" toArray c.masses.map { mass -> json {
+            "id" to mass.id; "footprint" to polygonJson(mass.footprint); "baseLevel" to measuredJson(mass.baseLevel)
+            "topLevel" to measuredJson(mass.topLevel); "roofKind" to mass.roofKind
+            "adjacentMassIds" toStrings mass.adjacentMassIds; "sourceAssets" toStrings mass.sourceAssets; "confidence" to mass.confidence
+        } }
+        "facadeEnvelopes" toArray c.facadeEnvelopes.map { facade -> json {
+            "id" to facade.id; "floorId" to facade.floorId; "segment" to segJson(facade.segment)
+            "baseLevel" to measuredJson(facade.baseLevel); "thickness" to measuredJson(facade.thickness)
+            "topProfile" toArray facade.topProfile.map { p -> json { "x" to p.x; "y" to p.y; "z" to p.z } }
+            "openingIds" toStrings facade.openingIds
+        } }
+        "selfVerification" to c.selfVerification?.let { qa -> json {
+            "sourceCoverage" to json { qa.sourceCoverage.forEach { (key, value) -> key to value } }
+            "selectedHypothesis" to qa.selectedHypothesis
+            "hypotheses" toArray qa.hypotheses.map { h -> json {
+                "id" to h.id; "score" to h.score; "hardViolations" toStrings h.hardViolations
+                "scores" to json { h.scores.forEach { (key, value) -> key to value } }
+            } }
+            "overallConfidence" to qa.overallConfidence; "selectionMargin" to qa.selectionMargin
+            "unresolvedDiagnostics" toStrings qa.unresolvedDiagnostics; "iterations" to qa.iterations
+        } }
     }
 
     private fun candidateFrom(o: JsonValue.Obj): ProjectAnalysisCandidate = ProjectAnalysisCandidate(
@@ -284,6 +309,20 @@ object SnapshotCodec {
         dimensions = o.arr("dimensions")?.objects?.map { d -> NamedDimension(d.str("scope")!!, d.str("name")!!, m(d, "measured")) }.orEmpty(),
         issues = o.arr("issues")?.objects?.map { i -> AnalysisIssue(IssueSeverity.valueOf(i.str("severity")!!), i.str("stage")!!, i.str("subject"), i.str("message")!!) }.orEmpty(),
         visual = o.obj("visual")?.let(::visualFrom) ?: VisualEvidence.NONE,
+        masses = o.arr("masses")?.objects?.map { mass -> BuildingMassCandidate(
+            mass.str("id")!!, polygonFrom(mass.arr("footprint")!!), m(mass, "baseLevel"), m(mass, "topLevel"),
+            RoofFamily.valueOf(mass.str("roofKind")!!), strings(mass, "adjacentMassIds"), strings(mass, "sourceAssets"), mass.num("confidence")!!,
+        ) }.orEmpty(),
+        facadeEnvelopes = o.arr("facadeEnvelopes")?.objects?.map { f -> FacadeEnvelopeCandidate(
+            f.str("id")!!, f.str("floorId")!!, segFrom(f.obj("segment")!!), m(f, "baseLevel"), m(f, "thickness"),
+            f.arr("topProfile")!!.objects.map { p -> Pt3(p.num("x")!!, p.num("y")!!, p.num("z")!!) }, strings(f, "openingIds"),
+        ) }.orEmpty(),
+        selfVerification = o.obj("selfVerification")?.let { qa -> SelfVerificationResult(
+            qa.obj("sourceCoverage")!!.fields.mapValues { (_, v) -> (v as JsonValue.Num).value.toInt() }, qa.str("selectedHypothesis")!!,
+            qa.arr("hypotheses")!!.objects.map { h -> ReconstructionHypothesisScore(h.str("id")!!, h.num("score")!!, strings(h, "hardViolations"),
+                h.obj("scores")!!.fields.mapValues { (_, v) -> (v as JsonValue.Num).value }) },
+            qa.num("overallConfidence")!!, qa.num("selectionMargin")!!, strings(qa, "unresolvedDiagnostics"), qa.int("iterations")!!,
+        ) },
     )
 
     private fun strings(o: JsonValue.Obj, key: String): List<String> = o.arr(key)?.items?.map { (it as JsonValue.Str).value }.orEmpty()

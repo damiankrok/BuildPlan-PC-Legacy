@@ -562,6 +562,7 @@ class Stage013CSignatureTest {
         // over the analyzer's questions: it names `RootQuestion` and `VerificationSession` the way
         // the import screen already names `Measured`. The canvas has a variant-specific half in
         // each of `debug` and `release`, so both are authorised by name and neither by wildcard.
+        val previewFiles = setOf("/analyzer/preview/CandidateGeometry.kt", "/ui/components/AutomaticHouseCanvas.kt") // STAGE-025A read-only candidate rendering in release.
         val authorised = Regex(
             """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
                 """|app[\\/]src[\\/](main|debug|release)[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/](ProjectImport|Verification)[A-Za-z]*)\.kt$""",
@@ -572,7 +573,7 @@ class Stage013CSignatureTest {
         val offenders = sources.filter { file ->
             val text = file.readText()
             forbidden.containsMatchIn(text) || forbidden.containsMatchIn(file.name) ||
-                ((analyzerish.containsMatchIn(text) || analyzerish.containsMatchIn(file.name)) && !authorised.containsMatchIn(file.path))
+                ((analyzerish.containsMatchIn(text) || analyzerish.containsMatchIn(file.name)) && (!authorised.containsMatchIn(file.path) && previewFiles.none { file.path.replace('\\', '/').endsWith(it) }))
         }
         assertTrue("Analyzer code outside its authorised footprint: $offenders", offenders.isEmpty())
     }

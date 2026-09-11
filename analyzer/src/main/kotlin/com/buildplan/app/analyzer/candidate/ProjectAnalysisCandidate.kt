@@ -26,6 +26,9 @@ data class ProjectAnalysisCandidate(
     val issues: List<AnalysisIssue>,
     /** What the elevations and renders contributed: observations, facade assignments, conflicts, appearance proposals. */
     val visual: VisualEvidence = VisualEvidence.NONE,
+    val masses: List<BuildingMassCandidate> = emptyList(),
+    val facadeEnvelopes: List<FacadeEnvelopeCandidate> = emptyList(),
+    val selfVerification: SelfVerificationResult? = null,
 ) {
     fun floor(id: String): FloorCandidate? = floors.firstOrNull { it.id == id }
     fun room(id: String): RoomCandidate? = floors.asSequence().flatMap { it.rooms.asSequence() }.firstOrNull { it.id == id }

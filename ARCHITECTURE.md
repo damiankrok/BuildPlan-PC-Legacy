@@ -2496,6 +2496,33 @@ renderowanym napisie każdego pytania i odrzuca angielskie słowa.
 
 ## Czego jeszcze nie ustalono
 
+### Uzupełnienie STAGE-025A
+
+`AutomaticReconstruction` dodaje kandydatowe bryły i obwiednie fasad, porównuje
+ograniczony zbiór hipotez poziomu niższego dachu z elewacjami oraz zapisuje
+`SelfVerificationResult`. `OpeningFusion` korzysta z proporcji elewacji dopiero
+po dopasowaniu do poziomego przedziału otworu na rzucie. Wysokości z obrazu
+pozostają `TRACE_UNCERTAIN`; nie zastępują wartości odczytanych z etykiet.
+Pełny graf dowodów, kolizje brył, dopasowanie perspektywy i samonaprawczy cykl
+geometrii pozostają otwarte. Wynik QA nie jest prawdopodobieństwem poprawności.
+
+Ekran importu pokazuje automatyczny kandydat bez pytań architektonicznych.
+`CandidateGeometry` jest jedynym produkcyjnym adapterem tworzącym tymczasowe
+obiekty `cand-*` dla podglądu. Nie ma zapisu do modelu użytkownika ani kosztorysu;
+test granicy release kontroluje tę izolację. Czyta tylko typy raportu i czyste
+zapytania `CandidateGeometryQueries`, nie wewnętrzne algorytmy analizatora.
+Debug używa Filament, release lokalnej projekcji Canvas tej samej geometrii.
+Canvas stosuje bufor głębokości dla każdego piksela (maks. 1024 px na wymiar),
+aby nachylona połać prawidłowo zasłaniała ściany. Sortowanie całych wielokątów
+według średniej głębokości okazało się niewystarczające w audycie urządzenia.
+Referencja architektoniczna nadal istnieje wyłącznie w debug/test.
+
+Fetcher przechowuje ograniczony bufor skompresowanych danych (32 MiB), dekoduje
+obrazy sekwencyjnie i nie zatrzymuje wszystkich obrazów RGB. Analizy rzutów
+nadal zachowują swoje rastry. Android sprawdza rozmiar przed alokacją i stosuje
+próbkowanie do maksymalnie 4 mln pikseli. Snapshot przechowuje obserwacje obrazu,
+nie bitmapy; wersja 4 i wersja analizatora unieważniają wcześniejsze wyniki cache.
+
 Persystencja, API, autoryzacja, testy instrumentalne, docelowa architektura
 renderera 3D (kandydat wybrany w STAGE-012; STAGE-013 dołożyło na nim model
 odrysowany, STAGE-013B poprawiło ten model, STAGE-013C dołożyło cechy

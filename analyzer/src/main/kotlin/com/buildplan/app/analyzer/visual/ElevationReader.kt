@@ -223,6 +223,29 @@ object ElevationReader {
             nw
         } else null
 
+        // Blue reflections are often as bright as sky. Read them inside the closed
+        // building mask independently of dark-wall contrast; retain narrow mullion gaps.
+        if (elevation) {
+            val glass = classes.mask(PixelClass.GLASS, PixelClass.SKY).and(building)
+            val joined = glass.close(max(1, bw / 140), max(1, bh / 100)).components()
+            for (label in 1..joined.count) {
+                val pb = joined.boundingBox(label) ?: continue
+                val fill = joined.sizes[label].toDouble() / pb.area
+                val widthShare = pb.width.toDouble() / bw
+                val heightShare = pb.height.toDouble() / bh
+                if (widthShare !in 0.035..0.60 || heightShare !in 0.075..0.75 || fill < 0.42) continue
+                if (pb.minX <= box.minX + 1 || pb.maxX >= box.maxX - 1) continue
+                val roofShare = if (roofRegion == null) 0.0 else (pb.minY..pb.maxY).sumOf { y -> (pb.minX..pb.maxX).count { x -> roofRegion[x, y] } }.toDouble() / pb.area
+                if (roofShare > 0.25) continue
+                val bounds = norm(pb, w, h)
+                out.removeAll { it.kind == VisualObservationKind.OPENING_RECTANGLE && it.bounds.left >= bounds.left && it.bounds.right <= bounds.right && it.bounds.top >= bounds.top && it.bounds.bottom <= bounds.bottom }
+                if (out.any { it.kind == VisualObservationKind.OPENING_RECTANGLE && abs(it.bounds.centreX - bounds.centreX) < bounds.width / 4 && abs(it.bounds.centreY - bounds.centreY) < bounds.height / 4 && it.bounds.width >= bounds.width * 0.8 && it.bounds.height >= bounds.height * 0.8 }) continue
+                out += VisualObservation(VisualObservationKind.OPENING_RECTANGLE, bounds, min(0.85, 0.55 + fill * 0.3),
+                    "blue reflection enclosed by building fabric; mullion gaps closed at image-relative scale", fidelity,
+                    note = "glazing group bounding box; sloped head and railing occlusion remain uncertain")
+            }
+        }
+
         // 6. Cladding, and a frame round it; a wide, low timber panel on the ground is a gate.
         val wood = classes.mask(PixelClass.WOOD).and(building)
         val woodComps = wood.components()

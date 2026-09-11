@@ -7,6 +7,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
+        <activity android:name=".analyzer.lab.AnalyzerProductSmokeActivity"
+            android:exported="true" android:theme="@style/Theme.BuildPlan" />
+        <activity android:name=".analyzer.lab.ReconstructionEvidenceActivity"
+            android:exported="true" android:theme="@style/Theme.BuildPlan" />
         <activity
             android:name=".analyzer.lab.AnalyzerLabActivity"
             android:exported="true"

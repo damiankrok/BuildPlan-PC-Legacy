@@ -414,6 +414,7 @@ class Stage013EDecompositionTest {
         // platform bindings and its one product screen are authorised; everything else is not.
         // Widened again in STAGE-025 for the verification workspace and its variant-specific
         // canvas; the reason is the same one that admitted the import screen in STAGE-024.
+        val previewFiles = setOf("/analyzer/preview/CandidateGeometry.kt", "/ui/components/AutomaticHouseCanvas.kt") // STAGE-025A read-only candidate rendering in release.
         val authorised = Regex(
             """app[\\/]src[\\/]debug[\\/].*[\\/](analyzer[\\/]lab[\\/][^\\/]+|render[\\/]filament[\\/]SceneModel)\.kt$""" +
                 """|app[\\/]src[\\/](main|debug|release)[\\/]java[\\/]com[\\/]buildplan[\\/]app[\\/](analyzer[\\/][^\\/]+|ui[\\/]screens[\\/](ProjectImport|Verification)[A-Za-z]*)\.kt$""",
@@ -422,7 +423,7 @@ class Stage013EDecompositionTest {
             .filter { it.isFile && it.extension == "kt" }
             .filter { file ->
                 val text = file.readText()
-                forbidden.containsMatchIn(text) || (analyzerish.containsMatchIn(text) && !authorised.containsMatchIn(file.path))
+                forbidden.containsMatchIn(text) || (analyzerish.containsMatchIn(text) && (!authorised.containsMatchIn(file.path) && previewFiles.none { file.path.replace('\\', '/').endsWith(it) }))
             }
         assertTrue("Analyzer code outside its authorised footprint: $analyzerOffenders", analyzerOffenders.isEmpty())
 

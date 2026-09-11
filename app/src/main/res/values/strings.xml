@@ -76,7 +76,7 @@
     <string name="import_cancel">Przerwij</string>
     <string name="import_refresh">Pobierz ponownie</string>
     <string name="import_supported">Obsługiwane są wyłącznie strony projektów ARCHON+ (archon.pl). Analiza pobiera stronę i jej rzuty przez HTTPS.</string>
-    <string name="import_candidate_notice">Wynik jest propozycją do sprawdzenia, a nie projektem. Nic nie zostaje zapisane w modelu budynku ani w kosztach — potwierdzenie danych to osobny krok.</string>
+    <string name="import_candidate_notice">Podgląd został odtworzony automatycznie z materiałów projektu. Niepewne szczegóły są zapisane w diagnostyce.</string>
 
     <string name="import_phase_validating_url">Sprawdzanie adresu</string>
     <string name="import_phase_resolving_project">Rozpoznawanie projektu</string>
@@ -185,4 +185,6 @@
     <!-- Ekrany w przygotowaniu -->
     <string name="placeholder_module_title">Moduł w przygotowaniu</string>
     <string name="placeholder_module_description">Ta sekcja zostanie zaimplementowana w jednym z kolejnych etapów.</string>
+    <string name="import_automatic_preview">Automatyczna rekonstrukcja. Przeciągnij, aby obrócić model. Niepewne elementy mogą wymagać dalszej analizy.</string>
+    <string name="import_expert_review">Opcjonalny przegląd szczegółów</string>
 </resources>

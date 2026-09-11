@@ -352,7 +352,7 @@ object FacadeMapper {
             val b = wall.centreline.b
             val len = a.distanceTo(b)
             if (len < 1e-9) return@mapNotNull null
-            val t = ((d + w / 2) / len).coerceIn(0.0, 1.0)
+            val t = (d + w / 2) / len
             val at = Pt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)
             val from = o.linkedRoomIds.mapNotNull { rooms[it]?.polygon?.centroid }.firstOrNull() ?: footprintCentroid[o.floorId] ?: return@mapNotNull null
             val dx = at.x - from.x

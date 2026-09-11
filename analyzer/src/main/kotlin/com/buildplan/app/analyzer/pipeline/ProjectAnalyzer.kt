@@ -56,6 +56,7 @@ import com.buildplan.app.analyzer.validate.GapAnalyzer
 import com.buildplan.app.analyzer.validate.ValidationFinding
 import com.buildplan.app.analyzer.vertical.VerticalAnalyzer
 import com.buildplan.app.analyzer.visual.VisualEvidenceBuilder
+import com.buildplan.app.analyzer.reconstruction.AutomaticReconstruction
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -165,6 +166,8 @@ class ProjectAnalyzer(
         // reader would have no way to tell a decoded plan from one that never downloaded.
         val source = readSource.copy(assets = assets.manifest)
         log += "assets: ${assets.manifest.assets.count { it.retrieval == com.buildplan.app.analyzer.asset.RetrievalState.DECODED }} decoded of ${source.assets.assets.size}"
+        val largestAsset = assets.manifest.assets.maxByOrNull { (it.widthPx ?: 0).toLong() * (it.heightPx ?: 0) }
+        log += "raster memory: largest decoded ${largestAsset?.widthPx}x${largestAsset?.heightPx}; RGB assets retained by fetcher=0; plan analyses retain one raster per floor, visual decode is sequential; encoded budget=${assetPolicy.maxTotalEncodedBytes} bytes"
 
         // ---- plans, lowest storey first as the page prints them
         val planRecords = listOfNotNull(assets.manifest.firstWithRole(AssetRole.PLAN_GROUND), assets.manifest.firstWithRole(AssetRole.PLAN_UPPER)) +
@@ -394,9 +397,10 @@ class ProjectAnalyzer(
         val visual = timed(AnalysisStage.VISUAL, "Odczyt elewacji i wizualizacji") {
             VisualEvidenceBuilder.build(traced, assets, cancellation) { log += it }
         }
-        val candidate = traced.copy(visual = visual)
+        val candidate = AutomaticReconstruction.reconstruct(traced.copy(visual = visual), source)
+        candidate.selfVerification?.let { log += "automatic reconstruction: ${it.selectedHypothesis}, margin ${it.selectionMargin}, hypotheses ${it.hypotheses}" }
 
-        val quantities = timed(AnalysisStage.QUANTITIES, "Przedmiar") { QuantityTakeoffEngine(candidate, roof?.let { RoofHeightField(it) }).compute() }
+        val quantities = timed(AnalysisStage.QUANTITIES, "Przedmiar") { QuantityTakeoffEngine(candidate, candidate.roof?.let { RoofHeightField(it) }).compute() }
         log += "quantities: ${quantities.surfaces.size} surfaces, roof ${"%.1f".format(java.util.Locale.ROOT, quantities.roofTotal.value ?: 0.0)} m2"
         val validations = timed(AnalysisStage.VALIDATE, "Porównanie ze źródłem") { CrossSourceValidator.validate(source, candidate, quantities) }
         val gapOutput = timed(AnalysisStage.GAPS, "Braki i pytania") { GapAnalyzer.analyse(resolution, source, candidate) }

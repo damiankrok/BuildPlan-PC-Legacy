@@ -3,6 +3,8 @@ package com.buildplan.app.analyzer.evaluation
 import com.buildplan.app.analyzer.pipeline.AnalysisRun
 import com.buildplan.app.analyzer.pipeline.ProjectAnalyzer
 import com.buildplan.app.analyzer.snapshot.SnapshotCodec
+import com.buildplan.app.analyzer.service.ProjectAnalysisReport
+import com.buildplan.app.analyzer.verification.RootQuestions
 import com.buildplan.app.analyzer.source.ProjectInput
 import com.buildplan.app.analyzer.validate.ValidationStatus
 import java.io.File
@@ -35,6 +37,20 @@ class EndToEndEvaluationTest {
         EvidenceHarness.write(dir, "iter/e2e-$label/snapshot.json", text)
         EvidenceHarness.write(dir, "iter/e2e-$label/report.txt", report(run))
         EvidenceHarness.write(dir, "iter/e2e-$label/metrics.txt", EvaluationMetrics.render(project, run, text.length))
+        val report = requireNotNull(ProjectAnalysisReport.of(snapshot,project.ownerUrl,false,0L))
+        val burden = RootQuestions.burden(report,RootQuestions.of(report))
+        EvidenceHarness.write(dir, "iter/e2e-$label/automatic-qa.txt", buildString {
+            appendLine("runtime QA=${run.candidate?.selfVerification}")
+            appendLine("optional expert REQUIRED=${burden.required}; root decisions=${burden.rootDecisions}")
+            appendLine("automatic pipeline architecture responses consumed=0")
+            appendLine("default UI question list=not displayed; expert review remains optional")
+            val old = File(dir,"baseline/e2e-$label/snapshot.json")
+            if(old.isFile) {
+                val oldReport = requireNotNull(ProjectAnalysisReport.of(SnapshotCodec.read(old.readText()),project.ownerUrl,true,0L))
+                val oldBurden = RootQuestions.burden(oldReport,RootQuestions.of(oldReport))
+                appendLine("baseline expert REQUIRED=${oldBurden.required}; root decisions=${oldBurden.rootDecisions}")
+            }
+        })
 
         assertTrue(run.resolution.isResolved)
         assertEquals(project.projectKey, run.resolution.identity!!.projectKey)

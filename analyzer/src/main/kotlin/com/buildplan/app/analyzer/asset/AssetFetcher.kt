@@ -23,6 +23,8 @@ fun interface AnalysisStorage {
 data class AssetPolicy(
     val maxBytes: Long = 6L * 1024 * 1024,
     val maxPixels: Long = 20L * 1000 * 1000,
+    /** Bound the compressed source buffer retained for sequential re-decode. */
+    val maxTotalEncodedBytes: Long = 32L * 1024 * 1024,
     /** Roles worth downloading. Everything else stays DISCOVERED. */
     val wantedRoles: Set<AssetRole> = setOf(
         AssetRole.PLAN_GROUND, AssetRole.PLAN_UPPER, AssetRole.PLAN_FLOOR_N,
@@ -33,13 +35,14 @@ data class AssetPolicy(
     ),
 )
 
-/** What [AssetFetcher] hands back: the manifest with retrieval state filled in, and the decoded images by URL. */
+/** Manifest and on-demand raster access. Production retains compressed bytes, not all decoded RGB images. */
 class FetchedAssets(
     val manifest: AssetManifest,
     val images: Map<String, RasterImage>,
+    private val decode: ((AssetRecord) -> RasterImage?)? = null,
 ) {
-    fun image(role: AssetRole): RasterImage? = manifest.firstWithRole(role)?.let { images[it.url] }
-    fun image(record: AssetRecord): RasterImage? = images[record.url]
+    fun image(role: AssetRole): RasterImage? = manifest.firstWithRole(role)?.let(::image)
+    fun image(record: AssetRecord): RasterImage? = images[record.url] ?: decode?.invoke(record)
 }
 
 /**
@@ -62,7 +65,7 @@ class AssetFetcher(
         /** Called before each wanted asset is fetched: how many are done, how many are wanted, and which one is next. */
         progress: (done: Int, total: Int, record: AssetRecord) -> Unit = { _, _, _ -> },
     ): FetchedAssets {
-        val images = LinkedHashMap<String, RasterImage>()
+        val encoded = LinkedHashMap<String, ByteArray>()
         val wanted = manifest.assets.count { it.role in policy.wantedRoles }
         var done = 0
         val records = manifest.assets.map { record ->
@@ -70,12 +73,14 @@ class AssetFetcher(
             if (record.role !in policy.wantedRoles) return@map record.copy(retrieval = RetrievalState.SKIPPED)
             progress(done, wanted, record)
             done++
-            fetchOne(record, storagePrefix, images)
+            fetchOne(record, storagePrefix, encoded)
         }
-        return FetchedAssets(AssetManifest(records), images)
+        // Floor analyses own their two plan rasters. Elevations/renders are decoded
+        // on demand and released after deriving compact observations, never retained here.
+        return FetchedAssets(AssetManifest(records), emptyMap()) { record -> encoded[record.url]?.let(codec::decode) }
     }
 
-    private fun fetchOne(record: AssetRecord, storagePrefix: String, images: MutableMap<String, RasterImage>): AssetRecord {
+    private fun fetchOne(record: AssetRecord, storagePrefix: String, encoded: MutableMap<String, ByteArray>): AssetRecord {
         val resource = try {
             fetcher.fetch(record.url)
         } catch (e: FetchException) {
@@ -86,6 +91,9 @@ class AssetFetcher(
         }
         if (resource.body.size > policy.maxBytes) {
             return record.copy(retrieval = RetrievalState.FAILED, failure = "${resource.body.size} bytes over the ${policy.maxBytes} limit")
+        }
+        if (encoded.values.sumOf { it.size.toLong() } + resource.body.size > policy.maxTotalEncodedBytes) {
+            return record.copy(retrieval = RetrievalState.FAILED, failure = "Total encoded asset budget exceeded")
         }
         val sha = sha256Hex(resource.body)
         val extension = record.url.substringAfterLast('.', "bin").substringBefore('?').take(5)
@@ -102,7 +110,7 @@ class AssetFetcher(
         if (image.pixelCount.toLong() > policy.maxPixels) {
             return downloaded.copy(failure = "${image.width}x${image.height} exceeds the ${policy.maxPixels} pixel limit")
         }
-        images[record.url] = image
+        encoded[record.url] = resource.body
         return downloaded.copy(retrieval = RetrievalState.DECODED, widthPx = image.width, heightPx = image.height)
     }
 

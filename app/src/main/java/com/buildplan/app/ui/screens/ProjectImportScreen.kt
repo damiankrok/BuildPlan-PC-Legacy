@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -19,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -55,6 +58,10 @@ fun ProjectImportScreen(
     viewModel: ProjectImportViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scroll = rememberScrollState()
+    LaunchedEffect(state.outcome) {
+        if (state.outcome?.reportOrNull?.candidate != null) scroll.animateScrollTo(scroll.maxValue)
+    }
 
     // Verification takes the whole screen. It is the same analysis being worked on, so it lives
     // in this screen's view model rather than behind a navigation route — leaving and returning
@@ -85,7 +92,7 @@ fun ProjectImportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = 16.dp)
                 .padding(top = 4.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -191,7 +198,6 @@ private fun ReportSummary(
         add(stringResource(R.string.import_stat_rooms, candidate?.rooms?.size ?: 0))
         add(stringResource(R.string.import_stat_openings, candidate?.openings?.size ?: 0))
         add(stringResource(R.string.import_stat_quantities, report.quantityVerification.size))
-        add(stringResource(R.string.import_stat_needs_confirmation, report.unsafeForCosting.size))
         if (report.adapterHealth.severity != AdapterSeverity.HEALTHY) {
             add(report.adapterHealth.degraded.map { stringResource(labelOf(it.signal)) }.joinToString())
         }
@@ -207,23 +213,13 @@ private fun ReportSummary(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (onVerify != null && candidate != null) {
-            Button(onClick = onVerify) { Text(stringResource(R.string.verify_open)) }
+        if (candidate != null) {
+            VerificationCanvas(candidate, emptyList(), PaddingValues(0.dp), Modifier.fillMaxWidth().height(380.dp))
+            Text(stringResource(R.string.import_automatic_preview), style = MaterialTheme.typography.bodySmall)
         }
-        Listing(stringResource(R.string.import_section_questions, report.questions.size), report.questions.map { it.text })
-        Listing(
-            stringResource(R.string.import_section_ambiguities, report.ambiguities.size),
-            report.ambiguities.map { ambiguity ->
-                if (ambiguity.alternatives.isEmpty()) {
-                    ambiguity.question
-                } else {
-                    ambiguity.question + "\n" + stringResource(
-                        R.string.import_ambiguity_alternatives,
-                        ambiguity.alternatives.joinToString { it.label },
-                    )
-                }
-            },
-        )
+        if (onVerify != null && candidate != null) {
+            OutlinedButton(onClick = onVerify) { Text(stringResource(R.string.import_expert_review)) }
+        }
         if (issues.isNotEmpty()) Listing(stringResource(R.string.import_section_issues, issues.size), issues)
     }
 }

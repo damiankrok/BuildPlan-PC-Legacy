@@ -189,6 +189,7 @@ internal class FilamentModelRenderer(
     private var frameRendered = false
     private var pendingCompilations = 0
     private var readySignalled = false
+    internal val readyForEvidence: Boolean get() = readySignalled
 
     private var selectedElementId: BuildingElementId? = null
 

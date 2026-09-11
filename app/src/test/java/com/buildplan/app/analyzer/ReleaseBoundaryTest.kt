@@ -114,10 +114,21 @@ class ReleaseBoundaryTest {
             file.readLines()
                 .filter { it.startsWith("import ") }
                 .map { it.removePrefix("import ").trim() }
-                .filter { it.startsWith("com.buildplan.app.domain") || it.startsWith("com.buildplan.app.geometry") }
+                // STAGE-025A authorizes an actual release preview. This one pure adapter
+                // creates a temporary cand-* Building; it cannot write or promote it.
+                .filter { !file.path.replace('\\', '/').endsWith("/analyzer/preview/CandidateGeometry.kt") && (it.startsWith("com.buildplan.app.domain") || it.startsWith("com.buildplan.app.geometry")) }
                 .map { "${file.name} can reach the canonical model: $it" }
         }
         if (violations.isNotEmpty()) fail(violations.joinToString("\n"))
+    }
+
+    @Test
+    fun `release preview is a read-only candidate adapter with isolated identifiers`() {
+        val adapter = File("src/main/java/com/buildplan/app/analyzer/preview/CandidateGeometry.kt").readText()
+        assertTrue(adapter.contains("BuildingId(\"cand-building\")"))
+        assertTrue(adapter.contains("BuildingElementId(\"cand-\$id\")"))
+        val forbidden = listOf("Repository", "CostEngine", "Budget", "SharedPreferences", "File(", "android.content", "reference.")
+        forbidden.forEach { assertTrue("Preview must not persist/promote: $it", !adapter.contains(it)) }
     }
 
     @Test

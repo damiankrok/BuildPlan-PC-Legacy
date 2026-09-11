@@ -22,7 +22,14 @@ import java.io.File
  */
 object AndroidRasterCodec : RasterCodec {
     override fun decode(bytes: ByteArray): RasterImage? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth.toLong() * bounds.outHeight > 20_000_000) return null
         val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        // Bound allocation before decoding. Calibration is measured on the decoded raster.
+        while (bounds.outWidth.toLong() * bounds.outHeight / options.inSampleSize.coerceAtLeast(1).let { it.toLong() * it } > 4_000_000) {
+            options.inSampleSize = options.inSampleSize.coerceAtLeast(1) * 2
+        }
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
         val argb = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)

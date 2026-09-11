@@ -1,5 +1,17 @@
 # Status projektu
 
+## STAGE-025A — częściowa automatyczna rekonstrukcja
+
+Trzy korekty analizatora: obwiednie elewacji do dachu i hipotezy poziomu niższej bryły;
+następnie detekcja jasnych przeszkleń i dopasowanie wysokości do otworów z rzutów;
+na końcu odrzucenie zmiany poziomu dachu opartej wyłącznie na attyce lub okładzinie.
+Import pokazuje kandydat 3D bez obowiązkowego formularza, również w release
+(lokalny podgląd ortograficzny). Szczegółowa weryfikacja pozostaje opcjonalna.
+Snapshot 4 / analizator `0.4.1-stage025a` zapisuje bryły, obwiednie i częściową QA.
+Nie osiągnięto pełnej zgodności architektonicznej: brakuje rekonstrukcji balkonu,
+portalu, podziałów przeszkleń i pełnego dopasowania do renderów. Szczegóły,
+wyniki A/B i dowody: [STAGE_025A_REPORT.md](STAGE_025A_REPORT.md).
+
 ## COMPLETE
 
 - STAGE-001 shell — powłoka aplikacji Android (App Shell, nawigacja, ekrany
