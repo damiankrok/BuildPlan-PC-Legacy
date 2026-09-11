@@ -15,7 +15,7 @@ internal object ResolvedQuantityTakeoff {
         fun area(parts:List<ResolvedSurface>)=measure(parts.sumOf { it.area },parts)
         fun missing(why:String,unit:MeasureUnit=MeasureUnit.SQUARE_METER)=Measured.missing(unit,why)
         val physicalOpenings=surfaces.filter { it.kind==ResolvedSurfaceKind.OPENING && it.roomId==null }
-        val exteriorOpenings=physicalOpenings.filter { it.exterior }
+        val exteriorOpenings=physicalOpenings.filter { it.exterior && it.floorId!=null }
         val exteriorWalls=surfaces.filter { it.kind==ResolvedSurfaceKind.WALL && it.exterior }
         val rooms=c.rooms.map { room ->
             val rs=surfaces.filter { it.roomId==room.id }

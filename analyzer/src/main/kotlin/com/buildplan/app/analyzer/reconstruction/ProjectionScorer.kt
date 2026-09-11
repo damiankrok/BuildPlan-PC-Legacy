@@ -18,7 +18,7 @@ internal object ProjectionScorer {
         if(resolved.isNotEmpty()) addAll(resolved.map { it.vertices }) else c.facadeEnvelopes.forEach { f ->
             add(listOf(Pt3(f.segment.a.x,f.baseLevel.value ?: 0.0,f.segment.a.z),Pt3(f.segment.b.x,f.baseLevel.value ?: 0.0,f.segment.b.z))+f.topProfile.reversed())
         }
-        c.roof?.let { r -> addAll(r.facets.map { it.vertices }); addAll(r.secondaryMasses.flatMap { it.facets }.map { it.vertices }) }
+        if(resolved.none { it.kind==ResolvedSurfaceKind.ROOF }) c.roof?.let { r -> addAll(r.facets.map { it.vertices }); addAll(r.secondaryMasses.flatMap { it.facets }.map { it.vertices }) }
     }
     fun raster(polygons:List<List<Pt3>>,size:Int,yaw:Double,pitch:Double,distanceFactor:Double,targetAspect:Double?=null):BooleanArray {
         if(polygons.isEmpty()) return BooleanArray(size*size)

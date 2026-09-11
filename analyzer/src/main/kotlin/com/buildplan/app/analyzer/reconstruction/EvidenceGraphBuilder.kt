@@ -5,6 +5,29 @@ import com.buildplan.app.analyzer.fidelity.*
 import com.buildplan.app.analyzer.site.SourcePackage
 
 internal object EvidenceGraphBuilder {
+    fun withResolvedFeatures(c:ProjectAnalysisCandidate):ProjectAnalysisCandidate {
+        val state=c.reconstruction ?: return c
+        val nodes=state.graph.nodes.filterNot { it.id.startsWith("resolved:") }.toMutableList()
+        val edges=state.graph.edges.filterNot { it.from.startsWith("resolved:") || it.to.startsWith("resolved:") || it.reason=="resolved multi-view correspondence" }.toMutableList()
+        fun add(id:String,kind:EvidenceKind,geometry:List<Pt>,evidence:List<String>,confidence:Double,semantic:String,frame:String="model-metres") {
+            nodes+=EvidenceNode("resolved:$id",kind,evidence.firstOrNull().orEmpty(),EvidenceClass.ASSUMPTION,FactFidelity.TRACE_UNCERTAIN,confidence,"resolved architectural hypothesis",null,geometry=geometry,semantic=semantic,frame=frame)
+            evidence.filter { e -> nodes.any { it.id==e } }.forEach { e -> edges+=EvidenceEdge(e,"resolved:$id",EvidenceRelation.SUPPORTS,confidence,"source supports resolved feature") }
+        }
+        state.masses.forEach { m -> add(m.id,EvidenceKind.MASS_REGION,m.outline.vertices,m.evidenceIds,m.confidence,"${m.use}:${m.base}..${m.top}") }
+        c.facadeEnvelopes.forEach { f -> add(f.id,EvidenceKind.FACADE,listOf(f.segment.a,f.segment.b),listOf(f.floorId),0.75,"facade plane") }
+        c.openingGroups.forEach { g -> add(g.id,EvidenceKind.OPENING,g.outer.vertices,g.evidenceIds+g.memberOpeningIds,g.confidence,"opening group","facade-metres:${g.facadeId}") }
+        c.facadeFeatures.forEach { f -> add(f.id,EvidenceKind.ELEVATION_FEATURE,f.profile.vertices,f.evidenceIds,f.confidence,f.kind.name,"facade-metres:${f.facadeId}") }
+        c.roofElements.forEach { e ->
+            add(e.id,EvidenceKind.ROOF_REGION,e.footprint.vertices,e.evidenceIds,e.confidence,e.kind.name)
+            val known=e.evidenceIds.filter { id->nodes.any { it.id==id } }
+            known.zipWithNext().forEach { (a,b) -> edges+=EvidenceEdge(a,b,EvidenceRelation.SAME_PHYSICAL_FEATURE,e.confidence,"resolved multi-view correspondence") }
+        }
+        val ids=nodes.map { it.id }.toSet()
+        state.masses.forEach { m -> m.adjacentIds.forEach { other ->
+            if("resolved:$other" in ids) edges+=EvidenceEdge("resolved:${m.id}","resolved:$other",EvidenceRelation.ADJACENT_TO,0.8,"registered mass contact")
+        } }
+        return c.copy(reconstruction=state.copy(graph=EvidenceGraph(nodes,edges)))
+    }
     fun build(c: ProjectAnalysisCandidate, source: SourcePackage): EvidenceGraph {
         val nodes = mutableListOf<EvidenceNode>()
         val edges = mutableListOf<EvidenceEdge>()
@@ -51,7 +74,7 @@ internal object EvidenceGraphBuilder {
             val b = o.bounds
             nodes += EvidenceNode(id,if(a.viewpoint==VisualViewpoint.ORTHOGRAPHIC_ELEVATION) EvidenceKind.ELEVATION_FEATURE else EvidenceKind.RENDER_FEATURE,
                 a.assetUrl,if(a.viewpoint==VisualViewpoint.ORTHOGRAPHIC_ELEVATION) EvidenceClass.ELEVATION else EvidenceClass.RENDER,
-                o.fidelity,o.confidence,o.method,2.0 / maxOf(a.widthPx,a.heightPx,1),geometry=listOf(Pt(b.left,b.top),Pt(b.right,b.top),Pt(b.right,b.bottom),Pt(b.left,b.bottom)),frame="normalized-image",semantic=o.kind.name)
+                o.fidelity,o.confidence,o.method,2.0 / maxOf(a.widthPx,a.heightPx,1),geometry=o.outline.ifEmpty { listOf(Pt(b.left,b.top),Pt(b.right,b.top),Pt(b.right,b.bottom),Pt(b.left,b.bottom)) },frame="normalized-image",semantic=o.kind.name)
             assetIds[a.assetUrl]?.let { link(id,it,EvidenceRelation.DERIVED_FROM,"raster feature extraction") }
         } }
         c.visual.conflicts.forEach { conflict ->

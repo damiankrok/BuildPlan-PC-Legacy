@@ -50,7 +50,27 @@ internal object GeometryResolver {
         }
         val physicalOpenings=surfaces.filter { it.kind==ResolvedSurfaceKind.OPENING }
         val roofFacets=c.roof?.let { it.facets+it.secondaryMasses.flatMap { m->m.facets } }.orEmpty()
-        roofFacets.forEach { facet -> add(facet.id,if(c.roof!!.facets.any { it.id==facet.id }) "roof" else facet.id,null,ResolvedSurfaceKind.ROOF,facet.vertices,0.0,listOf(facet.id),c.roof.fidelity,external=true) }
+        roofFacets.forEach { facet ->
+            val holes=c.roofElements.filter { it.roofFacetId==facet.id }
+            val plan=Polygon(facet.vertices.map { Pt(it.x,it.z) })
+            val plane=planeHeight(facet.vertices)
+            if(holes.isEmpty() || plane==null) add(facet.id,if(c.roof!!.facets.any { it.id==facet.id }) "roof" else facet.id,null,ResolvedSurfaceKind.ROOF,facet.vertices,0.0,listOf(facet.id),c.roof!!.fidelity,external=true)
+            else {
+                var parts=listOf(plan)
+                holes.forEach { hole -> parts=parts.flatMap { PlanarTopology.difference(it,hole.footprint) } }
+                parts.flatMap(PlanarTopology::convexParts).forEachIndexed { i,p -> add("${facet.id}:net:$i","roof",null,ResolvedSurfaceKind.ROOF,p.vertices.map { Pt3(it.x,plane(it),it.z) },0.0,listOf(facet.id)+holes.flatMap { it.evidenceIds },c.roof!!.fidelity,external=true) }
+            }
+        }
+        c.roofElements.forEach { e ->
+            if(e.kind==RoofElementKind.ROOFLIGHT) add("${e.id}:pane",e.id,null,ResolvedSurfaceKind.OPENING,e.vertices,0.0,e.evidenceIds,e.fidelity,external=true)
+            else {
+                add("${e.id}:top",e.id,null,ResolvedSurfaceKind.FEATURE,e.vertices,0.0,e.evidenceIds,e.fidelity,external=true)
+                e.vertices.indices.forEach { i -> val a=e.vertices[i]; val b=e.vertices[(i+1)%e.vertices.size]
+                    val bottomA=roof?.heightAt(Pt(a.x,a.z)) ?: a.y; val bottomB=roof?.heightAt(Pt(b.x,b.z)) ?: b.y
+                    if(min(bottomA,bottomB)<min(a.y,b.y)) add("${e.id}:side:$i",e.id,null,ResolvedSurfaceKind.FEATURE,listOf(Pt3(a.x,min(bottomA,a.y),a.z),Pt3(b.x,min(bottomB,b.y),b.z),b,a),0.0,e.evidenceIds,e.fidelity,external=true)
+                }
+            }
+        }
         c.floors.forEach { f ->
             val base=f.floorElevation.value ?: 0.0
             val clear=if(f.id==topFloor) c.levels.atticFlatCeilingHeight.value ?: f.clearHeight.value ?: 2.7 else f.clearHeight.value ?: 2.7

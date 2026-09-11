@@ -133,7 +133,15 @@ object ElevationReader {
             y
         }
         val smooth = median3(top)
-        val stacks = stacks(smooth)
+        val stacks = stacks(smooth).filter { (x0,x1,_,peak) ->
+            // A gap in textured roof fabric can look like a profile spike. A stack
+            // must actually have background above its top, not more roof surface.
+            val columns=(x0..x1).filter { box.minX+it in 0 until w }
+            columns.isNotEmpty() && columns.count { x ->
+                (1..3).any { dy -> val px=box.minX+x; val py=peak-dy
+                    classes[px,py] in setOf(PixelClass.SKY,PixelClass.VEGETATION) || (classes[px,py]==PixelClass.WHITE && !fabric[px,py]) }
+            }.toDouble()/columns.size>=0.6
+        }
         stacks.forEach { (x0, x1, base, peak) ->
             out += VisualObservation(VisualObservationKind.ROOF_STACK, norm(PixelBox(box.minX + x0, peak, box.minX + x1, base), w, h), 0.7, "narrow flat-topped spike above the roofline (${x1 - x0 + 1} px wide, ${base - peak} px tall)", fidelity)
         }
@@ -605,9 +613,13 @@ object ElevationReader {
 
     private fun rooflights(image: RasterImage, roof: BinaryMask, rb: PixelBox): List<PixelBox> {
         val light = BinaryMask(roof.width, roof.height)
-        val eroded = roof.erode(3, 3)
+        // The roof material mask excludes bright panes. Fill enclosed holes before
+        // selecting contrasting components or the very rooflights being sought vanish.
+        val eroded = fillHoles(roof.close(3, 3)).erode(3, 3)
         for (y in rb.minY..rb.maxY) for (x in rb.minX..rb.maxX) {
-            if (eroded[x, y] && image.luma(x, y) > 140) light[x, y] = true
+            // Neutral translucent lettering is not joinery. A blue reflection is a
+            // robust positive cue in these colour elevations; monochrome panes stay unresolved.
+            if (eroded[x, y] && image.luma(x, y) > 110 && image.blue(x,y)-image.red(x,y)>24) light[x, y] = true
         }
         val comps = light.components()
         val roofArea = roof.count().toDouble()
@@ -615,7 +627,7 @@ object ElevationReader {
             val pb = comps.boundingBox(label) ?: return@mapNotNull null
             val share = comps.sizes[label] / roofArea
             val fill = comps.sizes[label].toDouble() / pb.area
-            if (share in 0.002..0.04 && fill >= 0.6 && pb.width >= 4 && pb.height >= 4) pb else null
+            if (share in 0.002..0.04 && fill >= 0.6 && pb.width >= 6 && pb.height >= 6) pb else null
         }
     }
 

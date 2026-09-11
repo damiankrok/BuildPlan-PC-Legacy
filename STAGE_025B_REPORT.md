@@ -31,6 +31,12 @@ Device capture caught two real defects: horizontal feature faces passed to a ver
 
 ## Policy and holdout
 
+## Iteration 5 — secondary roof evidence and false-feature rejection
+
+Added source-neutral secondary roof elements: perpendicular elevation constraints locate stack footprints; facade coordinate/height rays intersect individual roof planes for rooflights. These remain separate from the primary roof solver. Accepted elements participate in projection, feature scoring, resolved roof holes and quantities. Source observations now retain their actual outline in the evidence graph, and resolved masses/facades/groups/elements are linked back to their supporting observations.
+
+Image inspection rejected an apparent success: the first stack pairings in B used profile gaps inside the roof as if they were above-roof stacks. Background-above-top validation removed these false observations. Similarly, neutral watermark lettering produced small fake rooflights. Rooflight extraction now fills holes in the roof support mask and requires a sufficiently sized blue reflection component; monochrome reflection remains an extraction limitation. Current A recovers two source-visible rooflights on one slope; the opposite-slope rooflight and chimneys remain unresolved. B's original three chimneys are visible in source, but their 3D recovery remains P1. A high feature count from false positives was not retained as progress.
+
 ## Iteration 4 — global room assignment and stair rejection
 
 Replaced room-by-room greedy selection with a complete-floor cost matrix over singleton and connected region groups, then deterministic exclusive assignment with a 128-state beam, 32 alternatives per room and 4096 unique connected groups (up to six regions). All area tolerances retain their published floor/usable semantics. A structural cue penalty was increased from 0.02 to 0.15 after A/B exposed a stair room being moved away from its detected treads merely for a slightly smaller area residual. This applies inside the admissible area band and cannot override it. No holdout data was used.

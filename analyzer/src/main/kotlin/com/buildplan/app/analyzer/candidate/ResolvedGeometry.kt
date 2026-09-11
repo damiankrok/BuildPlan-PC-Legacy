@@ -7,6 +7,9 @@ data class OpeningGroupCandidate(val id:String,val facadeId:String,val floorId:S
     val memberOpeningIds:List<String>,val panels:List<Polygon>,val doorLeaf:Polygon?,val mullions:List<Segment>,
     val evidenceIds:List<String>,val confidence:Double,val fidelity:FactFidelity)
 enum class FacadeFeatureKind { BALCONY, FRAME, BAND, CANOPY, RAILING, PIER, ROOFLIGHT, STACK }
+enum class RoofElementKind { STACK, ROOFLIGHT }
+data class RoofElementCandidate(val id:String,val kind:RoofElementKind,val roofFacetId:String,val vertices:List<Pt3>,
+    val footprint:Polygon,val evidenceIds:List<String>,val confidence:Double,val fidelity:FactFidelity)
 data class FacadeFeatureCandidate(val id:String,val kind:FacadeFeatureKind,val facadeId:String,val floorId:String,
     val profile:Polygon,val depth:Double,val evidenceIds:List<String>,val confidence:Double,val fidelity:FactFidelity,
     val depthFidelity:FactFidelity=FactFidelity.DISPLAY_ASSUMPTION)

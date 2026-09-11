@@ -83,11 +83,12 @@ internal object SourceScorer {
         val featureMap=mapOf(VisualObservationKind.RAILING_STRIP to FacadeFeatureKind.RAILING,VisualObservationKind.FRAME_OR_PORTAL to FacadeFeatureKind.FRAME,
             VisualObservationKind.HORIZONTAL_BAND to FacadeFeatureKind.BAND,VisualObservationKind.ROOF_STACK to FacadeFeatureKind.STACK,VisualObservationKind.ROOFLIGHT_PATCH to FacadeFeatureKind.ROOFLIGHT)
         val renderFeatures=unique.filter { it.viewpoint==VisualViewpoint.PERSPECTIVE_RENDER }.flatMap { a -> a.observations.filter { it.kind in featureMap && it.confidence>=0.55 } }
-        if(renderFeatures.isNotEmpty()) add("renderFeatureScore",renderFeatures.map { o -> if(c.facadeFeatures.any { it.kind==featureMap[o.kind] }) 1.0 else 0.0 }.average(),EvidenceClass.RENDER)
+        fun roofKind(kind:VisualObservationKind)=when(kind) { VisualObservationKind.ROOF_STACK->RoofElementKind.STACK; VisualObservationKind.ROOFLIGHT_PATCH->RoofElementKind.ROOFLIGHT; else->null }
+        if(renderFeatures.isNotEmpty()) add("renderFeatureScore",renderFeatures.map { o -> if(c.facadeFeatures.any { it.kind==featureMap[o.kind] } || c.roofElements.any { it.kind==roofKind(o.kind) }) 1.0 else 0.0 }.average(),EvidenceClass.RENDER)
         val elevationFeatures=unique.filter { it.viewpoint==VisualViewpoint.ORTHOGRAPHIC_ELEVATION }.flatMap { a -> a.observations.mapIndexedNotNull { i,o ->
             if(o.kind in featureMap && o.confidence>=0.55) "visual:${a.assetUrl}:$i" to o else null } }
         if(elevationFeatures.isNotEmpty()) add("elevationFeatureScore",elevationFeatures.map { (id,o) ->
-            if(c.facadeFeatures.any { it.kind==featureMap[o.kind] && id in it.evidenceIds }) 1.0 else 0.0
+            if(c.facadeFeatures.any { it.kind==featureMap[o.kind] && id in it.evidenceIds } || c.roofElements.any { it.kind==roofKind(o.kind) && id in it.evidenceIds }) 1.0 else 0.0
         }.average(),EvidenceClass.ELEVATION)
         if(fits.isNotEmpty()) add("roofScore",1-fits.map { it.second.rooflineResidual }.average(),EvidenceClass.ELEVATION)
         diagnostics+="Section geometry score unavailable: numeric level extraction is incomplete"

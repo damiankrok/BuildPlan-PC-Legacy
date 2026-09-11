@@ -69,24 +69,29 @@ internal object ReconstructionSearch {
         val policy=input.reconstruction?.policy ?: ReconstructionPolicy()
         val constraints=ReconstructionConstraints.from(input,source)
         val mapped=FacadeReconstruction.mapElevations(input)
-        val target=FacadeReconstruction.reconstruct(mapped)
+        val featured=FacadeReconstruction.reconstruct(mapped)
+        val target=featured.copy(roofElements=RoofEvidenceSolver.solve(featured))
         val budget=ProjectionBudget(policy.cameraProjections)
         var cameras=emptyMap<String,CameraFit>()
         fun evaluate(id:String,c:ProjectAnalysisCandidate):ScoredHypothesis {
-            val candidate=c.copy(resolvedGeometry=GeometryResolver.resolve(c))
+            val linked=EvidenceGraphBuilder.withResolvedFeatures(c)
+            val candidate=linked.copy(resolvedGeometry=GeometryResolver.resolve(linked))
             val score=SourceScorer.score(candidate,source,budget,cameras)
             if(cameras.isEmpty()) cameras=score.cameras
             val hard=constraints.violations(candidate)+score.hard
             return ScoredHypothesis(id,candidate,score.copy(hard=hard,overall=if(hard.isEmpty()) score.overall else 0.0))
         }
         val initial=listOf(evaluate("plan-volumes",mapped.copy(openingGroups=emptyList(),facadeFeatures=emptyList())),
-            evaluate("source-opening-groups",target.copy(facadeFeatures=emptyList()))).take(policy.initialHypotheses)
+            evaluate("source-opening-groups",target.copy(facadeFeatures=emptyList(),roofElements=emptyList()))).take(policy.initialHypotheses)
         val ranked=initial.filter { it.score.hard.isEmpty() }.sortedWith(compareByDescending<ScoredHypothesis> { it.score.overall }.thenBy { it.id })
         val first=ranked.firstOrNull() ?: initial.first()
         val repaired=BoundedRepair.solve(first,policy,propose={ c -> buildList {
             if(c.openingGroups!=target.openingGroups) add(RepairProposal("EXPAND_SOURCE_OPENING_GROUPS",c.copy(openingGroups=target.openingGroups)))
             val families=target.facadeFeatures.groupBy { if(it.kind==FacadeFeatureKind.BALCONY || it.kind==FacadeFeatureKind.RAILING) "BALCONY_RAILING" else it.kind.name }
             families.forEach { (name,features) -> if(features.any { f->c.facadeFeatures.none { it.id==f.id } }) add(RepairProposal("ADD_SOURCE_$name",c.copy(facadeFeatures=(c.facadeFeatures+features).distinctBy { it.id }))) }
+            target.roofElements.groupBy { it.kind }.forEach { (kind,elements) ->
+                if(elements.any { e->c.roofElements.none { it.id==e.id } }) add(RepairProposal("ADD_SOURCE_ROOF_$kind",c.copy(roofElements=(c.roofElements+elements).distinctBy { it.id })))
+            }
         } },evaluate=::evaluate)
         val best=repaired.selected
         val runnerUp=ranked.firstOrNull { it.id!=best.id }
