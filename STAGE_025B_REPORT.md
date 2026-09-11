@@ -31,6 +31,14 @@ Device capture caught two real defects: horizontal feature faces passed to a ver
 
 ## Policy and holdout
 
+## Iteration 3 — bounded repair and final geometry
+
+The runtime evaluates a plan-only and source-opening hypothesis, then proposes source-backed feature families. Each trial resolves the full geometry, projects it with a shared bounded camera budget, and accepts only a source-score improvement with valid hard constraints and no weaker plan/room score. A accepted bands, frames, then balcony/railing (0.773712 to 0.838350, 8 evaluations/280 projections); B accepted bands (3 evaluations/250 projections). Four cycles include convergence, not four arbitrary vertex edits. Rejected sibling repairs remain in the trace. The initial viewpoint fit is reused for fair local comparisons. This is a real but still narrow repair vocabulary.
+
+One final resolved surface set now supplies both preview and quantities: exterior walls after opening union/difference, internal traced walls, physical openings, roof facets, slabs, room finish faces, floor/ceiling polygons and integrated volume. Quantity generation runs after repair and carries the geometry fingerprint. Stale geometry is invalidated for both consumers after candidate edits. Roof quantity explicitly includes primary and secondary facets; the older roof publication comparison retains its primary-only scope. Internal lintels and stair slab voids are still unresolved at this iteration; geometry unification does not imply source accuracy.
+
+Synthetic tests cover accepted repair, hard plan rejection even with a perfect visual score, convergence/determinism, and area/lineage equality between preview surfaces and quantity deductions. Full app tests pass after the raster release guard was narrowly updated to allow only the JTS license text (all reference rasters remain prohibited). Coalescing physical-element fragments removes triangulation diagonals without changing geometry.
+
 Initial source weights: exact/plan-section 4, elevations 3, independent multi-view 2, render 1, assumptions 0.25. Exact constraints remain hard. Initial finite budgets: 32 initial hypotheses, beam 8, 4 repair cycles, 8 local alternatives, 288 hypothesis evaluations, 2048 projections. Scoring raster starts at 128 square (maximum 256). These are bounded defaults, not benchmark constants. Changes must document generic motivation, A/B effects, runtime and policy version.
 
 Project C has not been run. It may run only after all used development iterations and a recorded freeze commit. After freeze, production weights, tolerances and search limits are immutable. Source-supported material algorithm/generalization failure blocks PASS; unavailable source evidence is SOURCE_LIMITATION, with affected claims withheld. The inability to extract an available visible feature is not by itself a source limitation. Only P0/crash/security repairs may follow holdout, with frozen parameters preserved and A/B/C rerun.

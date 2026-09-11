@@ -113,7 +113,7 @@ data class ProjectAnalysisSnapshot(
 ) {
     companion object {
         const val SCHEMA_VERSION = 5
-        const val ANALYZER_VERSION = "0.5.0-stage025b-2"
+        const val ANALYZER_VERSION = "0.5.0-stage025b-3"
     }
 }
 

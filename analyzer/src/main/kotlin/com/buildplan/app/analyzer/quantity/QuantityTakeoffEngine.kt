@@ -260,6 +260,10 @@ class QuantityTakeoffEngine(
     private val cosPitch = cos(Math.toRadians(pitch))
 
     fun compute(): ProjectQuantities {
+        candidate.resolvedGeometry?.takeIf { it.lineage.startsWith("final-resolution:") }?.let {
+            val geometry=if(it.lineage==com.buildplan.app.analyzer.reconstruction.GeometryResolver.lineage(candidate)) it else com.buildplan.app.analyzer.reconstruction.GeometryResolver.resolve(candidate)
+            return ResolvedQuantityTakeoff.compute(candidate,geometry)
+        }
         val surfaces = mutableListOf<MeasuredSurfaceCandidate>()
         val roomQuantities = mutableListOf<RoomQuantities>()
         val notes = mutableListOf<String>()

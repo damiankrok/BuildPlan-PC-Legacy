@@ -10,7 +10,7 @@ enum class FacadeFeatureKind { BALCONY, FRAME, BAND, CANOPY, RAILING, PIER, ROOF
 data class FacadeFeatureCandidate(val id:String,val kind:FacadeFeatureKind,val facadeId:String,val floorId:String,
     val profile:Polygon,val depth:Double,val evidenceIds:List<String>,val confidence:Double,val fidelity:FactFidelity,
     val depthFidelity:FactFidelity=FactFidelity.DISPLAY_ASSUMPTION)
-enum class ResolvedSurfaceKind { WALL, OPENING, ROOF, FLOOR, CEILING, ROOM_WALL_FACE, FEATURE, STAIR }
+enum class ResolvedSurfaceKind { WALL, OPENING, ROOF, FLOOR, CEILING, ROOM_WALL_FACE, FEATURE, STAIR, SLAB }
 data class ResolvedSurface(val id:String,val ownerId:String,val floorId:String?,val kind:ResolvedSurfaceKind,
     val vertices:List<Pt3>,val thickness:Double,val evidenceIds:List<String>,val fidelity:FactFidelity,
     val roomId:String?=null,val exterior:Boolean=false) {

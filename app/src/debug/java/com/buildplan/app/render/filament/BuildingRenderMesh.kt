@@ -105,6 +105,14 @@ enum class MeshStyle {
 fun List<BuildingGeometryPrimitive>.toRenderMeshes(): List<BuildingRenderMesh> =
     map { it.toRenderMesh() }
 
+/** Resolve feature edges across clipped fragments of the same physical element. */
+fun List<BuildingGeometryPrimitive>.toCoalescedRenderMeshes(): List<BuildingRenderMesh> =
+    groupBy { it.elementId to (if(it is OpeningPanelGeometry) MeshStyle.GLAZING else MeshStyle.SOLID) }.map { (key,parts) ->
+        val mesh=MeshAccumulator()
+        parts.forEach { mesh.addPrimitive(it) }
+        mesh.build(key.first,key.second,parts.map { it.bounds }.reduce(LocalBounds::encompass))
+    }
+
 /**
  * Bakes one primitive.
  *
@@ -121,13 +129,7 @@ fun List<BuildingGeometryPrimitive>.toRenderMeshes(): List<BuildingRenderMesh> =
  */
 fun BuildingGeometryPrimitive.toRenderMesh(): BuildingRenderMesh {
     val mesh = MeshAccumulator()
-    when (this) {
-        is WallGeometry -> mesh.addWall(this)
-        is SlabGeometry -> mesh.addPrism(outline, elevation, topElevation)
-        is RoofFacetGeometry -> mesh.addPlanarFacet(vertices)
-        is GablePanelGeometry -> mesh.addPlanarPanel(vertices)
-        is OpeningPanelGeometry -> mesh.addPlanarPanel(vertices)
-    }
+    mesh.addPrimitive(this)
     val style = if (this is OpeningPanelGeometry) MeshStyle.GLAZING else MeshStyle.SOLID
     return mesh.build(elementId, style, bounds)
 }
@@ -174,6 +176,14 @@ private fun ModelPoint.along(axis: DoubleArray, distance: Double): ModelPoint =
  * normal would be lit from inside the wall.
  */
 private class MeshAccumulator {
+
+    fun addPrimitive(p:BuildingGeometryPrimitive) { when(p) {
+        is WallGeometry -> addWall(p)
+        is SlabGeometry -> addPrism(p.outline,p.elevation,p.topElevation)
+        is RoofFacetGeometry -> addPlanarFacet(p.vertices)
+        is GablePanelGeometry -> addPlanarPanel(p.vertices)
+        is OpeningPanelGeometry -> addPlanarPanel(p.vertices)
+    } }
 
     private val positions = ArrayList<Float>()
     private val normals = ArrayList<Float>()

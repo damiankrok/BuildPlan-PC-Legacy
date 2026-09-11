@@ -5,9 +5,9 @@ import com.buildplan.app.analyzer.reconstruction.internal.PlanarTopology
 import com.buildplan.app.analyzer.site.SourcePackage
 import kotlin.math.*
 
-internal data class SourceScore(val scores:Map<String,Double>,val residuals:Map<String,Double>,val hard:List<String>,val overall:Double,val diagnostics:List<String>)
+internal data class SourceScore(val scores:Map<String,Double>,val residuals:Map<String,Double>,val hard:List<String>,val overall:Double,val diagnostics:List<String>,val cameras:Map<String,CameraFit> = emptyMap())
 internal object SourceScorer {
-    fun score(c:ProjectAnalysisCandidate,source:SourcePackage,budget:ProjectionBudget):SourceScore {
+    fun score(c:ProjectAnalysisCandidate,source:SourcePackage,budget:ProjectionBudget,cameras:Map<String,CameraFit> = emptyMap()):SourceScore {
         val scores=linkedMapOf<String,Double>(); val residuals=linkedMapOf<String,Double>(); val hard=mutableListOf<String>(); val diagnostics=mutableListOf<String>()
         val policy=c.reconstruction?.policy ?: ReconstructionPolicy()
         val weights=linkedMapOf<String,Double>()
@@ -36,7 +36,7 @@ internal object SourceScorer {
         // are scored once, retaining the largest asset as the observation owner.
         val unique=mutableListOf<VisualAssetEvidence>()
         assets.forEach { a -> if(unique.none { b -> a.viewpoint==b.viewpoint && a.role==b.role && a.structuralMask!!.size==b.structuralMask!!.size && ProjectionScorer.iou(a.structuralMask.decode(),b.structuralMask.decode())>0.94 }) unique+=a }
-        val fits=unique.mapNotNull { a -> ProjectionScorer.fit(c,a,budget)?.let { a to it } }
+        val fits=unique.mapNotNull { a -> ProjectionScorer.fit(c,a,budget,cameras[a.assetUrl])?.let { a to it } }
         listOf(VisualViewpoint.ORTHOGRAPHIC_ELEVATION to "elevation",VisualViewpoint.PERSPECTIVE_RENDER to "render").forEach { (view,prefix) ->
             val group=fits.filter { it.first.viewpoint==view }
             if(group.isEmpty()) { diagnostics+="$prefix structural projection score unavailable"; return@forEach }
@@ -84,10 +84,15 @@ internal object SourceScorer {
             VisualObservationKind.HORIZONTAL_BAND to FacadeFeatureKind.BAND,VisualObservationKind.ROOF_STACK to FacadeFeatureKind.STACK,VisualObservationKind.ROOFLIGHT_PATCH to FacadeFeatureKind.ROOFLIGHT)
         val renderFeatures=unique.filter { it.viewpoint==VisualViewpoint.PERSPECTIVE_RENDER }.flatMap { a -> a.observations.filter { it.kind in featureMap && it.confidence>=0.55 } }
         if(renderFeatures.isNotEmpty()) add("renderFeatureScore",renderFeatures.map { o -> if(c.facadeFeatures.any { it.kind==featureMap[o.kind] }) 1.0 else 0.0 }.average(),EvidenceClass.RENDER)
+        val elevationFeatures=unique.filter { it.viewpoint==VisualViewpoint.ORTHOGRAPHIC_ELEVATION }.flatMap { a -> a.observations.mapIndexedNotNull { i,o ->
+            if(o.kind in featureMap && o.confidence>=0.55) "visual:${a.assetUrl}:$i" to o else null } }
+        if(elevationFeatures.isNotEmpty()) add("elevationFeatureScore",elevationFeatures.map { (id,o) ->
+            if(c.facadeFeatures.any { it.kind==featureMap[o.kind] && id in it.evidenceIds }) 1.0 else 0.0
+        }.average(),EvidenceClass.ELEVATION)
         if(fits.isNotEmpty()) add("roofScore",1-fits.map { it.second.rooflineResidual }.average(),EvidenceClass.ELEVATION)
         diagnostics+="Section geometry score unavailable: numeric level extraction is incomplete"
         if(c.stairs.any { it.flights.isEmpty() }) diagnostics+="Stair flights remain unresolved"
         val overall=if(scores.isEmpty() || hard.isNotEmpty()) 0.0 else scores.entries.sumOf { it.value*weights.getValue(it.key) }/weights.values.sum()
-        return SourceScore(scores,residuals,hard,overall,diagnostics)
+        return SourceScore(scores,residuals,hard,overall,diagnostics,fits.associate { it.first.assetUrl to it.second })
     }
 }

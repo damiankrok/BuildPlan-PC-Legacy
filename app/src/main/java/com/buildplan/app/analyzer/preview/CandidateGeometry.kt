@@ -84,10 +84,12 @@ internal class CandidateGeometry private constructor(
             val elements = mutableListOf<BuildingElement>()
             val primitives = mutableListOf<BuildingGeometryPrimitive>()
             val facadePanes = mutableMapOf<String, List<ModelPoint>>()
-            candidate.resolvedGeometry?.surfaces?.groupBy { it.ownerId }?.forEach { (owner,surfaces) ->
+            val resolved=CandidateGeometryQueries.resolvedGeometry(candidate)
+            resolved?.surfaces?.filter { it.roomId==null }?.groupBy { it.ownerId }?.forEach { (owner,surfaces) ->
                 val first=surfaces.first()
                 val id=eid(owner)
-                val kind=when(first.kind) { ResolvedSurfaceKind.WALL -> BuildingElementKind.WALL; ResolvedSurfaceKind.OPENING -> BuildingElementKind.WINDOW; else -> BuildingElementKind.OTHER }
+                val kind=when(first.kind) { ResolvedSurfaceKind.WALL -> BuildingElementKind.WALL; ResolvedSurfaceKind.OPENING -> BuildingElementKind.WINDOW
+                    ResolvedSurfaceKind.ROOF -> BuildingElementKind.ROOF; ResolvedSurfaceKind.SLAB -> BuildingElementKind.SLAB; ResolvedSurfaceKind.STAIR -> BuildingElementKind.STAIRS; else -> BuildingElementKind.OTHER }
                 elements+=BuildingElement(id,kind,owner,first.floorId?.let { BuildingElementScope.OnFloor(fid(it)) } ?: BuildingElementScope.WholeBuilding)
                 surfaces.forEach { s ->
                     val points=s.vertices.map { ModelPoint(it.x,it.y,it.z) }
@@ -96,6 +98,12 @@ internal class CandidateGeometry private constructor(
                     else if(abs(planArea)<1e-8) primitives+=GablePanelGeometry(id,points)
                     else primitives+=RoofFacetGeometry(id,points)
                 }
+            }
+            if(resolved?.lineage?.startsWith("final-resolution:")==true) {
+                val building=Building(BuildingId("cand-building"),floors,elements)
+                val geometry=BuildingGeometry(primitives)
+                geometry.requireElementsIn(building)
+                return CandidateGeometry(building,geometry,fid(topFloorId),if(candidate.roof!=null) eid("roof") else null)
             }
 
             // Continuous exterior envelopes retain lintels and roof-following gables.

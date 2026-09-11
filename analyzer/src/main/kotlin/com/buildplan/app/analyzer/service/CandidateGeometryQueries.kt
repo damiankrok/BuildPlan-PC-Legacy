@@ -6,6 +6,10 @@ import com.buildplan.app.analyzer.roof.RoofHeightField
 
 /** Read-only spatial queries over a report. No new analysis, mutation, or promotion. */
 object CandidateGeometryQueries {
+    fun resolvedGeometry(candidate:ProjectAnalysisCandidate):ResolvedBuildingGeometry? = candidate.resolvedGeometry?.let {
+        if(!it.lineage.startsWith("final-resolution:") || it.lineage==com.buildplan.app.analyzer.reconstruction.GeometryResolver.lineage(candidate)) it
+        else com.buildplan.app.analyzer.reconstruction.GeometryResolver.resolve(candidate)
+    }
     fun openingSegment(candidate: ProjectAnalysisCandidate, opening: OpeningCandidate): Segment? =
         AutomaticReconstruction.openingSegment(candidate, opening)
 

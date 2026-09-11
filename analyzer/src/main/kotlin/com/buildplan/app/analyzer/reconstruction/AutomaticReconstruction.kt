@@ -71,13 +71,7 @@ object AutomaticReconstruction {
                 // Six independent score families are needed for full source verification.
                 // Available coarse scores cannot imply high overall confidence on their own.
                 min(0.75, (best?.score ?: 0.0) * (best?.scores?.size ?: 0) / 6.0), margin, diagnostics, alternatives.size))
-        val featured=FacadeReconstruction.reconstruct(result)
-        val resolved=featured.copy(resolvedGeometry=GeometryResolver.facades(featured))
-        val budget=ProjectionBudget(policy.cameraProjections)
-        val qa=SourceScorer.score(resolved,source,budget)
-        return resolved.copy(selfVerification=resolved.selfVerification!!.copy(sourceScores=qa.scores+("overallScore" to qa.overall),metricResiduals=qa.residuals,
-            hardViolations=qa.hard,unresolvedDiagnostics=diagnostics+qa.diagnostics,searchCounts=mapOf("hypotheses" to massHypotheses.size,"cameraProjections" to budget.used),
-            overallConfidence=qa.overall*min(1.0,qa.scores.size/12.0)))
+        return ReconstructionSearch.solve(result, source)
     }
 
     private fun lowerRoofLevels(c: ProjectAnalysisCandidate): List<Pair<String, Double>> {

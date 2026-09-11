@@ -80,7 +80,7 @@ internal class ModelScene(
      * ids, and uploaded beside the primitives' meshes.
      */
     val meshes: List<BuildingRenderMesh> =
-        model.geometry.primitives.toRenderMeshes() + model.geometry.openingFrameMeshes(model.openingFrames)
+        model.geometry.primitives.toCoalescedRenderMeshes() + model.geometry.openingFrameMeshes(model.openingFrames)
 
     /**
      * The roof coverings, laid once over the facets the model's presentation

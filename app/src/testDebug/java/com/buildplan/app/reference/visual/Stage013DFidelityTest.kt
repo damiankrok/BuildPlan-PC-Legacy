@@ -470,7 +470,12 @@ class Stage013DFidelityTest {
         // No asset directory carries anything but the app's own resources.
         listOf("app/src/main/assets", "app/src/debug/assets").forEach { path ->
             val dir = File(repositoryRoot(), path)
-            assertTrue("$path must not ship reference material", !dir.exists() || dir.walkTopDown().none { it.isFile })
+            val files=if(dir.exists()) dir.walkTopDown().filter { it.isFile }.toList() else emptyList()
+            assertTrue("$path must not ship reference material", files.all {
+                it.relativeTo(dir).invariantSeparatorsPath=="licenses/jts-EDL-1.0.txt" &&
+                    it.readText().contains("Eclipse Distribution License - v 1.0") &&
+                    !it.readText().contains("archon",ignoreCase=true)
+            })
         }
 
         // What is kept is text: URLs, readings and the moment they were made.

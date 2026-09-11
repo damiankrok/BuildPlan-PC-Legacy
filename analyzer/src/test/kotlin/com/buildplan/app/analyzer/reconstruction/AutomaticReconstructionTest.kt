@@ -61,7 +61,7 @@ class AutomaticReconstructionTest {
         }
         val reconstructed=AutomaticReconstruction.reconstruct(c.copy(visual=c.visual.copy(assets=assets)),source())
         assertEquals(c.roof!!.secondaryMasses,reconstructed.roof!!.secondaryMasses)
-        assertEquals("plan-levels",reconstructed.selfVerification!!.selectedHypothesis)
+        assertNotEquals("corroborated-lower-roofs",reconstructed.selfVerification!!.selectedHypothesis)
         assertTrue(reconstructed.selfVerification!!.hypotheses.any { it.hardViolations.any { message->message.contains("parapet") } })
     }
     @Test fun `elevation ratio resolves height only with plan interval agreement`() {

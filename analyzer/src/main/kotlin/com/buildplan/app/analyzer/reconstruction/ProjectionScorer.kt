@@ -90,7 +90,7 @@ internal object ProjectionScorer {
         }.average()
         return edge to roof
     }
-    fun fit(c:ProjectAnalysisCandidate,asset:VisualAssetEvidence,budget:ProjectionBudget):CameraFit? {
+    fun fit(c:ProjectAnalysisCandidate,asset:VisualAssetEvidence,budget:ProjectionBudget,fixed:CameraFit?=null):CameraFit? {
         val mask=asset.structuralMask ?: return null
         val source=mask.decode(); val excluded=mask.decode(true); val polygons=polygons(c)
         val assignment=c.visual.facades.firstOrNull { it.assetUrl==asset.assetUrl && it.isSettled }
@@ -106,6 +106,7 @@ internal object ProjectionScorer {
             val fit=CameraFit(yaw,pitch,distance,iou(source,raster,excluded),edge,roof)
             if(best==null || fit.score>best!!.score) best=fit
         }
+        if(fixed!=null) { evaluate(fixed.yaw,fixed.pitch,fixed.distanceFactor); return best }
         yaws.forEach { yaw -> pitches.forEach { pitch -> distances.forEach { evaluate(yaw,pitch,it) } } }
         if(assignment==null) best?.let { coarse -> listOf(-PI/18,0.0,PI/18).forEach { offset -> listOf(-0.06,0.0,0.06).forEach { evaluate(coarse.yaw+offset,(coarse.pitch+it).coerceAtLeast(0.0),coarse.distanceFactor) } } }
         return best
